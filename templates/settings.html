@@ -2,7 +2,7 @@
 {% block title_suffix %} — Settings{% endblock %}
 
 {% block content %}
-<form method="post" action="/settings" class="max-w-xl space-y-6">
+<div class="max-w-xl space-y-6">
 
     <!-- Bot Toggle -->
     <div class="bg-slate-800 rounded-lg p-4 border border-slate-700">
@@ -11,42 +11,28 @@
                 <div class="font-semibold">Trading Enabled</div>
                 <div class="text-xs text-slate-400">Bot still runs but won't place orders when disabled</div>
             </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" name="bot_enabled" value="on" class="sr-only peer"
-                    {% if bot_enabled %}checked{% endif %}>
-                <div class="w-11 h-6 bg-slate-600 peer-focus:outline-none rounded-full peer
-                    peer-checked:after:translate-x-full peer-checked:after:border-white
-                    after:content-[''] after:absolute after:top-[2px] after:left-[2px]
-                    after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all
-                    peer-checked:bg-green-600"></div>
-            </label>
+            <div class="flex items-center gap-2">
+                {% if bot_enabled %}
+                <span class="w-3 h-3 rounded-full bg-green-500"></span>
+                <span class="text-green-400 text-sm font-semibold">ON</span>
+                {% else %}
+                <span class="w-3 h-3 rounded-full bg-red-500"></span>
+                <span class="text-red-400 text-sm font-semibold">OFF</span>
+                {% endif %}
+            </div>
         </div>
     </div>
 
     <!-- Risk Mode -->
     <div class="bg-slate-800 rounded-lg p-4 border border-slate-700 space-y-3">
         <div class="font-semibold">Risk Management</div>
-        <div class="flex gap-4">
-            <label class="flex items-center gap-2 text-sm">
-                <input type="radio" name="risk_mode" value="static"
-                    {% if risk_mode == 'static' %}checked{% endif %}
-                    class="text-blue-500">
-                Static ($)
-            </label>
-            <label class="flex items-center gap-2 text-sm">
-                <input type="radio" name="risk_mode" value="dynamic"
-                    {% if risk_mode == 'dynamic' %}checked{% endif %}
-                    class="text-blue-500">
-                Dynamic (%)
-            </label>
+        <div class="flex justify-between text-sm">
+            <span class="text-slate-400">Mode</span>
+            <span>{{ "Dynamic (%)" if risk_mode == 'dynamic' else "Static ($)" }}</span>
         </div>
-        <div>
-            <label class="block text-xs text-slate-400 mb-1">Risk Value</label>
-            <input type="number" name="risk_value" value="{{ risk_value }}" step="0.1" min="0.1"
-                class="bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm w-32">
-            <span class="text-xs text-slate-400 ml-2">
-                {% if risk_mode == 'static' %}USD per trade{% else %}% of balance{% endif %}
-            </span>
+        <div class="flex justify-between text-sm">
+            <span class="text-slate-400">Risk Value</span>
+            <span>{{ risk_value }} {% if risk_mode == 'dynamic' %}% of balance{% else %}USD per trade{% endif %}</span>
         </div>
     </div>
 
@@ -55,12 +41,14 @@
         <div class="font-semibold">Active Symbols</div>
         <div class="flex gap-4">
             {% for s in all_symbols %}
-            <label class="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="symbol_{{ s }}" value="on"
-                    {% if s in active_symbols %}checked{% endif %}
-                    class="text-blue-500 rounded">
+            <div class="flex items-center gap-2 text-sm">
+                {% if s in active_symbols %}
+                <span class="w-4 h-4 rounded bg-blue-500 flex items-center justify-center text-xs text-white">&#10003;</span>
+                {% else %}
+                <span class="w-4 h-4 rounded bg-slate-600"></span>
+                {% endif %}
                 {{ s.replace('USDT', '') }}
-            </label>
+            </div>
             {% endfor %}
         </div>
     </div>
@@ -90,8 +78,5 @@
         </div>
     </div>
 
-    <button type="submit" class="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded text-sm font-semibold w-full">
-        Save Settings
-    </button>
-</form>
+</div>
 {% endblock %}

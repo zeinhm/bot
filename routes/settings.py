@@ -1,5 +1,4 @@
-from fastapi import APIRouter, Request, Form
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
 
 from config import BINANCE_API_KEY, BINANCE_TESTNET, SYMBOLS
@@ -26,23 +25,3 @@ async def settings_page(request: Request):
         "active_symbols": active_symbols,
         "page": "settings",
     })
-
-
-@router.post("/settings")
-async def update_settings(
-    request: Request,
-    bot_enabled: str = Form("off"),
-    risk_mode: str = Form("static"),
-    risk_value: float = Form(10.0),
-):
-    form = await request.form()
-    active = [s for s in SYMBOLS if form.get(f"symbol_{s}") == "on"]
-    if not active:
-        active = SYMBOLS
-
-    await db.set_state("bot_enabled", bot_enabled == "on")
-    await db.set_state("risk_mode", risk_mode)
-    await db.set_state("risk_value", risk_value)
-    await db.set_state("active_symbols", active)
-
-    return RedirectResponse(url="/settings", status_code=303)

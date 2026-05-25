@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI):
         pass
 
 
-app = FastAPI(title="AMD FVG Bot", lifespan=lifespan)
+app = FastAPI(title="Trading Futures Bot", lifespan=lifespan)
 
 app.include_router(dashboard_router)
 app.include_router(trades_router)

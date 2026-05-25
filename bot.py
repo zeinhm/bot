@@ -286,7 +286,8 @@ class TradingBot:
                 },
             })
 
-            await alert_entry(symbol, signal["direction"], fill_price, signal["sl"], signal["tp"], fill_qty)
+            balance = await self.exchange.get_balance()
+            await alert_entry(symbol, signal["direction"], fill_price, signal["sl"], signal["tp"], fill_qty, balance)
 
         except Exception as e:
             log.error("Failed to execute trade: %s", e, exc_info=True)
@@ -374,7 +375,8 @@ class TradingBot:
             },
         })
 
-        await alert_exit(symbol, trade.direction, result, trade.entry_price, fill_price, pnl, r_value)
+        balance = await self.exchange.get_balance()
+        await alert_exit(symbol, trade.direction, result, trade.entry_price, fill_price, pnl, r_value, balance)
 
     # --- Fallback Position Poll ---
 
@@ -441,7 +443,8 @@ class TradingBot:
                         },
                     })
 
-                    await alert_exit(trade.symbol, trade.direction, result, trade.entry_price, exit_price, pnl, r_value)
+                    balance = await self.exchange.get_balance()
+                    await alert_exit(trade.symbol, trade.direction, result, trade.entry_price, exit_price, pnl, r_value, balance)
 
             except Exception as e:
                 log.error("Position poll error: %s", e)

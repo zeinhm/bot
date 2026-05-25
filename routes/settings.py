@@ -16,8 +16,7 @@ async def settings_page(request: Request):
     risk_value = await db.get_state("risk_value", 10.0)
     active_symbols = await db.get_state("active_symbols", SYMBOLS)
 
-    return templates.TemplateResponse("settings.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "settings.html", {
         "bot_enabled": bot_enabled,
         "risk_mode": risk_mode,
         "risk_value": risk_value,

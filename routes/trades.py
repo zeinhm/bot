@@ -29,8 +29,7 @@ async def trades_page(
     total_r = sum(t.r_value or 0 for t in trades if t.result != "open")
     total_pnl = sum(t.pnl_usdt or 0 for t in trades if t.result != "open")
 
-    return templates.TemplateResponse("trades.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "trades.html", {
         "trades": trades,
         "total": total,
         "wins": wins,

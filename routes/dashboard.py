@@ -38,8 +38,7 @@ async def dashboard(request: Request):
 
     bot_enabled = await db.get_state("bot_enabled", True)
 
-    return templates.TemplateResponse("dashboard.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "dashboard.html", {
         "bot_running": bot is not None and bot.running,
         "bot_enabled": bot_enabled,
         "balance": balance,

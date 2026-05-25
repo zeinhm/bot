@@ -1,5 +1,8 @@
 """
-Telegram alerts for trade entry and exit.
+Telegram alerts.
+
+Trade alerts → channel (TELEGRAM_CHAT_ID)
+Status alerts → private chat (TELEGRAM_OWNER_ID)
 """
 
 from __future__ import annotations
@@ -7,20 +10,20 @@ from __future__ import annotations
 import logging
 import aiohttp
 
-from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_OWNER_ID
 
 log = logging.getLogger(__name__)
 
 API_URL = "https://api.telegram.org/bot{}/sendMessage"
 
 
-async def send_alert(text: str):
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+async def _send(chat_id: str, text: str):
+    if not TELEGRAM_BOT_TOKEN or not chat_id:
         return
     try:
         url = API_URL.format(TELEGRAM_BOT_TOKEN)
         payload = {
-            "chat_id": TELEGRAM_CHAT_ID,
+            "chat_id": chat_id,
             "text": text,
             "parse_mode": "HTML",
         }
@@ -30,6 +33,14 @@ async def send_alert(text: str):
                     log.warning("Telegram alert failed: %s", await resp.text())
     except Exception as e:
         log.warning("Telegram alert error: %s", e)
+
+
+async def send_alert(text: str):
+    await _send(TELEGRAM_CHAT_ID, text)
+
+
+async def send_private(text: str):
+    await _send(TELEGRAM_OWNER_ID, text)
 
 
 async def alert_entry(symbol: str, direction: str, entry_price: float, sl: float, tp: float, quantity: float, balance: float):
@@ -62,3 +73,11 @@ async def alert_exit(symbol: str, direction: str, result: str, entry_price: floa
         f"Balance: <code>${balance:,.2f}</code>"
     )
     await send_alert(text)
+
+
+async def alert_bot_started():
+    await send_private("🟢 <b>Trading bot started</b>")
+
+
+async def alert_bot_stopped(reason: str = "unknown"):
+    await send_private(f"🔴 <b>Trading bot stopped</b>\nReason: {reason}")

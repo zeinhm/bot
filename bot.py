@@ -26,7 +26,7 @@ from config import (
 )
 from exchange import BinanceExchange
 from strategy import check_signal
-from telegram_alert import alert_entry, alert_exit
+from telegram_alert import alert_entry, alert_exit, alert_bot_started, alert_bot_stopped
 import database as db
 
 log = logging.getLogger(__name__)
@@ -78,6 +78,7 @@ class TradingBot:
 
         self.running = True
         log.info("Bot started — listening for candles")
+        await alert_bot_started()
 
         await asyncio.gather(
             self._run_kline_stream(),
@@ -87,6 +88,7 @@ class TradingBot:
 
     async def stop(self):
         self.running = False
+        await alert_bot_stopped("shutdown")
         await self.exchange.close()
         log.info("Bot stopped")
 

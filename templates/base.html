@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AMD FVG Bot{% block title_suffix %}{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #e2e8f0; }
+    </style>
+</head>
+<body class="min-h-screen">
+    <nav class="bg-slate-800 border-b border-slate-700">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+            <span class="text-lg font-bold text-white">AMD FVG Bot</span>
+            <div class="flex gap-6 text-sm">
+                <a href="/" class="{% if page == 'dashboard' %}text-blue-400{% else %}text-slate-400 hover:text-white{% endif %}">Dashboard</a>
+                <a href="/trades" class="{% if page == 'trades' %}text-blue-400{% else %}text-slate-400 hover:text-white{% endif %}">Trades</a>
+                <a href="/settings" class="{% if page == 'settings' %}text-blue-400{% else %}text-slate-400 hover:text-white{% endif %}">Settings</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 py-6">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script>
+        const ws = new WebSocket(`ws://${window.location.host}/ws`);
+        ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            if (data.type === 'trade_opened' || data.type === 'trade_closed') {
+                setTimeout(() => window.location.reload(), 500);
+            }
+        };
+        ws.onclose = function() {
+            setTimeout(() => window.location.reload(), 5000);
+        };
+    </script>
+</body>
+</html>

@@ -26,6 +26,7 @@ from config import (
 )
 from exchange import BinanceExchange
 from strategy import check_signal
+from telegram_alert import alert_entry, alert_exit
 import database as db
 
 log = logging.getLogger(__name__)
@@ -285,6 +286,8 @@ class TradingBot:
                 },
             })
 
+            await alert_entry(symbol, signal["direction"], fill_price, signal["sl"], signal["tp"], fill_qty)
+
         except Exception as e:
             log.error("Failed to execute trade: %s", e, exc_info=True)
 
@@ -371,6 +374,8 @@ class TradingBot:
             },
         })
 
+        await alert_exit(symbol, trade.direction, result, trade.entry_price, fill_price, pnl, r_value)
+
     # --- Fallback Position Poll ---
 
     async def _run_position_poll(self):
@@ -435,6 +440,8 @@ class TradingBot:
                             "pnl": pnl,
                         },
                     })
+
+                    await alert_exit(trade.symbol, trade.direction, result, trade.entry_price, exit_price, pnl, r_value)
 
             except Exception as e:
                 log.error("Position poll error: %s", e)

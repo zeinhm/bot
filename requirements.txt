@@ -6,3 +6,4 @@ asyncpg
 python-binance
 python-dotenv
 python-multipart
+aiohttp

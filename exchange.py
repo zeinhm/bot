@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 from binance import AsyncClient, BinanceSocketManager
+
+from config import SYMBOLS, LEVERAGE, LOT_SIZE
 
 log = logging.getLogger(__name__)
 
@@ -44,6 +47,16 @@ class BinanceExchange:
             self.market_bsm = BinanceSocketManager(self.client)
 
         self.bsm = BinanceSocketManager(self.client)
+
+        await self._set_leverage()
+
+    async def _set_leverage(self):
+        for symbol in SYMBOLS:
+            try:
+                await self.client.futures_change_leverage(symbol=symbol, leverage=LEVERAGE)
+                log.info("Set %s leverage to %dx", symbol, LEVERAGE)
+            except Exception as e:
+                log.warning("Failed to set leverage for %s: %s", symbol, e)
 
     async def close(self):
         if self.client:
@@ -109,7 +122,7 @@ class BinanceExchange:
             type="STOP_MARKET",
             stopPrice=self._format_price(symbol, stop_price),
             quantity=self._format_qty(symbol, quantity),
-            closePosition="false",
+            reduceOnly="true",
         )
         log.info("SL %s %s @ %.2f — order %s", side, symbol, stop_price, order["orderId"])
         return order
@@ -121,7 +134,7 @@ class BinanceExchange:
             type="TAKE_PROFIT_MARKET",
             stopPrice=self._format_price(symbol, price),
             quantity=self._format_qty(symbol, quantity),
-            closePosition="false",
+            reduceOnly="true",
         )
         log.info("TP %s %s @ %.2f — order %s", side, symbol, price, order["orderId"])
         return order
@@ -176,9 +189,10 @@ class BinanceExchange:
     # --- Helpers ---
 
     def _format_qty(self, symbol: str, qty: float) -> str:
-        if symbol == "BTCUSDT":
-            return f"{qty:.3f}"
-        return f"{qty:.2f}"
+        step = LOT_SIZE.get(symbol, 0.01)
+        qty = math.floor(qty / step) * step
+        decimals = max(0, -int(math.floor(math.log10(step))))
+        return f"{qty:.{decimals}f}"
 
     def _format_price(self, symbol: str, price: float) -> str:
         tick = {"BTCUSDT": 0.10, "ETHUSDT": 0.01, "SOLUSDT": 0.01}.get(symbol, 0.01)

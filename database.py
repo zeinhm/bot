@@ -202,17 +202,23 @@ async def set_state(key: str, value):
 
 async def save_candles(symbol: str, candles: list[dict]):
     async with get_session() as session:
+        timestamps = []
         for c in candles:
             ts = c["timestamp"]
             if isinstance(ts, (int, float)):
                 ts = datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
-            existing = await session.execute(
-                select(CandleBuffer).where(
-                    CandleBuffer.symbol == symbol,
-                    CandleBuffer.timestamp == ts,
-                )
+            timestamps.append(ts)
+
+        existing_result = await session.execute(
+            select(CandleBuffer.timestamp).where(
+                CandleBuffer.symbol == symbol,
+                CandleBuffer.timestamp.in_(timestamps),
             )
-            if existing.scalar_one_or_none():
+        )
+        existing_ts = {row[0] for row in existing_result.all()}
+
+        for c, ts in zip(candles, timestamps):
+            if ts in existing_ts:
                 continue
             session.add(CandleBuffer(
                 symbol=symbol,

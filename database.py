@@ -55,6 +55,34 @@ class BotState(Base):
     value = Column(Text)
 
 
+class HistoricalCandle(Base):
+    __tablename__ = "historical_candles"
+    __table_args__ = (
+        UniqueConstraint("symbol", "interval", "timestamp", name="uq_hist_candle"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    symbol = Column(String(20), nullable=False, index=True)
+    interval = Column(String(5), nullable=False, index=True)
+    timestamp = Column(Integer, nullable=False, index=True)
+    open = Column(Float)
+    high = Column(Float)
+    low = Column(Float)
+    close = Column(Float)
+    volume = Column(Float)
+
+
+class BotEvent(Base):
+    __tablename__ = "bot_events"
+
+    id = Column(Integer, primary_key=True)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    level = Column(String(10), nullable=False, default="info")
+    category = Column(String(30), nullable=False, default="system")
+    message = Column(Text, nullable=False)
+    details = Column(Text)
+
+
 class CandleBuffer(Base):
     __tablename__ = "candle_buffer"
     __table_args__ = (
@@ -168,6 +196,15 @@ async def get_today_pnl() -> float:
         return float(result.scalar())
 
 
+async def get_today_trade_count() -> int:
+    async with get_session() as session:
+        today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        result = await session.execute(
+            select(func.count(Trade.id)).where(Trade.entry_time >= today)
+        )
+        return int(result.scalar())
+
+
 # --- Bot State CRUD ---
 
 async def get_state(key: str, default=None):
@@ -279,3 +316,74 @@ async def trim_candle_buffer(symbol: str, keep: int = 500):
                 )
             )
             await session.commit()
+
+
+# --- Historical Candles ---
+
+async def get_historical_candles(
+    symbol: str,
+    interval: str,
+    end: int | None = None,
+    limit: int = 500,
+) -> tuple[list[dict], bool]:
+    async with get_session() as session:
+        q = (
+            select(HistoricalCandle)
+            .where(HistoricalCandle.symbol == symbol, HistoricalCandle.interval == interval)
+        )
+        if end is not None:
+            q = q.where(HistoricalCandle.timestamp <= end)
+        q = q.order_by(HistoricalCandle.timestamp.desc()).limit(limit + 1)
+        result = await session.execute(q)
+        rows = list(result.scalars().all())
+
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        rows.reverse()
+
+        candles = [
+            {"time": r.timestamp, "open": r.open, "high": r.high,
+             "low": r.low, "close": r.close, "volume": r.volume}
+            for r in rows
+        ]
+        return candles, has_more
+
+
+async def get_all_historical_candles(symbol: str, interval: str) -> list[dict]:
+    async with get_session() as session:
+        result = await session.execute(
+            select(HistoricalCandle)
+            .where(HistoricalCandle.symbol == symbol, HistoricalCandle.interval == interval)
+            .order_by(HistoricalCandle.timestamp.asc())
+        )
+        return [
+            {"time": r.timestamp, "open": r.open, "high": r.high,
+             "low": r.low, "close": r.close, "volume": r.volume}
+            for r in result.scalars().all()
+        ]
+
+
+# --- Bot Events ---
+
+async def log_event(
+    message: str,
+    level: str = "info",
+    category: str = "system",
+    details: str | None = None,
+):
+    async with get_session() as session:
+        session.add(BotEvent(
+            message=message,
+            level=level,
+            category=category,
+            details=details,
+        ))
+        await session.commit()
+
+
+async def get_recent_events(limit: int = 50) -> list[BotEvent]:
+    async with get_session() as session:
+        result = await session.execute(
+            select(BotEvent).order_by(BotEvent.id.desc()).limit(limit)
+        )
+        return list(result.scalars().all())

@@ -1,0 +1,418 @@
+{% extends "base.html" %}
+{% block title_suffix %} — Backtester{% endblock %}
+
+{% block head %}
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+.chart-wrap { position:relative; border-radius:var(--radius); border:1px solid var(--border); background:#131720; overflow:hidden; }
+.chart-hdr { display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid rgba(139,148,158,.08); }
+.chart-hdr .pair { font-size:13px; font-weight:600; color:var(--text-1); }
+.chart-hdr .tf { font-size:12px; color:var(--text-3); font-family:var(--mono); }
+.chart-ohlc { display:flex; gap:8px; font-family:var(--mono); font-size:11px; color:var(--text-3); margin-left:auto; }
+.chart-ohlc .v { color:var(--text-2); }
+.setup-box { position:absolute; pointer-events:none; z-index:1; }
+.setup-box.acc { background:rgba(139,148,158,.10); border:1px solid rgba(139,148,158,.18); }
+.setup-box.tp  { background:rgba(0,200,150,.13); }
+.setup-box.sl  { background:rgba(255,77,77,.13); }
+.setup-box.manip { background:rgba(18,59,65,.45); }
+.yr-btn { display:inline-flex; align-items:center; justify-content:center; height:26px; padding:0 10px; border-radius:4px; font-size:11px; color:var(--text-3); background:none; border:1px solid transparent; cursor:pointer; font-family:var(--mono); transition:all .1s; }
+.yr-btn:hover { color:var(--text-1); background:rgba(139,148,158,.08); }
+.yr-btn.active { color:#00C896; border-color:rgba(0,200,150,.3); background:rgba(0,200,150,.08); }
+.setup-nav { display:flex; align-items:center; gap:6px; }
+.setup-nav button { height:26px; padding:0 8px; border-radius:4px; font-size:11px; background:rgba(139,148,158,.08); border:1px solid var(--border); color:var(--text-2); cursor:pointer; font-family:var(--mono); }
+.setup-nav button:hover { color:var(--text-1); background:rgba(139,148,158,.15); }
+.setup-nav span { font-size:11px; color:var(--text-3); font-family:var(--mono); min-width:60px; text-align:center; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Backtester</h1>
+        <p class="page-sub">AMD FVG strategy — 15m · 2020–2025</p>
+    </div>
+</div>
+
+<div class="grid" style="grid-template-columns:320px 1fr;align-items:start">
+    <!-- Parameters -->
+    <div class="card" style="position:sticky;top:0">
+        <div class="card-title">Asset</div>
+        <div style="display:flex;gap:4px;margin-bottom:14px" id="asset-btns">
+            <button class="yr-btn active" data-sym="BTCUSDT">BTC</button>
+            <button class="yr-btn" data-sym="ETHUSDT">ETH</button>
+            <button class="yr-btn" data-sym="SOLUSDT">SOL</button>
+        </div>
+
+        <div class="card-title">Strategy Parameters</div>
+        <div class="slider-row">
+            <div class="slider-head"><span class="lbl">Accumulation Length</span><span class="val" id="v-accLen">{{ params.get('accLen', 60) }} bars</span></div>
+            <input type="range" min="20" max="120" step="5" value="{{ params.get('accLen', 60) }}" id="s-accLen" oninput="document.getElementById('v-accLen').textContent=this.value+' bars'">
+        </div>
+        <div class="slider-row">
+            <div class="slider-head"><span class="lbl">ATR Mult (Acc)</span><span class="val" id="v-atrMultAcc">5.0×</span></div>
+            <input type="range" min="1" max="10" step="0.5" value="5.0" id="s-atrMultAcc" oninput="document.getElementById('v-atrMultAcc').textContent=parseFloat(this.value).toFixed(1)+'×'">
+        </div>
+        <div class="slider-row">
+            <div class="slider-head"><span class="lbl">ATR Mult (SL)</span><span class="val" id="v-atrMult">1.5×</span></div>
+            <input type="range" min="0.5" max="5" step="0.5" value="1.5" id="s-atrMult" oninput="document.getElementById('v-atrMult').textContent=parseFloat(this.value).toFixed(1)+'×'">
+        </div>
+        <div class="slider-row">
+            <div class="slider-head"><span class="lbl">Reward : Risk</span><span class="val" id="v-rrr">2.0</span></div>
+            <input type="range" min="1" max="6" step="0.5" value="2.0" id="s-rrr" oninput="document.getElementById('v-rrr').textContent=parseFloat(this.value).toFixed(1)">
+        </div>
+
+        <div class="card-title" style="margin-top:14px">Filters</div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-2);cursor:pointer;margin-bottom:8px">
+            <input type="checkbox" id="s-sweepFilter" checked> Sweep Filter
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-2);cursor:pointer;margin-bottom:14px">
+            <input type="checkbox" id="s-skipMay" checked> Skip May
+        </label>
+
+        <button class="btn btn-primary btn-block" id="run-btn">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" stroke="none"><path d="M5 3l14 9-14 9z"/></svg>
+            Run Backtest
+        </button>
+    </div>
+
+    <!-- Results -->
+    <div class="grid" style="gap:12px">
+        <div class="stat-row">
+            <div class="stat"><div class="lbl">Total R</div><div class="val mono" id="st-r">—</div></div>
+            <div class="stat"><div class="lbl">Win Rate</div><div class="val mono" id="st-wr">—</div></div>
+            <div class="stat"><div class="lbl">Trades</div><div class="val mono" id="st-trades">—</div></div>
+            <div class="stat"><div class="lbl">W / L</div><div class="val mono" id="st-wl">—</div></div>
+        </div>
+
+        <!-- Chart -->
+        <div class="chart-wrap" id="chart-wrap">
+            <div class="chart-hdr">
+                <span class="pair" id="chart-pair">BTCUSDT</span>
+                <span class="tf">15m</span>
+                <div class="setup-nav" id="setup-nav" style="display:none">
+                    <button id="prev-setup">◀</button>
+                    <span id="setup-counter">1 / 0</span>
+                    <button id="next-setup">▶</button>
+                </div>
+                <div class="chart-ohlc">
+                    <span>O <span class="v" id="ohlc-o">—</span></span>
+                    <span>H <span class="v" id="ohlc-h">—</span></span>
+                    <span>L <span class="v" id="ohlc-l">—</span></span>
+                    <span>C <span class="v" id="ohlc-c">—</span></span>
+                </div>
+            </div>
+            <div id="chart-el" style="height:560px;position:relative;overflow:hidden;background:#131720"></div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Equity Curve · simulated $1,000 account</div>
+            <div id="bt-equity-chart" style="height:200px;display:grid;place-items:center">
+                <span class="muted" style="font-size:12px">Run a backtest to see results</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    var chartEl = document.getElementById('chart-el');
+    if (!chartEl || typeof LightweightCharts === 'undefined') return;
+
+    // ── State ──
+    var chart, candleSeries, volSeries;
+    var currentSymbol = 'BTCUSDT';
+    var allData = [];
+    var setups = [];
+    var setupIdx = 0;
+    var boxEls = [];
+    var loading = false;
+    var hasMore = true;
+    var CHUNK = 2000;
+
+    // ── Create chart ──
+    function initChart() {
+        if (chart) chart.remove();
+        boxEls.forEach(function(b) { b.el.remove(); });
+        boxEls = [];
+
+        chart = LightweightCharts.createChart(chartEl, {
+            layout: { background: { type: LightweightCharts.ColorType.Solid, color: 'transparent' }, textColor: '#5C636E', fontSize: 11, fontFamily: "'IBM Plex Mono', monospace" },
+            grid: { vertLines: { color: 'rgba(139,148,158,.05)' }, horzLines: { color: 'rgba(139,148,158,.05)' } },
+            crosshair: {
+                mode: LightweightCharts.CrosshairMode.Normal,
+                vertLine: { color: 'rgba(139,148,158,.2)', labelBackgroundColor: '#1C2128' },
+                horzLine: { color: 'rgba(139,148,158,.2)', labelBackgroundColor: '#1C2128' }
+            },
+            rightPriceScale: { borderColor: 'rgba(139,148,158,.08)', scaleMargins: { top: 0.06, bottom: 0.14 } },
+            timeScale: { borderColor: 'rgba(139,148,158,.08)', timeVisible: true, secondsVisible: false },
+            handleScroll: true, handleScale: true
+        });
+
+        candleSeries = chart.addCandlestickSeries({
+            upColor: '#00C896', downColor: '#FF4D4D',
+            borderUpColor: '#00C896', borderDownColor: '#FF4D4D',
+            wickUpColor: '#00C896', wickDownColor: '#FF4D4D'
+        });
+
+        volSeries = chart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol' });
+        chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.87, bottom: 0 }, drawTicks: false });
+
+        chart.subscribeCrosshairMove(function(p) { onCrosshair(p); requestAnimationFrame(updateBoxes); });
+        chart.timeScale().subscribeVisibleTimeRangeChange(function() { requestAnimationFrame(updateBoxes); });
+        chartEl.addEventListener('mousemove', function() { requestAnimationFrame(updateBoxes); });
+        chartEl.addEventListener('wheel', function() { requestAnimationFrame(updateBoxes); });
+
+        Array.from(chartEl.children).forEach(function(child) {
+            if (!child.classList.contains('setup-box')) {
+                child.style.position = 'relative';
+                child.style.zIndex = '3';
+            }
+        });
+
+        chart.timeScale().subscribeVisibleLogicalRangeChange(function(range) {
+            if (!range || loading || !hasMore) return;
+            if (range.from < 10) fetchOlder();
+        });
+
+        new ResizeObserver(function() {
+            chart.applyOptions({ width: chartEl.clientWidth });
+            requestAnimationFrame(updateBoxes);
+        }).observe(chartEl);
+    }
+
+    // ── OHLC crosshair ──
+    function onCrosshair(p) {
+        var oO = document.getElementById('ohlc-o'), oH = document.getElementById('ohlc-h');
+        var oL = document.getElementById('ohlc-l'), oC = document.getElementById('ohlc-c');
+        if (!p || !p.time || !p.seriesData || !p.seriesData.size) { oO.textContent=oH.textContent=oL.textContent=oC.textContent='—'; return; }
+        var d = p.seriesData.get(candleSeries);
+        if (!d) return;
+        var f = function(v) { return v.toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1}); };
+        oO.textContent=f(d.open); oH.textContent=f(d.high); oL.textContent=f(d.low); oC.textContent=f(d.close);
+        oC.style.color = d.close >= d.open ? '#00C896' : '#FF4D4D';
+    }
+
+    // ── Fetch candles from API ──
+    function fetchCandles(end, limit) {
+        var url = '/api/candles?symbol=' + currentSymbol + '&interval=15m&limit=' + limit;
+        if (end != null) url += '&end=' + end;
+        return fetch(url).then(function(r) { return r.json(); });
+    }
+
+    function fetchOlder() {
+        if (loading || !hasMore || !allData.length) return;
+        loading = true;
+        var oldest = allData[0].time;
+        fetchCandles(oldest - 1, CHUNK).then(function(res) {
+            if (!res.candles || !res.candles.length) { hasMore = false; loading = false; return; }
+            hasMore = res.hasMore;
+            allData = res.candles.concat(allData);
+            applyData();
+            loading = false;
+        });
+    }
+
+    function applyData() {
+        candleSeries.setData(allData);
+        volSeries.setData(allData.map(function(d) {
+            return { time: d.time, value: d.volume, color: d.close >= d.open ? 'rgba(0,200,150,.18)' : 'rgba(255,77,77,.18)' };
+        }));
+        renderSetups();
+    }
+
+    function renderSetups() {
+        if (!setups.length || !allData.length) return;
+        var tMin = allData[0].time;
+        var tMax = allData[allData.length - 1].time;
+
+        boxEls.forEach(function(b) { b.el.remove(); });
+        boxEls = [];
+
+        var markers = [];
+        setups.forEach(function(s) {
+            if (s.entryTime < tMin || s.entryTime > tMax) return;
+            markers.push({
+                time: s.entryTime,
+                position: s.direction === 'long' ? 'belowBar' : 'aboveBar',
+                color: '#2962FF',
+                shape: s.direction === 'long' ? 'arrowUp' : 'arrowDown',
+                text: s.direction === 'long' ? 'Long' : 'Short'
+            });
+            if (s.exitTime && s.result !== 'open' && s.exitTime <= tMax) {
+                markers.push({
+                    time: s.exitTime,
+                    position: s.result === 'win'
+                        ? (s.direction === 'long' ? 'aboveBar' : 'belowBar')
+                        : (s.direction === 'long' ? 'belowBar' : 'aboveBar'),
+                    color: s.result === 'win' ? '#00C896' : '#FF4D4D',
+                    shape: 'circle',
+                    text: s.result === 'win' ? 'TP Hit' : 'SL Hit'
+                });
+            }
+            drawSetup(s);
+        });
+        markers.sort(function(a, b) { return a.time - b.time; });
+        candleSeries.setMarkers(markers);
+    }
+
+    // ── Run backtest (backend) ──
+    function runBacktest() {
+        var btn = document.getElementById('run-btn');
+        btn.disabled = true;
+        btn.textContent = 'Running…';
+
+        var params = [
+            'symbol=' + currentSymbol, 'interval=15m',
+            'accLen=' + document.getElementById('s-accLen').value,
+            'atrMultAcc=' + document.getElementById('s-atrMultAcc').value,
+            'atrMult=' + document.getElementById('s-atrMult').value,
+            'rrr=' + document.getElementById('s-rrr').value,
+            'sweepFilter=' + document.getElementById('s-sweepFilter').checked,
+            'skipMay=' + document.getElementById('s-skipMay').checked
+        ].join('&');
+
+        fetch('/api/backtest?' + params)
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                setups = res.setups;
+                setupIdx = 0;
+                var st = res.stats;
+
+                document.getElementById('st-trades').textContent = st.trades;
+                document.getElementById('st-wl').textContent = st.wins + 'W / ' + st.losses + 'L';
+                document.getElementById('st-wr').textContent = st.trades ? st.winRate + '%' : '—';
+                var rEl = document.getElementById('st-r');
+                rEl.textContent = (st.totalR >= 0 ? '+' : '') + st.totalR.toFixed(1) + 'R';
+                rEl.className = 'val mono ' + (st.totalR >= 0 ? 'pos' : 'neg');
+
+                renderSetups();
+
+                var nav = document.getElementById('setup-nav');
+                if (setups.length > 0) {
+                    nav.style.display = 'flex';
+                    goToSetup(setups.length - 1);
+                } else {
+                    nav.style.display = 'none';
+                }
+
+                btn.disabled = false;
+                btn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" stroke="none"><path d="M5 3l14 9-14 9z"/></svg> Run Backtest';
+            });
+    }
+
+    // ── Draw setup boxes ──
+    function drawSetup(s) {
+        var exitT = s.exitTime || s.entryTime;
+
+        addBox('acc', s.accStartTime, s.accEndTime, s.accHigh, s.accLow);
+
+        if (s.direction === 'long') {
+            addBox('manip', s.accEndTime, s.entryTime, s.accLow, s.manipExtremum);
+        } else {
+            addBox('manip', s.accEndTime, s.entryTime, s.manipExtremum, s.accHigh);
+        }
+
+        if (s.direction === 'long') {
+            addBox('tp', s.entryTime, exitT, s.tp, s.entryPrice);
+            addBox('sl', s.entryTime, exitT, s.entryPrice, s.sl);
+        } else {
+            addBox('tp', s.entryTime, exitT, s.entryPrice, s.tp);
+            addBox('sl', s.entryTime, exitT, s.sl, s.entryPrice);
+        }
+    }
+
+    function addBox(cls, t1, t2, priceTop, priceBot) {
+        var div = document.createElement('div');
+        div.className = 'setup-box ' + cls;
+        chartEl.appendChild(div);
+        boxEls.push({ el: div, t1: t1, t2: t2, pTop: priceTop, pBot: priceBot });
+    }
+
+    function updateBoxes() {
+        boxEls.forEach(function(b) {
+            var x1 = chart.timeScale().timeToCoordinate(b.t1);
+            var x2 = chart.timeScale().timeToCoordinate(b.t2);
+            var y1 = candleSeries.priceToCoordinate(b.pTop);
+            var y2 = candleSeries.priceToCoordinate(b.pBot);
+            if (x1 === null || x2 === null || y1 === null || y2 === null) { b.el.style.display = 'none'; return; }
+            b.el.style.display = 'block';
+            b.el.style.left = Math.min(x1, x2) + 'px';
+            b.el.style.top = Math.min(y1, y2) + 'px';
+            b.el.style.width = Math.max(Math.abs(x2 - x1), 4) + 'px';
+            b.el.style.height = Math.max(Math.abs(y2 - y1), 2) + 'px';
+        });
+    }
+
+    // ── Setup navigation ──
+    var BAR_SEC = 15 * 60;
+    function goToSetup(idx) {
+        if (!setups.length) return;
+        setupIdx = Math.max(0, Math.min(idx, setups.length - 1));
+        var s = setups[setupIdx];
+        document.getElementById('setup-counter').textContent = (setupIdx + 1) + ' / ' + setups.length;
+
+        var padSec = 20 * BAR_SEC;
+        var fromTime = s.accStartTime - padSec;
+        var toTime = (s.exitTime || s.entryTime) + padSec;
+
+        // Load data back to fromTime by extending from current oldest (no gaps)
+        function ensureLoaded() {
+            if (!allData.length || allData[0].time <= fromTime || !hasMore) {
+                chart.timeScale().setVisibleRange({ from: fromTime, to: toTime });
+                setTimeout(updateBoxes, 100);
+                return;
+            }
+            loading = true;
+            fetchCandles(allData[0].time - 1, 5000).then(function(res) {
+                if (!res.candles || !res.candles.length) { hasMore = false; loading = false; ensureLoaded(); return; }
+                hasMore = res.hasMore;
+                allData = res.candles.concat(allData);
+                applyData();
+                loading = false;
+                ensureLoaded();
+            });
+        }
+        ensureLoaded();
+    }
+
+    document.getElementById('prev-setup').addEventListener('click', function() { goToSetup(setupIdx - 1); });
+    document.getElementById('next-setup').addEventListener('click', function() { goToSetup(setupIdx + 1); });
+
+    // ── Asset buttons ──
+    document.getElementById('asset-btns').addEventListener('click', function(e) {
+        var btn = e.target.closest('[data-sym]');
+        if (!btn) return;
+        this.querySelectorAll('.yr-btn').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        currentSymbol = btn.dataset.sym;
+        document.getElementById('chart-pair').textContent = currentSymbol;
+        allData = [];
+        hasMore = true;
+        setups = [];
+        boxEls.forEach(function(b) { b.el.remove(); });
+        boxEls = [];
+        candleSeries.setMarkers([]);
+        fetchCandles(null, CHUNK).then(function(res) {
+            allData = res.candles;
+            hasMore = res.hasMore;
+            applyData();
+            runBacktest();
+        });
+    });
+
+    // ── Run button ──
+    document.getElementById('run-btn').addEventListener('click', function() { runBacktest(); });
+
+    // ── Auto-run on load ──
+    initChart();
+    fetchCandles(null, CHUNK).then(function(res) {
+        allData = res.candles;
+        hasMore = res.hasMore;
+        applyData();
+        runBacktest();
+    });
+})();
+</script>
+{% endblock %}

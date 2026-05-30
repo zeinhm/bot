@@ -2,93 +2,231 @@
 {% block title_suffix %} — Settings{% endblock %}
 
 {% block content %}
-<div class="max-w-xl space-y-6">
-
-    <!-- Bot Toggle -->
-    <div class="bg-slate-800 rounded-lg p-4 border border-slate-700">
-        <div class="flex items-center justify-between">
-            <div>
-                <div class="font-semibold">Trading Enabled</div>
-                <div class="text-xs text-slate-400">Bot still runs but won't place orders when disabled</div>
-            </div>
-            <label class="relative inline-flex items-center pointer-events-none opacity-80">
-                <input type="checkbox" class="sr-only peer" disabled
-                    {% if bot_enabled %}checked{% endif %}>
-                <div class="w-11 h-6 bg-slate-600 rounded-full peer
-                    peer-checked:after:translate-x-full peer-checked:after:border-white
-                    after:content-[''] after:absolute after:top-[2px] after:left-[2px]
-                    after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all
-                    peer-checked:bg-green-600"></div>
-            </label>
-        </div>
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Settings</h1>
     </div>
-
-    <!-- Risk Mode -->
-    <div class="bg-slate-800 rounded-lg p-4 border border-slate-700 space-y-3">
-        <div class="font-semibold">Risk Management</div>
-        <div class="flex gap-4 opacity-80">
-            <label class="flex items-center gap-2 text-sm">
-                <input type="radio" name="risk_mode" value="static" disabled
-                    {% if risk_mode == 'static' %}checked{% endif %}
-                    class="text-blue-500">
-                Static ($)
-            </label>
-            <label class="flex items-center gap-2 text-sm">
-                <input type="radio" name="risk_mode" value="dynamic" disabled
-                    {% if risk_mode == 'dynamic' %}checked{% endif %}
-                    class="text-blue-500">
-                Dynamic (%)
-            </label>
-        </div>
-        <div>
-            <label class="block text-xs text-slate-400 mb-1">Risk Value</label>
-            <input type="number" value="{{ risk_value }}" disabled
-                class="bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm w-32 opacity-80 cursor-not-allowed">
-            <span class="text-xs text-slate-400 ml-2">
-                {% if risk_mode == 'static' %}USD per trade{% else %}% of balance{% endif %}
-            </span>
-        </div>
-    </div>
-
-    <!-- Active Symbols -->
-    <div class="bg-slate-800 rounded-lg p-4 border border-slate-700 space-y-3">
-        <div class="font-semibold">Active Symbols</div>
-        <div class="flex gap-4 opacity-80">
-            {% for s in all_symbols %}
-            <label class="flex items-center gap-2 text-sm">
-                <input type="checkbox" disabled
-                    {% if s in active_symbols %}checked{% endif %}
-                    class="text-blue-500 rounded">
-                {{ s.replace('USDT', '') }}
-            </label>
-            {% endfor %}
-        </div>
-    </div>
-
-    <!-- Info -->
-    <div class="bg-slate-800 rounded-lg p-4 border border-slate-700 space-y-2 text-sm">
-        <div class="font-semibold">System Info</div>
-        <div class="flex justify-between text-slate-400">
-            <span>Mode</span>
-            <span class="{% if testnet %}text-yellow-400{% else %}text-red-400 font-bold{% endif %}">
-                {{ "TESTNET" if testnet else "LIVE" }}
-            </span>
-        </div>
-        <div class="flex justify-between text-slate-400">
-            <span>API Key</span>
-            <span class="{% if api_key_set %}text-green-400{% else %}text-red-400{% endif %}">
-                {{ "Configured" if api_key_set else "Not Set" }}
-            </span>
-        </div>
-        <div class="flex justify-between text-slate-400">
-            <span>Timeframe</span>
-            <span>15m</span>
-        </div>
-        <div class="flex justify-between text-slate-400">
-            <span>RRR</span>
-            <span>1:2</span>
-        </div>
-    </div>
-
 </div>
+
+{% if saved %}
+<div class="callout green" style="margin-bottom:14px">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg>
+    <span>Settings saved. Changes take effect on the next trade.</span>
+</div>
+{% endif %}
+
+{% if error %}
+<div class="callout amber" style="margin-bottom:14px">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    <span>{{ error }}</span>
+</div>
+{% endif %}
+
+<form method="post" action="/settings">
+<div class="grid" style="grid-template-columns:1fr 1fr;align-items:start">
+    <!-- Left Column -->
+    <div class="grid" style="gap:12px">
+        <!-- Bot Configuration -->
+        <div class="card">
+            <div class="card-title">Bot Configuration</div>
+
+            <!-- Trading Enabled -->
+            <div class="toggle-row" style="margin-bottom:12px;padding-top:0">
+                <span style="font-size:12.5px;color:var(--text-2)">Trading Enabled</span>
+                <input type="hidden" name="bot_enabled_flag" value="1">
+                <button type="button" class="switch {{ 'on' if bot_enabled else '' }}"
+                    onclick="this.classList.toggle('on');var h=this.previousElementSibling;h.name=this.classList.contains('on')?'bot_enabled':'bot_enabled_flag'"></button>
+                {% if bot_enabled %}<input type="hidden" name="bot_enabled" value="on">{% endif %}
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">
+                <div>
+                    <label class="field-lbl">Risk per trade</label>
+                    <div class="input-suffix">
+                        <input class="input mono" name="risk_value" value="{{ risk_value }}" step="0.1" min="0.1">
+                        <span class="suffix" id="risk-unit">{{ '%' if risk_mode == 'dynamic' else '$' }}</span>
+                    </div>
+                </div>
+                <div>
+                    <label class="field-lbl">Reward : Risk</label>
+                    <input class="input mono" name="rr_ratio" value="{{ rr_ratio }}" step="0.5" min="1.0" max="10.0">
+                </div>
+                <div>
+                    <label class="field-lbl">Max trades / day</label>
+                    <input class="input mono" name="max_trades" value="{{ max_trades }}" min="1" max="10">
+                </div>
+            </div>
+
+            <!-- Risk Mode -->
+            <label class="field-lbl">Risk Mode</label>
+            <div class="seg" style="margin-bottom:14px">
+                <button type="button" class="{{ 'active' if risk_mode == 'static' else '' }}"
+                    onclick="document.querySelector('[name=risk_mode]').value='static';this.classList.add('active');this.nextElementSibling.classList.remove('active');document.getElementById('risk-unit').textContent='$'">Static ($)</button>
+                <button type="button" class="{{ 'active' if risk_mode == 'dynamic' else '' }}"
+                    onclick="document.querySelector('[name=risk_mode]').value='dynamic';this.classList.add('active');this.previousElementSibling.classList.remove('active');document.getElementById('risk-unit').textContent='%'">Dynamic (%)</button>
+            </div>
+            <input type="hidden" name="risk_mode" value="{{ risk_mode }}">
+
+            <!-- Sessions -->
+            <label class="field-lbl">Sessions</label>
+            <div style="display:flex;gap:10px;margin-bottom:16px">
+                {% for s in all_sessions %}
+                <label style="flex:1;cursor:pointer">
+                    <input type="checkbox" name="session_{{ s }}" value="on"
+                        {% if s in active_sessions %}checked{% endif %} style="display:none"
+                        onchange="this.parentElement.style.borderColor=this.checked?'rgba(0,200,150,.35)':'var(--border)'">
+                    <div class="vcenter gap8" style="justify-content:space-between;padding:9px 11px;background:var(--card-3);border:1px solid {{ 'rgba(0,200,150,.35)' if s in active_sessions else 'var(--border)' }};border-radius:var(--radius-sm);font-size:12.5px;color:var(--text-2)">
+                        <span class="capitalize">{{ s }}</span>
+                        <span class="led {{ 'green' if s in active_sessions else 'gray' }}"></span>
+                    </div>
+                </label>
+                {% endfor %}
+            </div>
+
+            <!-- Symbols -->
+            <label class="field-lbl">Active Symbols</label>
+            <div style="display:flex;gap:10px;margin-bottom:16px">
+                {% for s in all_symbols %}
+                <label style="flex:1;cursor:pointer">
+                    <input type="checkbox" name="symbol_{{ s }}" value="on"
+                        {% if s in active_symbols %}checked{% endif %} style="display:none"
+                        onchange="this.parentElement.style.borderColor=this.checked?'rgba(0,200,150,.35)':'var(--border)'">
+                    <div class="vcenter gap8" style="justify-content:center;padding:9px 11px;background:var(--card-3);border:1px solid {{ 'rgba(0,200,150,.35)' if s in active_symbols else 'var(--border)' }};border-radius:var(--radius-sm);font-size:12.5px;color:var(--text-2)">
+                        {{ s.replace('USDT', '') }}
+                    </div>
+                </label>
+                {% endfor %}
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-block">Save Configuration</button>
+        </div>
+
+        <!-- Exchange -->
+        <div class="card">
+            <div class="card-title">Exchange</div>
+            <div class="status-grid">
+                <div class="status-cell">
+                    <div class="k">Exchange</div>
+                    <div class="v" style="font-family:var(--sans);font-size:12.5px">Binance Futures (USDT-M)</div>
+                </div>
+                <div class="status-cell">
+                    <div class="k">Connection</div>
+                    <div class="v"><span class="led {{ 'green' if api_key_set else 'red' }}"></span>{{ 'Connected' if api_key_set else 'Not configured' }}</div>
+                </div>
+                <div class="status-cell">
+                    <div class="k">API Key</div>
+                    <div class="v">{{ '••••••••••' if api_key_set else 'Not set' }}</div>
+                </div>
+                <div class="status-cell">
+                    <div class="k">Leverage</div>
+                    <div class="v">{{ leverage }}× <span class="muted" style="font-size:10px;font-family:var(--sans)">set on exchange</span></div>
+                </div>
+                <div class="status-cell">
+                    <div class="k">Mode</div>
+                    <div class="v">
+                        <span class="led {{ 'amber' if testnet else 'green' }}"></span>
+                        {{ 'Testnet' if testnet else 'Live' }}
+                    </div>
+                </div>
+                <div class="status-cell">
+                    <div class="k">Timeframe</div>
+                    <div class="v">15m</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column -->
+    <div class="grid" style="gap:12px">
+        <!-- Notifications placeholder -->
+        <div class="card">
+            <div class="card-title">Notifications</div>
+            <label class="field-lbl">Telegram Chat ID</label>
+            <input class="input mono" placeholder="e.g. 123456789" style="margin-bottom:10px" disabled>
+            <div>
+                <div class="toggle-row">
+                    <span style="font-size:12.5px;color:var(--text-2)">Trade entry alert</span>
+                    <button type="button" class="switch on" onclick="this.classList.toggle('on')" disabled></button>
+                </div>
+                <div class="toggle-row">
+                    <span style="font-size:12.5px;color:var(--text-2)">Trade exit alert</span>
+                    <button type="button" class="switch on" onclick="this.classList.toggle('on')" disabled></button>
+                </div>
+                <div class="toggle-row">
+                    <span style="font-size:12.5px;color:var(--text-2)">Daily P&L summary</span>
+                    <button type="button" class="switch on" onclick="this.classList.toggle('on')" disabled></button>
+                </div>
+            </div>
+            <div class="muted" style="font-size:11px;margin-top:8px">Telegram integration coming soon</div>
+        </div>
+
+        <!-- Danger Zone -->
+        <div class="card danger">
+            <div class="card-title">Danger Zone</div>
+            <button type="button" class="btn btn-red btn-block" id="btn-emergency-close"
+                onclick="emergencyClose()">Emergency: Close All Positions</button>
+            <p class="muted" style="font-size:11.5px;margin:8px 0 14px">Immediately closes all open positions at market price.</p>
+            <div id="emergency-result" style="display:none;margin-bottom:14px"></div>
+            <button type="button" class="btn btn-ghost btn-block" disabled>Reset paper trading wallet</button>
+        </div>
+    </div>
+</div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('label[style*="cursor:pointer"] input[type="checkbox"]').forEach(function(cb) {
+    cb.addEventListener('change', function() {
+        var led = this.parentElement.querySelector('.led');
+        if (led) led.className = 'led ' + (this.checked ? 'green' : 'gray');
+    });
+});
+
+function emergencyClose() {
+    if (!confirm('EMERGENCY CLOSE\n\nThis will immediately close ALL open positions at market price.\n\nAre you sure?')) return;
+    var btn = document.getElementById('btn-emergency-close');
+    var res = document.getElementById('emergency-result');
+    btn.disabled = true;
+    btn.textContent = 'Closing...';
+    fetch('/api/emergency-close', {method:'POST'})
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            res.style.display = 'block';
+            if (data.ok) {
+                res.className = 'callout green';
+                res.innerHTML = '<span>Closed: ' + (data.closed.length ? data.closed.join(', ') : 'no positions') + '</span>';
+            } else {
+                res.className = 'callout amber';
+                res.innerHTML = '<span>' + (data.error || 'Unknown error') + '</span>';
+            }
+            btn.disabled = false;
+            btn.textContent = 'Emergency: Close All Positions';
+        })
+        .catch(function() {
+            res.style.display = 'block';
+            res.className = 'callout amber';
+            res.innerHTML = '<span>Network error — check connection</span>';
+            btn.disabled = false;
+            btn.textContent = 'Emergency: Close All Positions';
+        });
+}
+
+var switchEl = document.querySelector('.switch');
+if (switchEl && !switchEl.disabled) {
+    var form = document.querySelector('form');
+    switchEl.addEventListener('click', function() {
+        var existing = form.querySelector('input[name="bot_enabled"]');
+        if (this.classList.contains('on')) {
+            if (!existing) {
+                var h = document.createElement('input');
+                h.type = 'hidden'; h.name = 'bot_enabled'; h.value = 'on';
+                form.appendChild(h);
+            }
+        } else {
+            if (existing) existing.remove();
+        }
+    });
+}
+</script>
 {% endblock %}

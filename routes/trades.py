@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
 
 import database as db
+from template_context import get_global_context
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -29,7 +30,8 @@ async def trades_page(
     total_r = sum(t.r_value or 0 for t in trades if t.result != "open")
     total_pnl = sum(t.pnl_usdt or 0 for t in trades if t.result != "open")
 
-    return templates.TemplateResponse(request, "trades.html", {
+    ctx = await get_global_context()
+    ctx.update({
         "trades": trades,
         "total": total,
         "wins": wins,
@@ -42,3 +44,4 @@ async def trades_page(
         "filter_result": result or "",
         "page": "trades",
     })
+    return templates.TemplateResponse(request, "trades.html", ctx)

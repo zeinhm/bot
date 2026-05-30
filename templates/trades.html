@@ -1,121 +1,108 @@
 {% extends "base.html" %}
-{% block title_suffix %} — Trades{% endblock %}
+{% block title_suffix %} — Trade History{% endblock %}
 
 {% block content %}
-<div class="mb-4">
-    <form method="get" action="/trades" class="flex flex-wrap gap-3 items-end">
-        <div>
-            <label class="block text-xs text-slate-400 mb-1">Symbol</label>
-            <select name="symbol" class="bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm">
-                <option value="">All</option>
-                <option value="BTCUSDT" {% if filter_symbol == 'BTCUSDT' %}selected{% endif %}>BTC</option>
-                <option value="ETHUSDT" {% if filter_symbol == 'ETHUSDT' %}selected{% endif %}>ETH</option>
-                <option value="SOLUSDT" {% if filter_symbol == 'SOLUSDT' %}selected{% endif %}>SOL</option>
-            </select>
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Trade History</h1>
+        <p class="page-sub">Every trade pulled directly from Binance — verified, not self-reported.</p>
+    </div>
+    <div class="vcenter gap12 wrap">
+        <div class="seg">
+            <a href="/trades?direction=&symbol={{ filter_symbol }}&result={{ filter_result }}"
+               class="{% if not filter_direction %}active{% endif %}" style="text-decoration:none;color:inherit">All</a>
+            <a href="/trades?direction=long&symbol={{ filter_symbol }}&result={{ filter_result }}"
+               class="{% if filter_direction == 'long' %}active{% endif %}" style="text-decoration:none;color:inherit">Long</a>
+            <a href="/trades?direction=short&symbol={{ filter_symbol }}&result={{ filter_result }}"
+               class="{% if filter_direction == 'short' %}active{% endif %}" style="text-decoration:none;color:inherit">Short</a>
         </div>
-        <div>
-            <label class="block text-xs text-slate-400 mb-1">Direction</label>
-            <select name="direction" class="bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm">
-                <option value="">All</option>
-                <option value="long" {% if filter_direction == 'long' %}selected{% endif %}>Long</option>
-                <option value="short" {% if filter_direction == 'short' %}selected{% endif %}>Short</option>
-            </select>
-        </div>
-        <div>
-            <label class="block text-xs text-slate-400 mb-1">Result</label>
-            <select name="result" class="bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm">
-                <option value="">All</option>
-                <option value="win" {% if filter_result == 'win' %}selected{% endif %}>Win</option>
-                <option value="loss" {% if filter_result == 'loss' %}selected{% endif %}>Loss</option>
-            </select>
-        </div>
-        <button type="submit" class="bg-blue-600 hover:bg-blue-700 px-4 py-1.5 rounded text-sm">Filter</button>
-    </form>
-</div>
-
-<!-- Summary -->
-<div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-    <div class="bg-slate-800 rounded p-3 border border-slate-700 text-center">
-        <div class="text-xs text-slate-400">Total</div>
-        <div class="text-lg font-bold">{{ total }}</div>
-    </div>
-    <div class="bg-slate-800 rounded p-3 border border-slate-700 text-center">
-        <div class="text-xs text-slate-400">Wins</div>
-        <div class="text-lg font-bold text-green-400">{{ wins }}</div>
-    </div>
-    <div class="bg-slate-800 rounded p-3 border border-slate-700 text-center">
-        <div class="text-xs text-slate-400">Losses</div>
-        <div class="text-lg font-bold text-red-400">{{ losses }}</div>
-    </div>
-    <div class="bg-slate-800 rounded p-3 border border-slate-700 text-center">
-        <div class="text-xs text-slate-400">Win Rate</div>
-        <div class="text-lg font-bold">{{ "%.1f"|format(win_rate) }}%</div>
-    </div>
-    <div class="bg-slate-800 rounded p-3 border border-slate-700 text-center">
-        <div class="text-xs text-slate-400">Total R / PnL</div>
-        <div class="text-lg font-bold {% if total_r >= 0 %}text-green-400{% else %}text-red-400{% endif %}">
-            {{ "%+.1f"|format(total_r) }}R / ${{ "%.2f"|format(total_pnl) }}
+        <div class="seg">
+            <a href="/trades?result=&symbol={{ filter_symbol }}&direction={{ filter_direction }}"
+               class="{% if not filter_result %}active{% endif %}" style="text-decoration:none;color:inherit">All</a>
+            <a href="/trades?result=win&symbol={{ filter_symbol }}&direction={{ filter_direction }}"
+               class="{% if filter_result == 'win' %}active{% endif %}" style="text-decoration:none;color:inherit">Wins</a>
+            <a href="/trades?result=loss&symbol={{ filter_symbol }}&direction={{ filter_direction }}"
+               class="{% if filter_result == 'loss' %}active{% endif %}" style="text-decoration:none;color:inherit">Losses</a>
         </div>
     </div>
 </div>
 
-<!-- Trade Table -->
-<div class="bg-slate-800 rounded-lg border border-slate-700">
+<div class="stat-row" style="margin-bottom:12px">
+    <div class="stat">
+        <div class="lbl">Total Trades</div>
+        <div class="val mono">{{ total }}</div>
+        <div class="sub">{{ wins }}W / {{ losses }}L</div>
+    </div>
+    <div class="stat">
+        <div class="lbl">Win Rate</div>
+        <div class="val mono">{{ "%.0f"|format(win_rate) }}%</div>
+    </div>
+    <div class="stat">
+        <div class="lbl">Total R</div>
+        <div class="val mono {{ 'pos' if total_r >= 0 else 'neg' }}">{{ "+" if total_r > 0 else "" }}{{ "%.1f"|format(total_r) }}R</div>
+    </div>
+    <div class="stat">
+        <div class="lbl">Total P&L</div>
+        <div class="val mono {{ 'pos' if total_pnl >= 0 else 'neg' }}">{{ "+" if total_pnl > 0 else "" }}${{ "%.2f"|format(total_pnl|abs) }}</div>
+    </div>
+</div>
+
+<div class="card">
     {% if trades %}
-    <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-            <thead>
-                <tr class="text-xs text-slate-500 uppercase border-b border-slate-700">
-                    <th class="px-4 py-2 text-left">#</th>
-                    <th class="px-4 py-2 text-left">Entry Time</th>
-                    <th class="px-4 py-2 text-left">Exit Time</th>
-                    <th class="px-4 py-2 text-left">Symbol</th>
-                    <th class="px-4 py-2 text-left">Dir</th>
-                    <th class="px-4 py-2 text-right">Entry</th>
-                    <th class="px-4 py-2 text-right">Exit</th>
-                    <th class="px-4 py-2 text-right">SL</th>
-                    <th class="px-4 py-2 text-right">TP</th>
-                    <th class="px-4 py-2 text-center">Result</th>
-                    <th class="px-4 py-2 text-right">R</th>
-                    <th class="px-4 py-2 text-right">PnL</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for t in trades %}
-                <tr class="border-b border-slate-700/50 hover:bg-slate-700/30">
-                    <td class="px-4 py-2 text-slate-500">{{ t.id }}</td>
-                    <td class="px-4 py-2 text-slate-400">{{ t.entry_time.strftime('%Y-%m-%d %H:%M') if t.entry_time else '-' }}</td>
-                    <td class="px-4 py-2 text-slate-400">{{ t.exit_time.strftime('%Y-%m-%d %H:%M') if t.exit_time else '-' }}</td>
-                    <td class="px-4 py-2">{{ t.symbol }}</td>
-                    <td class="px-4 py-2 {% if t.direction == 'long' %}text-green-400{% else %}text-red-400{% endif %}">
-                        {{ t.direction|upper }}
-                    </td>
-                    <td class="px-4 py-2 text-right">${{ "%.2f"|format(t.entry_price) if t.entry_price else '-' }}</td>
-                    <td class="px-4 py-2 text-right">{{ "$%.2f"|format(t.exit_price) if t.exit_price else '-' }}</td>
-                    <td class="px-4 py-2 text-right text-red-400/70">${{ "%.2f"|format(t.sl_price) if t.sl_price else '-' }}</td>
-                    <td class="px-4 py-2 text-right text-green-400/70">${{ "%.2f"|format(t.tp_price) if t.tp_price else '-' }}</td>
-                    <td class="px-4 py-2 text-center">
-                        {% if t.result == 'win' %}
-                        <span class="px-2 py-0.5 rounded text-xs bg-green-500/20 text-green-400">WIN</span>
-                        {% elif t.result == 'loss' %}
-                        <span class="px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400">LOSS</span>
-                        {% else %}
-                        <span class="px-2 py-0.5 rounded text-xs bg-blue-500/20 text-blue-400">OPEN</span>
-                        {% endif %}
-                    </td>
-                    <td class="px-4 py-2 text-right {% if (t.r_value or 0) >= 0 %}text-green-400{% else %}text-red-400{% endif %}">
-                        {{ "%.1f"|format(t.r_value) if t.r_value is not none else '-' }}R
-                    </td>
-                    <td class="px-4 py-2 text-right {% if (t.pnl_usdt or 0) >= 0 %}text-green-400{% else %}text-red-400{% endif %}">
-                        {{ "$%.2f"|format(t.pnl_usdt) if t.pnl_usdt is not none else '-' }}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <table class="tbl">
+        <thead><tr>
+            <th>#</th>
+            <th>Date</th>
+            <th>Pair</th>
+            <th>Dir</th>
+            <th class="num">Entry</th>
+            <th class="num">Exit</th>
+            <th>Result</th>
+            <th class="num">R</th>
+            <th class="num">P&L</th>
+        </tr></thead>
+        <tbody>
+            {% for t in trades %}
+            <tr class="{{ 'row-win' if t.result == 'win' else ('row-loss' if t.result == 'loss' else '') }}">
+                <td class="mono muted">{{ t.id }}</td>
+                <td class="mono">{{ t.entry_time.strftime('%Y-%m-%d %H:%M') if t.entry_time else '—' }}</td>
+                <td class="mono">{{ t.symbol }}</td>
+                <td><span class="dir-badge {{ 'long' if t.direction == 'long' else 'short' }}">{{ t.direction|upper }}</span></td>
+                <td class="num mono">${{ "%.2f"|format(t.entry_price) if t.entry_price else '—' }}</td>
+                <td class="num mono">{{ "$%.2f"|format(t.exit_price) if t.exit_price else '—' }}</td>
+                <td>
+                    {% if t.result == 'win' %}
+                    <span class="pill green">WIN</span>
+                    {% elif t.result == 'loss' %}
+                    <span class="pill red">LOSS</span>
+                    {% else %}
+                    <span class="pill blue">OPEN</span>
+                    {% endif %}
+                </td>
+                <td class="num mono {{ 'pos' if (t.r_value or 0) >= 0 else 'neg' }}">
+                    {{ "%.1f"|format(t.r_value) if t.r_value is not none else '—' }}R
+                </td>
+                <td class="num mono {{ 'pos' if (t.pnl_usdt or 0) >= 0 else 'neg' }}">
+                    {{ "$%.2f"|format(t.pnl_usdt) if t.pnl_usdt is not none else '—' }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="between" style="margin-top:12px">
+        <span class="muted" style="font-size:11.5px">{{ total }} trades</span>
     </div>
     {% else %}
-    <div class="p-8 text-center text-slate-500">No trades found</div>
+    <div style="text-align:center;padding:40px 0" class="muted">
+        <div style="font-size:14px;font-weight:600">No trades found</div>
+        <div class="faint" style="font-size:12px;margin-top:4px">
+            {% if filter_direction or filter_result %}
+            Try changing the filters above
+            {% else %}
+            Trades will appear here once the bot places its first trade
+            {% endif %}
+        </div>
+    </div>
     {% endif %}
 </div>
 {% endblock %}

@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title_suffix %} — Analytics{% endblock %}
+
+{% block head %}
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Analytics</h1>
+        <p class="page-sub">Where, when and how the strategy performs.</p>
+    </div>
+</div>
+
+<div class="stat-row" style="margin-bottom:12px">
+    <div class="stat">
+        <div class="lbl">Win Rate</div>
+        <div class="val mono">{{ "%.1f"|format(win_rate) }}%</div>
+        <div class="sub">{{ wins }}W / {{ losses }}L</div>
+    </div>
+    <div class="stat">
+        <div class="lbl">Profit Factor</div>
+        <div class="val mono {{ 'pos' if profit_factor > 1 else 'neg' }}">{{ "%.2f"|format(profit_factor) }}</div>
+        <div class="sub">gross win ÷ gross loss</div>
+    </div>
+    <div class="stat">
+        <div class="lbl">Total R</div>
+        <div class="val mono {{ 'pos' if total_r >= 0 else 'neg' }}">{{ "+" if total_r > 0 else "" }}{{ "%.1f"|format(total_r) }}R</div>
+        <div class="sub">all-time</div>
+    </div>
+    <div class="stat">
+        <div class="lbl">Avg Hold Time</div>
+        <div class="val mono">{{ avg_hold }}</div>
+        <div class="sub">entry → exit</div>
+    </div>
+</div>
+
+<div class="grid" style="grid-template-columns:1fr 1fr;align-items:start">
+    <div class="grid" style="gap:12px">
+        <div class="card">
+            <div class="card-title">Drawdown · all-time</div>
+            <div id="drawdown-chart" style="height:150px;display:grid;place-items:center">
+                <span class="muted" style="font-size:12px">Chart available after trades are recorded</span>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-title">Hold Time Analysis</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                <div>
+                    <div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Winners avg</div>
+                    <div class="mono pos" style="font-size:18px;font-weight:600">{{ avg_win_hold }}</div>
+                </div>
+                <div>
+                    <div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Losers avg</div>
+                    <div class="mono neg" style="font-size:18px;font-weight:600">{{ avg_loss_hold }}</div>
+                </div>
+            </div>
+            {% if total_trades == 0 %}
+            <div class="callout blue" style="margin-top:12px">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+                <span>Need more trade data for hold time analysis.</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="grid" style="gap:12px">
+        <div class="card">
+            <div class="card-title">Monthly P&L</div>
+            <div id="monthly-chart" style="min-height:100px">
+                {% if monthly_data == '[]' %}
+                <div style="display:grid;place-items:center;height:100px">
+                    <span class="muted" style="font-size:12px">Monthly data available after trades are recorded</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-title">Win Rate by Session</div>
+            {% if session_wr %}
+            <div style="display:flex;flex-direction:column;gap:8px">
+                {% for sess, data in session_wr.items() %}
+                <div>
+                    <div class="between" style="margin-bottom:4px">
+                        <span class="muted capitalize" style="font-size:12px">{{ sess }}</span>
+                        <span class="mono" style="font-size:12px;font-weight:600">{{ data.wr }}% <span class="muted" style="font-weight:400">({{ data.total }})</span></span>
+                    </div>
+                    <div style="height:6px;background:var(--card-3);border-radius:3px;overflow:hidden">
+                        <div style="height:100%;width:{{ data.wr }}%;background:{{ 'var(--green)' if data.wr >= 50 else 'var(--red)' }};border-radius:3px;transition:width .3s"></div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div style="display:grid;place-items:center;min-height:80px">
+                <span class="muted" style="font-size:12px">Session data available after trades</span>
+            </div>
+            {% endif %}
+        </div>
+        <div class="card">
+            <div class="card-title">Win Rate by Day</div>
+            {% if day_wr %}
+            <div style="display:flex;flex-direction:column;gap:8px">
+                {% for day, data in day_wr.items() %}
+                <div>
+                    <div class="between" style="margin-bottom:4px">
+                        <span class="muted" style="font-size:12px">{{ day }}</span>
+                        <span class="mono" style="font-size:12px;font-weight:600">{{ data.wr }}% <span class="muted" style="font-weight:400">({{ data.total }})</span></span>
+                    </div>
+                    <div style="height:6px;background:var(--card-3);border-radius:3px;overflow:hidden">
+                        <div style="height:100%;width:{{ data.wr }}%;background:{{ 'var(--green)' if data.wr >= 50 else 'var(--red)' }};border-radius:3px;transition:width .3s"></div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div style="display:grid;place-items:center;min-height:80px">
+                <span class="muted" style="font-size:12px">Day data available after trades</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    // Drawdown chart
+    var ddEl = document.getElementById('drawdown-chart');
+    var ddData = {{ drawdown_data|safe }};
+    if (ddEl && ddData.length && typeof LightweightCharts !== 'undefined') {
+        ddEl.innerHTML = '';
+        var chart = LightweightCharts.createChart(ddEl, {
+            layout: { background: { color: 'transparent' }, textColor: '#5C636E', fontSize: 10, fontFamily: "'IBM Plex Mono', monospace" },
+            grid: { vertLines: { visible: false }, horzLines: { color: 'rgba(139,148,158,.06)' } },
+            rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.05, bottom: 0.1 } },
+            timeScale: { borderVisible: false, timeVisible: true },
+            handleScroll: false, handleScale: false,
+            crosshair: { horzLine: { visible: false, labelVisible: false }, vertLine: { visible: false, labelVisible: false } }
+        });
+        var series = chart.addAreaSeries({
+            lineColor: '#FF4D4D',
+            topColor: 'transparent',
+            bottomColor: 'rgba(255,77,77,.2)',
+            lineWidth: 2,
+            priceFormat: { type: 'custom', formatter: function(p) { return p.toFixed(1) + '%'; } }
+        });
+        series.setData(ddData);
+        chart.timeScale().fitContent();
+        new ResizeObserver(function() { chart.applyOptions({ width: ddEl.clientWidth }); }).observe(ddEl);
+    }
+
+    // Monthly P&L bars
+    var mEl = document.getElementById('monthly-chart');
+    var mData = {{ monthly_data|safe }};
+    if (mEl && mData.length) {
+        var html = '<div style="display:flex;gap:6px;align-items:flex-end;height:100px;padding-top:8px">';
+        var maxAbs = Math.max.apply(null, mData.map(function(d) { return Math.abs(d.pnl); })) || 1;
+        mData.forEach(function(d) {
+            var h = Math.max(Math.abs(d.pnl) / maxAbs * 70, 4);
+            var color = d.pnl >= 0 ? 'var(--green)' : 'var(--red)';
+            html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px">';
+            html += '<span class="mono ' + (d.pnl >= 0 ? 'pos' : 'neg') + '" style="font-size:10px;font-weight:600">$' + Math.abs(d.pnl).toFixed(0) + '</span>';
+            html += '<div style="width:100%;height:' + h + 'px;background:' + color + ';border-radius:3px 3px 0 0;opacity:.7"></div>';
+            html += '<span class="muted" style="font-size:9.5px">' + d.month.slice(5) + '/' + d.month.slice(2,4) + '</span>';
+            html += '</div>';
+        });
+        html += '</div>';
+        mEl.innerHTML = html;
+    }
+})();
+</script>
+{% endblock %}

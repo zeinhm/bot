@@ -3,40 +3,302 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trading Futures Bot{% block title_suffix %}{% endblock %}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { background-color: #0f172a; color: #e2e8f0; }
-    </style>
+    <title>AXIOM{% block title_suffix %}{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/app.css?v=3">
+    {% block head %}{% endblock %}
 </head>
-<body class="min-h-screen">
-    <nav class="bg-slate-800 border-b border-slate-700">
-        <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-            <span class="text-lg font-bold text-white">Trading Futures Bot</span>
-            <div class="flex gap-6 text-sm">
-                <a href="/" class="{% if page == 'dashboard' %}text-blue-400{% else %}text-slate-400 hover:text-white{% endif %}">Dashboard</a>
-                <a href="/trades" class="{% if page == 'trades' %}text-blue-400{% else %}text-slate-400 hover:text-white{% endif %}">Trades</a>
-                <a href="/settings" class="{% if page == 'settings' %}text-blue-400{% else %}text-slate-400 hover:text-white{% endif %}">Settings</a>
-            </div>
+<body>
+<div class="app">
+
+    <!-- ======== Sidebar Rail ======== -->
+    <nav class="rail">
+        <a href="/" class="rail-logo">A</a>
+
+        <div class="rail-group">
+            <!-- Dashboard -->
+            <a href="/" class="rail-btn {% if page == 'dashboard' %}active{% endif %}" data-tip="Dashboard">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/>
+                </svg>
+            </a>
+            <!-- Live Position -->
+            <a href="/position" class="rail-btn {% if page == 'position' %}active{% endif %}" data-tip="Live Position">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
+                    <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/>
+                </svg>
+            </a>
+            <!-- Trade History -->
+            <a href="/trades" class="rail-btn {% if page == 'trades' or page == 'history' %}active{% endif %}" data-tip="Trade History">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
+                </svg>
+            </a>
+            <!-- Analytics -->
+            <a href="/analytics" class="rail-btn {% if page == 'analytics' %}active{% endif %}" data-tip="Analytics">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 20V10M12 20V4M6 20v-6"/>
+                </svg>
+            </a>
+            <!-- Backtester -->
+            <a href="/backtester" class="rail-btn {% if page == 'backtester' %}active{% endif %}" data-tip="Backtester">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 3v5h5M3.05 13a9 9 0 1 0 2.6-6.4L3 8M12 7v5l3 2"/>
+                </svg>
+            </a>
+            <!-- Alerts -->
+            <a href="/alerts" class="rail-btn {% if page == 'alerts' %}active{% endif %}" data-tip="Alerts">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/>
+                </svg>
+            </a>
+
+            <div class="rail-sep"></div>
+
+            <!-- Public Track Record -->
+            <a href="/track-record" class="rail-btn {% if page == 'public' %}active{% endif %}" data-tip="Track Record">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z"/>
+                </svg>
+            </a>
+        </div>
+
+        <div class="rail-spacer"></div>
+
+        <div class="rail-group">
+            <!-- Settings -->
+            <a href="/settings" class="rail-btn {% if page == 'settings' %}active{% endif %}" data-tip="Settings">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/>
+                </svg>
+            </a>
         </div>
     </nav>
 
-    <main class="max-w-7xl mx-auto px-4 py-6">
-        {% block content %}{% endblock %}
-    </main>
+    <!-- ======== Main Column ======== -->
+    <div class="main">
 
-    <script>
-        const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const ws = new WebSocket(`${proto}//${window.location.host}/ws`);
-        ws.onmessage = function(event) {
-            const data = JSON.parse(event.data);
-            if (data.type === 'trade_opened' || data.type === 'trade_closed') {
-                setTimeout(() => window.location.reload(), 500);
+        <!-- Topbar -->
+        <header class="topbar">
+            <div class="wordmark">AXIOM<span class="dot">.</span></div>
+
+            <div class="topbar-ticker">
+                <span class="pair">BTC / USDT</span>
+                <span class="price mono" id="topbar-price">&mdash;</span>
+                <span class="mono muted" id="topbar-price-change" style="font-size:12px;font-weight:600">&mdash;</span>
+            </div>
+
+            <div class="topbar-right">
+                <div style="text-align:right">
+                    <div class="balance-lbl">Balance</div>
+                    <div class="mono" style="font-size:13px;font-weight:600">
+                        <span id="usdt-balance">{{ "$%.2f"|format(balance) if balance is defined else '—' }}</span>
+                        <span class="muted" style="font-size:10px">USDT</span>
+                    </div>
+                </div>
+
+                <span id="bot-status-pill"
+                      class="pill {% if bot_running is defined and bot_running and bot_enabled is defined and bot_enabled %}green{% elif bot_running is defined and bot_running %}amber{% else %}gray{% endif %}"
+                      style="padding:5px 12px">
+                    <span id="bot-status-dot"
+                          class="led {% if bot_running is defined and bot_running and bot_enabled is defined and bot_enabled %}green pulse{% elif bot_running is defined and bot_running %}amber{% else %}gray{% endif %}"></span>
+                    <span id="bot-status-label">{% if bot_running is defined and bot_running and bot_enabled is defined and bot_enabled %}Running{% elif bot_running is defined and bot_running %}Monitoring{% else %}—{% endif %}</span>
+                </span>
+
+                <span id="ws-status-dot" class="led gray" title="WebSocket"></span>
+            </div>
+        </header>
+
+        <!-- Content Area -->
+        <div class="content {% block content_class %}{% endblock %}">
+            {% block content %}{% endblock %}
+        </div>
+
+    </div>
+</div>
+
+<script src="/static/js/websocket.js?v=2"></script>
+<script>
+var botWS = new BotWebSocket(1);
+
+// Restore cached prices immediately so header never shows "—"
+(function() {
+    try {
+        var cached = JSON.parse(localStorage.getItem('axiom_prices') || '{}');
+        for (var sym in cached) {
+            var d = cached[sym];
+            var el = document.getElementById('price-' + sym);
+            if (el) el.textContent = '$' + d.price.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+            var chgEl = document.getElementById('price-change-' + sym);
+            if (chgEl) {
+                var sign = d.change >= 0 ? '+' : '';
+                chgEl.textContent = sign + d.change.toFixed(2) + '%';
+                chgEl.className = 'mono ' + (d.change >= 0 ? 'pos' : 'neg');
             }
-        };
-        ws.onclose = function() {
-            setTimeout(() => window.location.reload(), 5000);
-        };
-    </script>
+            if (sym === 'BTCUSDT') {
+                var tp = document.getElementById('topbar-price');
+                if (tp) { tp.textContent = '$' + d.price.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}); tp.dataset.prev = d.price; }
+                var tc = document.getElementById('topbar-price-change');
+                if (tc) { var s = d.change >= 0 ? '+' : ''; tc.textContent = s + d.change.toFixed(2) + '%'; tc.className = 'mono ' + (d.change >= 0 ? 'pos' : 'neg'); }
+            }
+        }
+        var bal = localStorage.getItem('axiom_balance');
+        if (bal) { var be = document.getElementById('usdt-balance'); if (be) be.textContent = bal; }
+    } catch(e) {}
+})();
+
+botWS.on('price', function(msg) {
+    var el = document.getElementById('price-' + msg.symbol);
+    if (el) el.textContent = '$' + msg.price.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+
+    var chgEl = document.getElementById('price-change-' + msg.symbol);
+    if (chgEl) {
+        var sign = msg.change_pct_24h >= 0 ? '+' : '';
+        chgEl.textContent = sign + msg.change_pct_24h.toFixed(2) + '%';
+        chgEl.className = 'mono ' + (msg.change_pct_24h >= 0 ? 'pos' : 'neg');
+    }
+
+    if (msg.symbol === 'BTCUSDT') {
+        var tp = document.getElementById('topbar-price');
+        if (tp) {
+            var prev = parseFloat(tp.dataset.prev || '0');
+            var cur = msg.price;
+            tp.textContent = '$' + cur.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+            if (prev > 0) tp.className = 'price mono ' + (cur >= prev ? 'pos' : 'neg');
+            tp.dataset.prev = cur;
+        }
+        var tc = document.getElementById('topbar-price-change');
+        if (tc) {
+            var s = msg.change_pct_24h >= 0 ? '+' : '';
+            tc.textContent = s + msg.change_pct_24h.toFixed(2) + '%';
+            tc.className = 'mono ' + (msg.change_pct_24h >= 0 ? 'pos' : 'neg');
+        }
+    }
+
+    try {
+        var cached = JSON.parse(localStorage.getItem('axiom_prices') || '{}');
+        cached[msg.symbol] = { price: msg.price, change: msg.change_pct_24h };
+        localStorage.setItem('axiom_prices', JSON.stringify(cached));
+    } catch(e) {}
+});
+
+botWS.on('balance', function(msg) {
+    var el = document.getElementById('usdt-balance');
+    var txt = '$' + msg.usdt_balance.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    if (el) el.textContent = txt;
+    try { localStorage.setItem('axiom_balance', txt); } catch(e) {}
+});
+
+botWS.on('heartbeat', function(msg) {
+    var el = document.getElementById('last-candle-age');
+    if (el && msg.last_candle_age_secs != null) {
+        var mins = Math.floor(msg.last_candle_age_secs / 60);
+        el.textContent = mins + 'm ago';
+        var cl = document.getElementById('candle-led');
+        if (cl) cl.className = 'led ' + (mins < 2 ? 'green' : (mins < 5 ? 'amber' : 'red'));
+    }
+    var sessEl = document.getElementById('current-session');
+    if (sessEl) {
+        sessEl.textContent = msg.session || '—';
+        var sl = document.getElementById('session-led');
+        if (sl) sl.className = 'led ' + (msg.session && msg.session !== 'none' ? 'green' : 'gray');
+    }
+});
+
+botWS.on('bot_status', function(msg) {
+    var pill = document.getElementById('bot-status-pill');
+    var dot = document.getElementById('bot-status-dot');
+    var label = document.getElementById('bot-status-label');
+    if (msg.status === 'running') {
+        if (pill) pill.className = 'pill green';
+        if (dot) dot.className = 'led green pulse';
+        if (label) label.textContent = 'Running';
+    } else if (msg.status === 'monitoring') {
+        if (pill) pill.className = 'pill amber';
+        if (dot) dot.className = 'led amber';
+        if (label) label.textContent = 'Monitoring';
+    } else if (msg.status === 'error') {
+        if (pill) pill.className = 'pill red';
+        if (dot) dot.className = 'led red';
+        if (label) label.textContent = 'Error';
+    } else {
+        if (pill) pill.className = 'pill red';
+        if (dot) dot.className = 'led red';
+        if (label) label.textContent = 'Stopped';
+    }
+});
+
+botWS.on('position', function(msg) {
+    var panel = document.getElementById('position-panel');
+    if (!panel) return;
+    if (!msg.active) {
+        panel.innerHTML = '<div class="muted">No open position</div>';
+        return;
+    }
+    var dirBadge = msg.direction === 'long' ? 'dir-badge long' : 'dir-badge short';
+    var pnlCls = msg.unrealised_pnl_usdt >= 0 ? 'pos' : 'neg';
+    var pnlSign = msg.unrealised_pnl_usdt >= 0 ? '+' : '';
+    var mins = Math.floor(msg.time_in_trade_secs / 60);
+    var secs = msg.time_in_trade_secs % 60;
+    panel.innerHTML =
+        '<div class="between" style="margin-bottom:12px"><div class="vcenter gap8">' +
+        '<span class="mono" style="font-size:13px;font-weight:600">' + msg.symbol + '</span>' +
+        '<span class="' + dirBadge + '">' + msg.direction.toUpperCase() + '</span></div>' +
+        '<span class="pill green"><span class="led green"></span>OPEN</span></div>' +
+        '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">' +
+        '<div><div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">Entry</div>' +
+        '<div class="mono" style="font-size:15px;font-weight:600">$' + msg.entry_price.toLocaleString('en-US',{minimumFractionDigits:2}) + '</div></div>' +
+        '<div><div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">Unrealised P&L</div>' +
+        '<div class="mono ' + pnlCls + '" style="font-size:15px;font-weight:600">' + pnlSign + '$' + msg.unrealised_pnl_usdt.toFixed(2) + '</div>' +
+        '<div class="mono ' + pnlCls + '" style="font-size:11px">' + pnlSign + msg.unrealised_r.toFixed(1) + 'R</div></div>' +
+        '<div><div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">SL</div>' +
+        '<div class="mono neg" style="font-size:15px;font-weight:600">$' + msg.sl_price.toFixed(2) + '</div>' +
+        '<div class="muted" style="font-size:11px">' + msg.sl_distance_pct.toFixed(1) + '% away</div></div>' +
+        '<div><div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">TP</div>' +
+        '<div class="mono pos" style="font-size:15px;font-weight:600">$' + msg.tp_price.toFixed(2) + '</div>' +
+        '<div class="muted" style="font-size:11px">' + msg.tp_distance_pct.toFixed(1) + '% away</div></div></div>';
+});
+
+botWS.on('adaptive_sizing', function(msg) {
+    var banner = document.getElementById('adaptive-banner');
+    if (msg.active) {
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'adaptive-banner';
+            var content = document.querySelector('.content');
+            if (content) content.insertBefore(banner, content.firstChild);
+        }
+        banner.className = 'callout amber';
+        banner.style.marginBottom = '14px';
+        banner.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>' +
+            '<span>Loss streak protection active — trading at reduced risk. ' + msg.wins_needed + ' wins needed to recover.</span>';
+    } else if (banner) {
+        banner.remove();
+    }
+});
+
+botWS.on('trade_opened', function() { setTimeout(function() { window.location.reload(); }, 500); });
+botWS.on('trade_closed', function() { setTimeout(function() { window.location.reload(); }, 500); });
+
+botWS.on('_connected', function() {
+    var dot = document.getElementById('ws-status-dot');
+    if (dot) dot.className = 'led green';
+    var hl = document.getElementById('ws-health-led');
+    if (hl) hl.className = 'led green';
+    var ht = document.getElementById('ws-health-text');
+    if (ht) ht.textContent = 'Connected';
+});
+botWS.on('_disconnected', function() {
+    var dot = document.getElementById('ws-status-dot');
+    if (dot) dot.className = 'led red';
+    var hl = document.getElementById('ws-health-led');
+    if (hl) hl.className = 'led red';
+    var ht = document.getElementById('ws-health-text');
+    if (ht) ht.textContent = 'Disconnected';
+});
+</script>
+{% block scripts %}{% endblock %}
 </body>
 </html>

@@ -428,7 +428,7 @@
     var allTFs = ['1m','3m','5m','15m','30m','1h','2h','4h','6h','12h','1d','3d','1w','1M'];
     var tfLabels = {'1m':'1m','3m':'3m','5m':'5m','15m':'15m','30m':'30m','1h':'1H','2h':'2H','4h':'4H','6h':'6H','12h':'12H','1d':'1D','3d':'3D','1w':'1W','1M':'1M'};
     var defaultPinned = ['1m','15m','1h','4h','1d','1w'];
-    var pinnedTFs = JSON.parse(localStorage.getItem('axiom_pinned_tfs') || 'null') || defaultPinned;
+    var pinnedTFs = JSON.parse(localStorage.getItem('zenith_pinned_tfs') || 'null') || defaultPinned;
     var tfEditing = false;
 
     var tfPinnedBar = document.getElementById('tf-pinned');
@@ -442,7 +442,7 @@
     function sortTFs(arr) {
         return arr.slice().sort(function(a, b) { return (tfSeconds[a] || 0) - (tfSeconds[b] || 0); });
     }
-    function savePinned() { localStorage.setItem('axiom_pinned_tfs', JSON.stringify(pinnedTFs)); }
+    function savePinned() { localStorage.setItem('zenith_pinned_tfs', JSON.stringify(pinnedTFs)); }
 
     function renderPinnedBar() {
         var show = pinnedTFs.slice();

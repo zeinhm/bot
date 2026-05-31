@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AXIOM{% block title_suffix %}{% endblock %}</title>
+    <title>ZENITH{% block title_suffix %}{% endblock %}</title>
     <link rel="stylesheet" href="/static/css/app.css?v=3">
     {% block head %}{% endblock %}
 </head>
@@ -12,7 +12,7 @@
 
     <!-- ======== Sidebar Rail ======== -->
     <nav class="rail">
-        <a href="/" class="rail-logo">A</a>
+        <a href="/" class="rail-logo">Z</a>
 
         <div class="rail-group">
             <!-- Dashboard -->
@@ -82,7 +82,7 @@
 
         <!-- Topbar -->
         <header class="topbar">
-            <div class="wordmark">AXIOM<span class="dot">.</span></div>
+            <div class="wordmark">ZENITH<span class="dot">.</span></div>
 
             <div class="topbar-ticker">
                 <span class="pair">BTC / USDT</span>
@@ -126,7 +126,7 @@ var botWS = new BotWebSocket(1);
 // Restore cached prices immediately so header never shows "—"
 (function() {
     try {
-        var cached = JSON.parse(localStorage.getItem('axiom_prices') || '{}');
+        var cached = JSON.parse(localStorage.getItem('zenith_prices') || '{}');
         for (var sym in cached) {
             var d = cached[sym];
             var el = document.getElementById('price-' + sym);
@@ -144,7 +144,7 @@ var botWS = new BotWebSocket(1);
                 if (tc) { var s = d.change >= 0 ? '+' : ''; tc.textContent = s + d.change.toFixed(2) + '%'; tc.className = 'mono ' + (d.change >= 0 ? 'pos' : 'neg'); }
             }
         }
-        var bal = localStorage.getItem('axiom_balance');
+        var bal = localStorage.getItem('zenith_balance');
         if (bal) { var be = document.getElementById('usdt-balance'); if (be) be.textContent = bal; }
     } catch(e) {}
 })();
@@ -178,9 +178,9 @@ botWS.on('price', function(msg) {
     }
 
     try {
-        var cached = JSON.parse(localStorage.getItem('axiom_prices') || '{}');
+        var cached = JSON.parse(localStorage.getItem('zenith_prices') || '{}');
         cached[msg.symbol] = { price: msg.price, change: msg.change_pct_24h };
-        localStorage.setItem('axiom_prices', JSON.stringify(cached));
+        localStorage.setItem('zenith_prices', JSON.stringify(cached));
     } catch(e) {}
 });
 
@@ -188,7 +188,7 @@ botWS.on('balance', function(msg) {
     var el = document.getElementById('usdt-balance');
     var txt = '$' + msg.usdt_balance.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
     if (el) el.textContent = txt;
-    try { localStorage.setItem('axiom_balance', txt); } catch(e) {}
+    try { localStorage.setItem('zenith_balance', txt); } catch(e) {}
 });
 
 botWS.on('heartbeat', function(msg) {

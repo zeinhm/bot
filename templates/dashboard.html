@@ -178,7 +178,7 @@
         <tbody>
             {% for t in recent_trades %}
             <tr class="{{ 'row-win' if t.result == 'win' else ('row-loss' if t.result == 'loss' else '') }}">
-                <td class="mono muted">{{ t.entry_time.strftime('%m/%d %H:%M') if t.entry_time else '—' }}</td>
+                <td class="mono muted local-time" data-utc="{{ t.entry_time.strftime('%Y-%m-%dT%H:%M:%SZ') if t.entry_time else '' }}">{{ t.entry_time.strftime('%m/%d %H:%M') if t.entry_time else '—' }}</td>
                 <td class="mono">{{ t.symbol }}</td>
                 <td><span class="dir-badge {{ 'long' if t.direction == 'long' else 'short' }}">{{ t.direction|upper }}</span></td>
                 <td class="num mono">${{ "%.2f"|format(t.entry_price) if t.entry_price else '—' }}</td>

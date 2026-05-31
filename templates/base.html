@@ -314,6 +314,25 @@ botWS.on('_disconnected', function() {
     if (ht) ht.textContent = 'Disconnected';
 });
 </script>
+<script>
+document.querySelectorAll('.local-time').forEach(function(el) {
+    var utc = el.dataset.utc;
+    if (!utc) return;
+    var d = new Date(utc);
+    var mm = String(d.getMonth() + 1).padStart(2, '0');
+    var dd = String(d.getDate()).padStart(2, '0');
+    var hh = String(d.getHours()).padStart(2, '0');
+    var mi = String(d.getMinutes()).padStart(2, '0');
+    var fmt = el.dataset.fmt;
+    if (fmt === 'date') {
+        el.textContent = d.getFullYear() + '-' + mm + '-' + dd;
+    } else if (fmt === 'full') {
+        el.textContent = d.getFullYear() + '-' + mm + '-' + dd + ' ' + hh + ':' + mi;
+    } else {
+        el.textContent = mm + '/' + dd + ' ' + hh + ':' + mi;
+    }
+});
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

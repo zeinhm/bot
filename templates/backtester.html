@@ -121,6 +121,7 @@
     if (!chartEl || typeof LightweightCharts === 'undefined') return;
 
     // ── State ──
+    var tzOffsetSec = -(new Date().getTimezoneOffset()) * 60;
     var chart, candleSeries, volSeries;
     var currentSymbol = 'BTCUSDT';
     var allData = [];
@@ -198,7 +199,10 @@
     function fetchCandles(end, limit) {
         var url = '/api/candles?symbol=' + currentSymbol + '&interval=15m&limit=' + limit;
         if (end != null) url += '&end=' + end;
-        return fetch(url).then(function(r) { return r.json(); });
+        return fetch(url).then(function(r) { return r.json(); }).then(function(res) {
+            if (res.candles) res.candles.forEach(function(c) { c.time += tzOffsetSec; });
+            return res;
+        });
     }
 
     function fetchOlder() {
@@ -276,7 +280,12 @@
         fetch('/api/backtest?' + params)
             .then(function(r) { return r.json(); })
             .then(function(res) {
-                setups = res.setups || [];
+                setups = (res.setups || []).map(function(s) {
+                    if (s.entryTime) s.entryTime += tzOffsetSec;
+                    if (s.exitTime) s.exitTime += tzOffsetSec;
+                    if (s.accEndTime) s.accEndTime += tzOffsetSec;
+                    return s;
+                });
                 setupIdx = 0;
                 var st = res.stats || {};
 

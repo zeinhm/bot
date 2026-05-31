@@ -554,10 +554,12 @@
     renderPinnedBar();
     renderDropdown();
 
+    var tzOffsetSec = -(new Date().getTimezoneOffset()) * 60;
+
     function parseCandles(raw) {
         var data = [], vols = [];
         raw.forEach(function(c) {
-            var t = c.time || Math.floor(c.timestamp / 1000);
+            var t = (c.time || Math.floor(c.timestamp / 1000)) + tzOffsetSec;
             data.push({ time: t, open: c.open, high: c.high, low: c.low, close: c.close });
             vols.push({ time: t, value: c.volume || 0, color: c.close >= c.open ? 'rgba(0,200,150,.3)' : 'rgba(255,77,77,.3)' });
         });
@@ -642,7 +644,7 @@
         if (msg.symbol !== activeSymbol || !currentBar) return;
         var p = msg.price;
         var barSecs = tfSeconds[chartInterval] || 900;
-        var barTime = Math.floor(Date.now() / 1000);
+        var barTime = Math.floor(Date.now() / 1000) + tzOffsetSec;
         barTime = barTime - (barTime % barSecs);
 
         if (barTime > currentBar.time) {

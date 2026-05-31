@@ -58,7 +58,7 @@
 </div>
 
 <!-- Main: OrderBook | Chart + Position | Bot Status + Trades -->
-<div style="display:grid;grid-template-columns:280px 1fr 280px;gap:6px;min-height:calc(100vh - 120px)">
+<div style="display:grid;grid-template-columns:280px 1fr 280px;gap:6px;height:calc(100vh - 120px)">
 
     <!-- LEFT: Order Book -->
     <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);display:flex;flex-direction:column;padding:0;overflow:hidden">
@@ -82,9 +82,9 @@
     </div>
 
     <!-- CENTER: Chart (top) + Open Position (bottom) -->
-    <div style="display:flex;flex-direction:column;min-width:0;gap:6px">
+    <div style="display:flex;flex-direction:column;min-width:0;gap:6px;overflow:hidden">
         <!-- Chart card -->
-        <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);display:flex;flex-direction:column;flex:1;overflow:hidden">
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);display:flex;flex-direction:column;flex:13;overflow:hidden;min-height:0">
         <!-- Timeframe bar -->
         <div style="display:flex;align-items:center;gap:2px;padding:6px 12px;border-bottom:1px solid var(--border);position:relative">
             <div id="tf-pinned" style="display:flex;gap:2px"></div>
@@ -108,11 +108,11 @@
                 <span id="legend-ma" style="display:flex;gap:10px"></span>
             </div>
             <div id="legend-vol" style="position:absolute;bottom:18%;left:12px;z-index:10;font-size:11px;font-family:var(--mono);pointer-events:none;display:flex;gap:6px;align-items:center"></div>
-            <div id="position-chart" style="flex:1;min-height:420px;background:#131720"></div>
+            <div id="position-chart" style="flex:1;min-height:320px;background:#131720"></div>
         </div>
         </div>
         <!-- Open Positions card -->
-        <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:auto;flex:7;min-height:0">
             <div style="padding:10px 16px 6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);border-bottom:1px solid var(--border)">
                 Open Positions
                 {% if positions %}

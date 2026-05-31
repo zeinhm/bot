@@ -329,7 +329,7 @@ async def _orderbook_stream(bot_manager):
 
             bsm = worker.exchange.market_bsm
             symbols = worker.config.symbols
-            streams = [f"{s.lower()}@depth10" for s in symbols]
+            streams = [f"{s.lower()}@depth20" for s in symbols]
             log.info("Orderbook: connecting depth stream for %s", symbols)
             socket = bsm.futures_multiplex_socket(streams=streams, category="public")
 
@@ -352,8 +352,8 @@ async def _orderbook_stream(bot_manager):
                     if not ws_manager.has_connections():
                         continue
 
-                    bids = [[float(p), float(q)] for p, q in d.get("b", d.get("bids", []))[:10]]
-                    asks = [[float(p), float(q)] for p, q in d.get("a", d.get("asks", []))[:10]]
+                    bids = [[float(p), float(q)] for p, q in d.get("b", d.get("bids", []))[:20]]
+                    asks = [[float(p), float(q)] for p, q in d.get("a", d.get("asks", []))[:20]]
 
                     await ws_manager.broadcast_all({
                         "type": "orderbook",

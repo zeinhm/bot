@@ -76,8 +76,10 @@ async def alert_exit(symbol: str, direction: str, result: str, entry_price: floa
 
 
 async def alert_bot_started():
-    await send_private("🟢 <b>Trading bot started</b>")
+    pass
 
 
 async def alert_bot_stopped(reason: str = "unknown"):
+    if reason == "shutdown":
+        return
     await send_private(f"🔴 <b>Trading bot stopped</b>\nReason: {reason}")

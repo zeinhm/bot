@@ -15,27 +15,51 @@ templates = Jinja2Templates(directory="templates")
 @router.get("/position")
 async def position_page(request: Request):
     bot = get_bot()
-    open_trade = await db.get_open_trade()
-    open_position = None
-    if open_trade and bot:
+    bot_trade = await db.get_open_trade()
+
+    positions = []
+    if bot and bot.running:
         try:
-            pos = await bot.exchange.get_position(open_trade.symbol)
-            if pos:
-                open_position = {
-                    "trade": open_trade,
+            all_pos = await bot.exchange.get_all_positions()
+            for pos in all_pos:
+                is_bot = (
+                    bot_trade is not None
+                    and bot_trade.symbol == pos["symbol"]
+                    and bot_trade.direction == pos["side"]
+                )
+                p = {
+                    "symbol": pos["symbol"],
+                    "direction": pos["side"],
+                    "entry_price": pos["entry_price"],
+                    "quantity": pos["quantity"],
                     "unrealized_pnl": pos["unrealized_pnl"],
+                    "source": "bot" if is_bot else "manual",
                 }
+                if is_bot:
+                    p["sl_price"] = bot_trade.sl_price
+                    p["tp_price"] = bot_trade.tp_price
+                positions.append(p)
         except Exception:
-            open_position = {"trade": open_trade, "unrealized_pnl": 0.0}
+            if bot_trade:
+                positions.append({
+                    "symbol": bot_trade.symbol,
+                    "direction": bot_trade.direction,
+                    "entry_price": bot_trade.entry_price,
+                    "quantity": bot_trade.quantity,
+                    "unrealized_pnl": 0.0,
+                    "source": "bot",
+                    "sl_price": bot_trade.sl_price,
+                    "tp_price": bot_trade.tp_price,
+                })
 
     risk_mode = await db.get_state("risk_mode", "static")
     risk_value = await db.get_state("risk_value", 10.0)
 
-    bot_running = False
+    bot_status = "stopped"
     api_connected = False
     uptime_secs = None
     if bot:
-        bot_running = bot.running
+        bot_status = bot.status
         api_connected = bot.exchange.client is not None
         if bot.started_at:
             uptime_secs = int(time.time() - bot.started_at)
@@ -47,12 +71,12 @@ async def position_page(request: Request):
 
     ctx = await get_global_context()
     ctx.update({
-        "open_position": open_position,
+        "positions": positions,
         "testnet": BINANCE_TESTNET,
         "leverage": LEVERAGE,
         "risk_mode": risk_mode,
         "risk_value": risk_value,
-        "bot_running": bot_running,
+        "bot_status": bot_status,
         "api_connected": api_connected,
         "uptime_secs": uptime_secs,
         "last_trade_ts": last_trade_ts,

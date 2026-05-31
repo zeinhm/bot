@@ -19,8 +19,20 @@ class BotManager:
 
         worker = BotWorker(user_id, config, broadcast_fn=broadcast_fn)
         self.workers[user_id] = worker
-        self._tasks[user_id] = asyncio.create_task(worker.start())
+        task = asyncio.create_task(worker.start())
+        task.add_done_callback(lambda t: self._on_worker_done(user_id, t))
+        self._tasks[user_id] = task
         log.info("BotManager: started bot for user %d", user_id)
+
+    def _on_worker_done(self, user_id: int, task: asyncio.Task):
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc:
+            worker = self.workers.get(user_id)
+            if worker:
+                worker.status = "error"
+            log.error("BotManager: worker for user %d crashed: %s", user_id, exc)
 
     async def stop_bot(self, user_id: int):
         if user_id not in self.workers:
@@ -47,7 +59,7 @@ class BotManager:
         worker = self.workers.get(user_id)
         if worker is None:
             return "stopped"
-        return "running" if worker.running else "stopped"
+        return worker.status
 
     def get_all_statuses(self) -> dict[int, bool]:
         return {uid: w.running for uid, w in self.workers.items()}

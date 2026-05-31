@@ -100,11 +100,11 @@
                 </div>
 
                 <span id="bot-status-pill"
-                      class="pill {% if bot_running is defined and bot_running and bot_enabled is defined and bot_enabled %}green{% elif bot_running is defined and bot_running %}amber{% else %}gray{% endif %}"
+                      class="pill {% if bot_status == 'running' and bot_enabled %}green{% elif bot_status == 'starting' %}amber{% elif bot_status == 'running' %}amber{% else %}gray{% endif %}"
                       style="padding:5px 12px">
                     <span id="bot-status-dot"
-                          class="led {% if bot_running is defined and bot_running and bot_enabled is defined and bot_enabled %}green pulse{% elif bot_running is defined and bot_running %}amber{% else %}gray{% endif %}"></span>
-                    <span id="bot-status-label">{% if bot_running is defined and bot_running and bot_enabled is defined and bot_enabled %}Running{% elif bot_running is defined and bot_running %}Monitoring{% else %}—{% endif %}</span>
+                          class="led {% if bot_status == 'running' and bot_enabled %}green pulse{% elif bot_status == 'starting' %}amber pulse{% elif bot_status == 'running' %}amber{% else %}gray{% endif %}"></span>
+                    <span id="bot-status-label">{% if bot_status == 'running' and bot_enabled %}Running{% elif bot_status == 'starting' %}Starting{% elif bot_status == 'running' %}Monitoring{% elif bot_status == 'error' %}Error{% else %}—{% endif %}</span>
                 </span>
 
                 <span id="ws-status-dot" class="led gray" title="WebSocket"></span>
@@ -207,19 +207,23 @@ botWS.on('heartbeat', function(msg) {
     }
 });
 
-botWS.on('bot_status', function(msg) {
+function updateSidebarStatus(status) {
     var pill = document.getElementById('bot-status-pill');
     var dot = document.getElementById('bot-status-dot');
     var label = document.getElementById('bot-status-label');
-    if (msg.status === 'running') {
+    if (status === 'running') {
         if (pill) pill.className = 'pill green';
         if (dot) dot.className = 'led green pulse';
         if (label) label.textContent = 'Running';
-    } else if (msg.status === 'monitoring') {
+    } else if (status === 'starting') {
+        if (pill) pill.className = 'pill amber';
+        if (dot) dot.className = 'led amber pulse';
+        if (label) label.textContent = 'Starting';
+    } else if (status === 'monitoring') {
         if (pill) pill.className = 'pill amber';
         if (dot) dot.className = 'led amber';
         if (label) label.textContent = 'Monitoring';
-    } else if (msg.status === 'error') {
+    } else if (status === 'error') {
         if (pill) pill.className = 'pill red';
         if (dot) dot.className = 'led red';
         if (label) label.textContent = 'Error';
@@ -228,7 +232,9 @@ botWS.on('bot_status', function(msg) {
         if (dot) dot.className = 'led red';
         if (label) label.textContent = 'Stopped';
     }
-});
+}
+botWS.on('bot_status', function(msg) { updateSidebarStatus(msg.status); });
+botWS.on('heartbeat', function(msg) { if (msg.bot_status) updateSidebarStatus(msg.bot_status); });
 
 botWS.on('position', function(msg) {
     var panel = document.getElementById('position-panel');

@@ -111,15 +111,16 @@
             <div id="position-chart" style="flex:1;min-height:420px;background:#131720"></div>
         </div>
         </div>
-        <!-- Open Position card -->
+        <!-- Open Positions card -->
         <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
             <div style="padding:10px 16px 6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);border-bottom:1px solid var(--border)">
-                Open Position
-                {% if open_position %}
-                <span class="pill green" style="margin-left:8px;font-size:9px;padding:2px 6px"><span class="led green"></span>1</span>
+                Open Positions
+                {% if positions %}
+                <span class="pill green" style="margin-left:8px;font-size:9px;padding:2px 6px"><span class="led green"></span>{{ positions|length }}</span>
                 {% endif %}
             </div>
-            {% if open_position %}
+            <div id="positions-table">
+            {% if positions %}
             <div style="overflow-x:auto">
                 <table style="width:100%;border-collapse:collapse;font-size:11.5px;white-space:nowrap">
                     <thead>
@@ -129,43 +130,54 @@
                             <th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">Entry Price</th>
                             <th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">Mark Price</th>
                             <th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">PnL (USDT)</th>
-                            <th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">SL</th>
-                            <th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">TP</th>
-                            <th style="padding:8px 16px;text-align:center;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">Action</th>
+                            <th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">SL / TP</th>
+                            <th style="padding:8px 12px;text-align:center;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">Source</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr>
+                        {% for pos in positions %}
+                        <tr style="border-bottom:1px solid var(--border)">
                             <td style="padding:10px 16px">
                                 <div class="vcenter gap6">
-                                    <span class="mono" style="font-weight:600">{{ open_position.trade.symbol }}</span>
-                                    <span class="dir-badge {{ 'long' if open_position.trade.direction == 'long' else 'short' }}" style="font-size:9px;padding:1px 5px">{{ open_position.trade.direction|upper }}</span>
+                                    <span class="mono" style="font-weight:600">{{ pos.symbol }}</span>
+                                    <span class="dir-badge {{ 'long' if pos.direction == 'long' else 'short' }}" style="font-size:9px;padding:1px 5px">{{ pos.direction|upper }}</span>
                                     <span class="muted" style="font-size:10px">{{ leverage }}x</span>
                                 </div>
                             </td>
-                            <td class="mono" style="padding:10px 12px;text-align:right">{{ "%.4f"|format(open_position.trade.quantity) if open_position.trade.quantity else '—' }}</td>
-                            <td class="mono" style="padding:10px 12px;text-align:right">{{ "%.2f"|format(open_position.trade.entry_price) }}</td>
-                            <td class="mono" style="padding:10px 12px;text-align:right" id="pos-mark-price">—</td>
-                            <td class="mono" style="padding:10px 12px;text-align:right" id="pos-pnl">
-                                <span class="{{ 'pos' if (open_position.unrealized_pnl or 0) >= 0 else 'neg' }}">
-                                    {{ "+" if (open_position.unrealized_pnl or 0) >= 0 else "" }}{{ "%.2f"|format(open_position.unrealized_pnl or 0) }}
+                            <td class="mono" style="padding:10px 12px;text-align:right">{{ "%.4f"|format(pos.quantity) }}</td>
+                            <td class="mono" style="padding:10px 12px;text-align:right">{{ "%.2f"|format(pos.entry_price) }}</td>
+                            <td class="mono" style="padding:10px 12px;text-align:right">—</td>
+                            <td class="mono" style="padding:10px 12px;text-align:right">
+                                <span class="{{ 'pos' if (pos.unrealized_pnl or 0) >= 0 else 'neg' }}">
+                                    {{ "+" if (pos.unrealized_pnl or 0) >= 0 else "" }}{{ "%.2f"|format(pos.unrealized_pnl or 0) }}
                                 </span>
                             </td>
-                            <td class="mono neg" style="padding:10px 12px;text-align:right">{{ "%.2f"|format(open_position.trade.sl_price) }}</td>
-                            <td class="mono pos" style="padding:10px 12px;text-align:right">{{ "%.2f"|format(open_position.trade.tp_price) }}</td>
-                            <td style="padding:10px 16px;text-align:center">
-                                <button class="btn btn-red-outline" style="font-size:10px;padding:3px 10px" disabled>Close</button>
+                            <td class="mono" style="padding:10px 12px;text-align:right">
+                                {% if pos.sl_price is defined and pos.sl_price %}
+                                <span class="neg">{{ "%.2f"|format(pos.sl_price) }}</span> / <span class="pos">{{ "%.2f"|format(pos.tp_price) }}</span>
+                                {% else %}
+                                <span class="muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td style="padding:10px 12px;text-align:center">
+                                {% if pos.source == 'bot' %}
+                                <span class="pill green" style="font-size:9px;padding:2px 6px">Bot</span>
+                                {% else %}
+                                <span class="pill amber" style="font-size:9px;padding:2px 6px">Manual</span>
+                                {% endif %}
                             </td>
                         </tr>
+                        {% endfor %}
                     </tbody>
                 </table>
             </div>
             {% else %}
             <div style="text-align:center;padding:32px 0">
-                <div class="muted" style="font-size:12px">No open position</div>
+                <div class="muted" style="font-size:12px">No open positions</div>
                 <div class="faint" style="font-size:11px;margin-top:4px">Waiting for next signal from the strategy</div>
             </div>
             {% endif %}
+            </div>
         </div>
     </div>
 
@@ -177,7 +189,7 @@
             <div style="display:flex;flex-direction:column;gap:8px">
                 <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px">
                     <span class="muted">Status</span>
-                    <span id="bot-run-status"><span class="led {{ 'green pulse' if bot_running else 'red' }}" id="bot-run-led" style="margin-right:4px"></span><span class="mono" id="bot-run-text" style="color:var({{ '--green' if bot_running else '--red' }})">{{ 'Running' if bot_running else 'Stopped' }}</span></span>
+                    <span id="bot-run-status"><span class="led {% if bot_status == 'running' %}green pulse{% elif bot_status == 'starting' %}amber pulse{% else %}red{% endif %}" id="bot-run-led" style="margin-right:4px"></span><span class="mono" id="bot-run-text" style="color:var({% if bot_status == 'running' %}--green{% elif bot_status == 'starting' %}--amber{% else %}--red{% endif %})">{% if bot_status == 'running' %}Running{% elif bot_status == 'starting' %}Starting...{% elif bot_status == 'error' %}Error{% else %}Stopped{% endif %}</span></span>
                 </div>
                 <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px">
                     <span class="muted">API</span>
@@ -219,7 +231,7 @@
     var el = document.getElementById('position-chart');
     if (!el || typeof LightweightCharts === 'undefined') return;
 
-    var activeSymbol = '{{ open_position.trade.symbol if open_position else "BTCUSDT" }}';
+    var activeSymbol = '{{ positions[0].symbol if positions else "BTCUSDT" }}';
 
     // --- DOM refs ---
     var tickerPrice = document.getElementById('ticker-price');
@@ -614,26 +626,15 @@
 
     loadChart(activeSymbol);
 
-    {% if open_position %}
+    {% for pos in positions %}
+    {% if pos.sl_price is defined and pos.sl_price %}
     setTimeout(function() {
-        candleSeries.createPriceLine({ price: {{ open_position.trade.entry_price }}, color: '#5C636E', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'Entry' });
-        candleSeries.createPriceLine({ price: {{ open_position.trade.sl_price }}, color: '#FF4D4D', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'SL' });
-        candleSeries.createPriceLine({ price: {{ open_position.trade.tp_price }}, color: '#00C896', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'TP' });
-
-        {% if open_position.trade.entry_time %}
-        var entryTs = {{ open_position.trade.entry_time.timestamp()|int }};
-        var barSecs = tfSeconds[chartInterval] || 900;
-        var entryBarTime = entryTs - (entryTs % barSecs);
-        candleSeries.setMarkers([{
-            time: entryBarTime,
-            position: '{{ "belowBar" if open_position.trade.direction == "long" else "aboveBar" }}',
-            color: '{{ "#00C896" if open_position.trade.direction == "long" else "#FF4D4D" }}',
-            shape: '{{ "arrowUp" if open_position.trade.direction == "long" else "arrowDown" }}',
-            text: '{{ open_position.trade.direction|upper }} @ {{ "%.2f"|format(open_position.trade.entry_price) }}'
-        }]);
-        {% endif %}
+        candleSeries.createPriceLine({ price: {{ "%.2f"|format(pos.entry_price) }}, color: '#5C636E', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'Entry' });
+        candleSeries.createPriceLine({ price: {{ "%.2f"|format(pos.sl_price) }}, color: '#FF4D4D', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'SL' });
+        candleSeries.createPriceLine({ price: {{ "%.2f"|format(pos.tp_price) }}, color: '#00C896', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'TP' });
     }, 500);
     {% endif %}
+    {% endfor %}
 
     new ResizeObserver(function() { chart.applyOptions({ width: el.clientWidth }); }).observe(el);
 
@@ -660,24 +661,69 @@
     });
 
     // --- Position table live update ---
-    var posMarkEl = document.getElementById('pos-mark-price');
-    var posPnlEl = document.getElementById('pos-pnl');
-    {% if open_position %}
-    var posSymbol = '{{ open_position.trade.symbol }}';
-    var posEntry = {{ open_position.trade.entry_price }};
-    var posQty = {{ open_position.trade.quantity or 0 }};
-    var posDir = '{{ open_position.trade.direction }}';
-    botWS.on('price', function(msg) {
-        if (msg.symbol !== posSymbol) return;
-        if (posMarkEl) posMarkEl.textContent = fmt(msg.price);
-        if (posPnlEl) {
-            var pnl = posDir === 'long' ? (msg.price - posEntry) * posQty : (posEntry - msg.price) * posQty;
-            var cls = pnl >= 0 ? 'pos' : 'neg';
-            var sign = pnl >= 0 ? '+' : '';
-            posPnlEl.innerHTML = '<span class="' + cls + '">' + sign + pnl.toFixed(2) + '</span>';
+    var positionsData = [];
+    var posTable = document.getElementById('positions-table');
+
+    function renderPositions(positions) {
+        positionsData = positions;
+        if (!posTable) return;
+        if (!positions.length) {
+            posTable.innerHTML = '<div style="text-align:center;padding:32px 0"><div class="muted" style="font-size:12px">No open positions</div><div class="faint" style="font-size:11px;margin-top:4px">Waiting for next signal from the strategy</div></div>';
+            return;
         }
+        var header = document.querySelector('#positions-table .pill.green');
+        var countPill = posTable.parentElement.querySelector('.pill.green');
+        if (countPill) countPill.innerHTML = '<span class="led green"></span>' + positions.length;
+        var html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11.5px;white-space:nowrap"><thead><tr style="border-bottom:1px solid var(--border)">' +
+            '<th style="padding:8px 16px;text-align:left;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">Symbol</th>' +
+            '<th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">Size</th>' +
+            '<th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">Entry Price</th>' +
+            '<th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">Mark Price</th>' +
+            '<th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">PnL (USDT)</th>' +
+            '<th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">SL / TP</th>' +
+            '<th style="padding:8px 12px;text-align:center;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">Source</th>' +
+            '</tr></thead><tbody>';
+        positions.forEach(function(p) {
+            var dirCls = p.direction === 'long' ? 'long' : 'short';
+            var pnl = p.unrealised_pnl_usdt || 0;
+            var pnlCls = pnl >= 0 ? 'pos' : 'neg';
+            var pnlSign = pnl >= 0 ? '+' : '';
+            var srcPill = p.source === 'bot' ? '<span class="pill green" style="font-size:9px;padding:2px 6px">Bot</span>' : '<span class="pill amber" style="font-size:9px;padding:2px 6px">Manual</span>';
+            var sltp = p.sl_price ? '<span class="neg">' + fmt(p.sl_price) + '</span> / <span class="pos">' + fmt(p.tp_price) + '</span>' : '<span class="muted">—</span>';
+            html += '<tr style="border-bottom:1px solid var(--border)" data-pos-symbol="' + p.symbol + '" data-pos-dir="' + p.direction + '" data-pos-entry="' + p.entry_price + '" data-pos-qty="' + p.quantity + '">' +
+                '<td style="padding:10px 16px"><div class="vcenter gap6"><span class="mono" style="font-weight:600">' + p.symbol + '</span><span class="dir-badge ' + dirCls + '" style="font-size:9px;padding:1px 5px">' + p.direction.toUpperCase() + '</span></div></td>' +
+                '<td class="mono" style="padding:10px 12px;text-align:right">' + p.quantity.toFixed(4) + '</td>' +
+                '<td class="mono" style="padding:10px 12px;text-align:right">' + fmt(p.entry_price) + '</td>' +
+                '<td class="mono pos-mark" style="padding:10px 12px;text-align:right">' + (p.current_price ? fmt(p.current_price) : '—') + '</td>' +
+                '<td class="mono pos-pnl" style="padding:10px 12px;text-align:right"><span class="' + pnlCls + '">' + pnlSign + pnl.toFixed(2) + '</span></td>' +
+                '<td class="mono" style="padding:10px 12px;text-align:right">' + sltp + '</td>' +
+                '<td style="padding:10px 12px;text-align:center">' + srcPill + '</td></tr>';
+        });
+        html += '</tbody></table></div>';
+        posTable.innerHTML = html;
+    }
+
+    botWS.on('positions', function(msg) {
+        renderPositions(msg.positions || []);
     });
-    {% endif %}
+
+    botWS.on('price', function(msg) {
+        var rows = document.querySelectorAll('tr[data-pos-symbol="' + msg.symbol + '"]');
+        rows.forEach(function(row) {
+            var entry = parseFloat(row.dataset.posEntry);
+            var qty = parseFloat(row.dataset.posQty);
+            var dir = row.dataset.posDir;
+            var markEl = row.querySelector('.pos-mark');
+            var pnlEl = row.querySelector('.pos-pnl');
+            if (markEl) markEl.textContent = fmt(msg.price);
+            if (pnlEl) {
+                var pnl = dir === 'long' ? (msg.price - entry) * qty : (entry - msg.price) * qty;
+                var cls = pnl >= 0 ? 'pos' : 'neg';
+                var sign = pnl >= 0 ? '+' : '';
+                pnlEl.innerHTML = '<span class="' + cls + '">' + sign + pnl.toFixed(2) + '</span>';
+            }
+        });
+    });
 
     // --- Order Book ---
     botWS.on('price', function(msg) {
@@ -787,10 +833,24 @@
 
     botWS.on('heartbeat', function(msg) {
         if (botRunLed && botRunText) {
-            var running = msg.bot_status === 'running';
-            botRunLed.className = 'led ' + (running ? 'green pulse' : 'red');
-            botRunText.textContent = running ? 'Running' : 'Stopped';
-            botRunText.style.color = running ? 'var(--green)' : 'var(--red)';
+            var s = msg.bot_status;
+            if (s === 'running') {
+                botRunLed.className = 'led green pulse';
+                botRunText.textContent = 'Running';
+                botRunText.style.color = 'var(--green)';
+            } else if (s === 'starting') {
+                botRunLed.className = 'led amber pulse';
+                botRunText.textContent = 'Starting...';
+                botRunText.style.color = 'var(--amber)';
+            } else if (s === 'error') {
+                botRunLed.className = 'led red';
+                botRunText.textContent = 'Error';
+                botRunText.style.color = 'var(--red)';
+            } else {
+                botRunLed.className = 'led red';
+                botRunText.textContent = 'Stopped';
+                botRunText.style.color = 'var(--red)';
+            }
         }
         if (botApiLed && botApiText) {
             var apiOk = msg.api_status === 'connected';

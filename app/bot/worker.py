@@ -51,6 +51,7 @@ class BotWorker:
         )
         self.candle_buffers: dict[str, list[dict]] = {}
         self.running = False
+        self.status: str = "stopped"
         self.started_at: float | None = None
         self._active_trade_id: int | None = None
         self._broadcast_fn = broadcast_fn
@@ -62,6 +63,7 @@ class BotWorker:
         self._tasks: list[asyncio.Task] = []
 
     async def start(self):
+        self.status = "starting"
         log.info("BotWorker[user=%d] starting...", self.user_id)
         await self.exchange.connect()
 
@@ -73,6 +75,7 @@ class BotWorker:
         await self._crash_recovery()
 
         self.running = True
+        self.status = "running"
         self.started_at = time.time()
         log.info("BotWorker[user=%d] started — listening for candles", self.user_id)
         await db.log_event("Bot started", category="system")
@@ -87,6 +90,7 @@ class BotWorker:
 
     async def stop(self):
         self.running = False
+        self.status = "stopped"
         for t in self._tasks:
             t.cancel()
         self._tasks.clear()

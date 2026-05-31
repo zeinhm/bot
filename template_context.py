@@ -16,6 +16,7 @@ async def get_global_context() -> dict:
 
     return {
         "bot_running": bot is not None and bot.running,
+        "bot_status": bot.status if bot else "stopped",
         "bot_enabled": bot_enabled,
         "balance": balance,
     }

@@ -167,7 +167,7 @@ async def _heartbeat_loop(bot_manager):
             api_status = "disconnected"
 
             if worker:
-                bot_status = "running" if worker.running else "stopped"
+                bot_status = worker.status
                 if worker.exchange.client is not None:
                     api_status = "connected"
                 if worker.started_at:
@@ -208,7 +208,7 @@ async def _heartbeat_loop(bot_manager):
 
 
 async def _position_poll(bot_manager):
-    last_sent: dict | None = None
+    last_sent: str | None = None
 
     while True:
         try:
@@ -217,58 +217,48 @@ async def _position_poll(bot_manager):
                 continue
 
             worker = bot_manager.get_worker(PHASE1_USER_ID)
-            if worker is None:
+            if worker is None or not worker.running:
                 continue
 
-            if worker._active_trade_id is None:
-                if last_sent is not None:
-                    await ws_manager.broadcast_all({"type": "position", "active": False})
-                    last_sent = None
-                continue
+            all_positions = await worker.exchange.get_all_positions()
+            bot_trade = await db.get_open_trade()
 
-            trade = await db.get_open_trade()
-            if trade is None:
-                continue
+            positions = []
+            for pos in all_positions:
+                current_price = _latest_prices.get(pos["symbol"], {}).get("price", pos["entry_price"])
 
-            pos = await worker.exchange.get_position(trade.symbol)
-            if pos is None:
-                continue
+                is_bot = (
+                    bot_trade is not None
+                    and bot_trade.symbol == pos["symbol"]
+                    and bot_trade.direction == pos["side"]
+                )
 
-            unrealised_pnl = pos["unrealized_pnl"]
+                p = {
+                    "symbol": pos["symbol"],
+                    "direction": pos["side"],
+                    "entry_price": pos["entry_price"],
+                    "current_price": round(current_price, 2),
+                    "quantity": pos["quantity"],
+                    "unrealised_pnl_usdt": round(pos["unrealized_pnl"], 2),
+                    "source": "bot" if is_bot else "manual",
+                }
 
-            current_price = _latest_prices.get(trade.symbol, {}).get("price", trade.entry_price)
+                if is_bot:
+                    sl_dist = abs(bot_trade.entry_price - bot_trade.sl_price)
+                    risk_amt = sl_dist * bot_trade.quantity
+                    p["unrealised_r"] = round(pos["unrealized_pnl"] / risk_amt, 2) if risk_amt > 0 else 0.0
+                    p["sl_price"] = bot_trade.sl_price
+                    p["tp_price"] = bot_trade.tp_price
+                    if bot_trade.entry_time:
+                        delta = datetime.now(timezone.utc) - bot_trade.entry_time
+                        p["time_in_trade_secs"] = int(delta.total_seconds())
 
-            sl_dist = abs(trade.entry_price - trade.sl_price)
-            risk_amt = sl_dist * trade.quantity
-            unrealised_r = unrealised_pnl / risk_amt if risk_amt > 0 else 0.0
+                positions.append(p)
 
-            time_in_trade = 0
-            if trade.entry_time:
-                delta = datetime.now(timezone.utc) - trade.entry_time
-                time_in_trade = int(delta.total_seconds())
-
-            sl_distance_pct = abs(current_price - trade.sl_price) / current_price * 100 if current_price > 0 else 0
-            tp_distance_pct = abs(trade.tp_price - current_price) / current_price * 100 if current_price > 0 else 0
-
-            data = {
-                "type": "position",
-                "active": True,
-                "symbol": trade.symbol,
-                "direction": trade.direction,
-                "entry_price": trade.entry_price,
-                "current_price": round(current_price, 2),
-                "sl_price": trade.sl_price,
-                "tp_price": trade.tp_price,
-                "quantity": trade.quantity,
-                "unrealised_pnl_usdt": round(unrealised_pnl, 2),
-                "unrealised_r": round(unrealised_r, 2),
-                "time_in_trade_secs": time_in_trade,
-                "sl_distance_pct": round(sl_distance_pct, 2),
-                "tp_distance_pct": round(tp_distance_pct, 2),
-            }
+            data = json.dumps({"type": "positions", "positions": positions})
 
             if data != last_sent:
-                await ws_manager.broadcast_all(data)
+                await ws_manager.broadcast_all({"type": "positions", "positions": positions})
                 last_sent = data
 
         except asyncio.CancelledError:

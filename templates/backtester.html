@@ -276,16 +276,23 @@
         fetch('/api/backtest?' + params)
             .then(function(r) { return r.json(); })
             .then(function(res) {
-                setups = res.setups;
+                setups = res.setups || [];
                 setupIdx = 0;
-                var st = res.stats;
+                var st = res.stats || {};
 
-                document.getElementById('st-trades').textContent = st.trades;
-                document.getElementById('st-wl').textContent = st.wins + 'W / ' + st.losses + 'L';
-                document.getElementById('st-wr').textContent = st.trades ? st.winRate + '%' : '—';
-                var rEl = document.getElementById('st-r');
-                rEl.textContent = (st.totalR >= 0 ? '+' : '') + st.totalR.toFixed(1) + 'R';
-                rEl.className = 'val mono ' + (st.totalR >= 0 ? 'pos' : 'neg');
+                if (!st.trades && st.trades !== 0) {
+                    document.getElementById('st-trades').textContent = '—';
+                    document.getElementById('st-wl').textContent = '—';
+                    document.getElementById('st-wr').textContent = '—';
+                    document.getElementById('st-r').textContent = '—';
+                } else {
+                    document.getElementById('st-trades').textContent = st.trades;
+                    document.getElementById('st-wl').textContent = st.wins + 'W / ' + st.losses + 'L';
+                    document.getElementById('st-wr').textContent = st.trades ? st.winRate + '%' : '—';
+                    var rEl = document.getElementById('st-r');
+                    rEl.textContent = (st.totalR >= 0 ? '+' : '') + st.totalR.toFixed(1) + 'R';
+                    rEl.className = 'val mono ' + (st.totalR >= 0 ? 'pos' : 'neg');
+                }
 
                 renderSetups();
 

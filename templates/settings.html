@@ -15,6 +15,13 @@
 </div>
 {% endif %}
 
+{% if keys_saved %}
+<div class="callout green" style="margin-bottom:14px">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg>
+    <span>API keys updated. Bot restarted with new credentials.</span>
+</div>
+{% endif %}
+
 {% if error %}
 <div class="callout amber" style="margin-bottom:14px">
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
@@ -104,7 +111,7 @@
         <!-- Exchange -->
         <div class="card">
             <div class="card-title">Exchange</div>
-            <div class="status-grid">
+            <div class="status-grid" style="margin-bottom:14px">
                 <div class="status-cell">
                     <div class="k">Exchange</div>
                     <div class="v" style="font-family:var(--sans);font-size:12.5px">Binance Futures (USDT-M)</div>
@@ -114,14 +121,6 @@
                     <div class="v"><span class="led {{ 'green' if api_key_set else 'red' }}"></span>{{ 'Connected' if api_key_set else 'Not configured' }}</div>
                 </div>
                 <div class="status-cell">
-                    <div class="k">API Key</div>
-                    <div class="v">{{ '••••••••••' if api_key_set else 'Not set' }}</div>
-                </div>
-                <div class="status-cell">
-                    <div class="k">Leverage</div>
-                    <div class="v">{{ leverage }}× <span class="muted" style="font-size:10px;font-family:var(--sans)">set on exchange</span></div>
-                </div>
-                <div class="status-cell">
                     <div class="k">Mode</div>
                     <div class="v">
                         <span class="led {{ 'amber' if testnet else 'green' }}"></span>
@@ -129,10 +128,37 @@
                     </div>
                 </div>
                 <div class="status-cell">
-                    <div class="k">Timeframe</div>
-                    <div class="v">15m</div>
+                    <div class="k">Leverage</div>
+                    <div class="v">{{ leverage }}× <span class="muted" style="font-size:10px;font-family:var(--sans)">set on exchange</span></div>
                 </div>
             </div>
+
+            <details style="margin-top:4px">
+                <summary style="cursor:pointer;font-size:12px;color:var(--text-2);margin-bottom:10px">
+                    {{ 'Update API keys' if api_key_set else 'Configure API keys' }}
+                </summary>
+                <form method="post" action="/settings/api-keys">
+                    <div style="margin-bottom:10px">
+                        <label class="field-lbl">API Key</label>
+                        <input class="input mono" name="api_key" required placeholder="{{ '••••••••••' if api_key_set else 'Enter API key' }}" style="font-size:12px" autocomplete="off">
+                    </div>
+                    <div style="margin-bottom:10px">
+                        <label class="field-lbl">API Secret</label>
+                        <input class="input mono" name="api_secret" type="password" required placeholder="{{ '••••••••••' if api_key_set else 'Enter API secret' }}" style="font-size:12px" autocomplete="off">
+                    </div>
+                    <div style="margin-bottom:12px">
+                        <label class="field-lbl">Mode</label>
+                        <div class="seg">
+                            <button type="button" class="{{ 'active' if testnet else '' }}" id="btn-testnet-key"
+                                onclick="this.classList.add('active');document.getElementById('btn-live-key').classList.remove('active');document.querySelector('[name=testnet]').value='on'">Testnet</button>
+                            <button type="button" class="{{ '' if testnet else 'active' }}" id="btn-live-key"
+                                onclick="this.classList.add('active');document.getElementById('btn-testnet-key').classList.remove('active');document.querySelector('[name=testnet]').value='off'">Live</button>
+                        </div>
+                        <input type="hidden" name="testnet" value="{{ 'on' if testnet else 'off' }}">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Save & Restart Bot</button>
+                </form>
+            </details>
         </div>
     </div>
 

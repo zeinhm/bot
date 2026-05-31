@@ -7,3 +7,7 @@ python-binance
 python-dotenv
 python-multipart
 aiohttp
+authlib
+httpx
+itsdangerous
+cryptography

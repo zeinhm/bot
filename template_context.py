@@ -1,9 +1,16 @@
-from bot import get_bot
+from __future__ import annotations
+
+from typing import Optional
+
+from bot import get_bot, get_bot_for_user
 import database as db
 
 
-async def get_global_context() -> dict:
-    bot = get_bot()
+async def get_global_context(user_id: Optional[int] = None) -> dict:
+    if user_id is not None:
+        bot = get_bot_for_user(user_id)
+    else:
+        bot = get_bot()
 
     balance = 0.0
     if bot and bot.exchange.client:

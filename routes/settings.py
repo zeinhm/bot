@@ -5,8 +5,9 @@ from fastapi import APIRouter, Request, Form
 from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
-from bot import get_bot
-from config import BINANCE_API_KEY, BINANCE_TESTNET, SYMBOLS, STRATEGY_PARAMS, LEVERAGE
+from auth import require_auth, encrypt, decrypt
+from bot import get_bot_for_user
+from config import SYMBOLS, STRATEGY_PARAMS, LEVERAGE
 import database as db
 from template_context import get_global_context
 
@@ -19,6 +20,8 @@ ALL_SESSIONS = ["sydney", "tokyo", "london", "ny"]
 
 @router.get("/settings")
 async def settings_page(request: Request):
+    user = await require_auth(request)
+
     bot_enabled = await db.get_state("bot_enabled", True)
     risk_mode = await db.get_state("risk_mode", "static")
     risk_value = await db.get_state("risk_value", 10.0)
@@ -27,24 +30,31 @@ async def settings_page(request: Request):
     active_symbols = await db.get_state("active_symbols", SYMBOLS)
     active_sessions = await db.get_state("active_sessions", STRATEGY_PARAMS["sessions"])
 
+    cfg = await db.get_user_config(user.id)
+    api_key_set = cfg is not None and cfg.binance_api_key_enc is not None
+    testnet = cfg.binance_testnet if cfg else True
+
     saved = request.query_params.get("saved")
+    keys_saved = request.query_params.get("keys_saved")
     error = request.query_params.get("error")
 
-    ctx = await get_global_context()
+    ctx = await get_global_context(user.id)
     ctx.update({
+        "user": user,
         "bot_enabled": bot_enabled,
         "risk_mode": risk_mode,
         "risk_value": risk_value,
         "rr_ratio": rr_ratio,
         "max_trades": max_trades,
-        "testnet": BINANCE_TESTNET,
-        "api_key_set": bool(BINANCE_API_KEY),
+        "testnet": testnet,
+        "api_key_set": api_key_set,
         "leverage": LEVERAGE,
         "all_symbols": SYMBOLS,
         "active_symbols": active_symbols,
         "all_sessions": ALL_SESSIONS,
         "active_sessions": active_sessions,
         "saved": saved == "1",
+        "keys_saved": keys_saved == "1",
         "error": error or "",
         "page": "settings",
     })
@@ -60,6 +70,7 @@ async def save_settings(
     rr_ratio: float = Form(2.0),
     max_trades: int = Form(99),
 ):
+    await require_auth(request)
     form = await request.form()
 
     errors = []
@@ -102,9 +113,46 @@ async def save_settings(
     return RedirectResponse("/settings?saved=1", status_code=303)
 
 
+@router.post("/settings/api-keys")
+async def save_api_keys(
+    request: Request,
+    api_key: str = Form(...),
+    api_secret: str = Form(...),
+    testnet: str = Form("on"),
+):
+    user = await require_auth(request)
+
+    api_key_enc = encrypt(api_key.strip())
+    api_secret_enc = encrypt(api_secret.strip())
+
+    await db.save_user_config(
+        user_id=user.id,
+        api_key_enc=api_key_enc,
+        api_secret_enc=api_secret_enc,
+        testnet=(testnet == "on"),
+    )
+
+    manager = request.app.state.bot_manager
+    worker = manager.get_worker(user.id)
+    if worker:
+        try:
+            await manager.stop_bot(user.id)
+        except Exception:
+            pass
+
+    from main import _build_user_config
+    from bot import make_broadcast_fn
+    config = _build_user_config(api_key.strip(), api_secret.strip(), testnet == "on")
+    await manager.start_bot(user.id, config, broadcast_fn=make_broadcast_fn(user.id))
+
+    log.info("User %d updated API keys", user.id)
+    return RedirectResponse("/settings?keys_saved=1", status_code=303)
+
+
 @router.post("/api/emergency-close")
-async def emergency_close():
-    bot = get_bot()
+async def emergency_close(request: Request):
+    user = await require_auth(request)
+    bot = get_bot_for_user(user.id)
     if not bot or not bot.exchange.client:
         return JSONResponse({"ok": False, "error": "Bot not connected to exchange"}, status_code=503)
 

@@ -4,6 +4,7 @@ from collections import defaultdict
 from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
 
+from auth import require_auth
 import database as db
 from template_context import get_global_context
 
@@ -39,6 +40,8 @@ def _session_for_hour(hour: int) -> str:
 
 @router.get("/analytics")
 async def analytics_page(request: Request):
+    user = await require_auth(request)
+
     all_trades = await db.get_all_trades()
     closed = [t for t in all_trades if t.result in ("win", "loss")]
     wins = sum(1 for t in closed if t.result == "win")
@@ -64,7 +67,6 @@ async def analytics_page(request: Request):
     avg_win_hold = _format_hold(sum(win_holds) / len(win_holds)) if win_holds else "—"
     avg_loss_hold = _format_hold(sum(loss_holds) / len(loss_holds)) if loss_holds else "—"
 
-    # Drawdown series
     drawdown_data = []
     peak = 0.0
     cumulative = 0.0
@@ -76,7 +78,6 @@ async def analytics_page(request: Request):
         if t.exit_time:
             drawdown_data.append({"time": int(t.exit_time.timestamp()), "value": round(-dd_pct, 2)})
 
-    # Session win rate
     session_stats = defaultdict(lambda: {"wins": 0, "total": 0})
     for t in closed:
         if t.entry_time:
@@ -90,7 +91,6 @@ async def analytics_page(request: Request):
         for s, d in session_stats.items()
     }
 
-    # Day of week win rate
     day_stats = defaultdict(lambda: {"wins": 0, "total": 0})
     for t in closed:
         if t.entry_time:
@@ -103,7 +103,6 @@ async def analytics_page(request: Request):
         for d, v in sorted(day_stats.items())
     }
 
-    # Monthly P&L heatmap
     monthly_pnl = defaultdict(float)
     for t in closed:
         if t.exit_time and t.pnl_usdt:
@@ -111,8 +110,9 @@ async def analytics_page(request: Request):
             monthly_pnl[key] += t.pnl_usdt
     monthly_data = [{"month": k, "pnl": round(v, 2)} for k, v in sorted(monthly_pnl.items())]
 
-    ctx = await get_global_context()
+    ctx = await get_global_context(user.id)
     ctx.update({
+        "user": user,
         "win_rate": win_rate,
         "profit_factor": profit_factor,
         "avg_hold": avg_hold_str,

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
 
+from auth import require_auth
 from config import STRATEGY_PARAMS
 import amd_engine
 import database as db
@@ -38,18 +39,21 @@ def _invalidate_cache(symbol: str = None, interval: str = None):
 
 @router.get("/backtester")
 async def backtester_page(request: Request):
-    ctx = await get_global_context()
-    ctx.update({"params": STRATEGY_PARAMS, "page": "backtester"})
+    user = await require_auth(request)
+    ctx = await get_global_context(user.id)
+    ctx.update({"user": user, "params": STRATEGY_PARAMS, "page": "backtester"})
     return templates.TemplateResponse(request, "backtester.html", ctx)
 
 
 @router.get("/api/candles")
 async def get_candles(
+    request: Request,
     symbol: str = Query("BTCUSDT"),
     interval: str = Query("15m"),
     end: Optional[int] = Query(None),
     limit: int = Query(500, ge=1, le=5000),
 ):
+    await require_auth(request)
     candles, has_more = await db.get_historical_candles(symbol, interval, end=end, limit=limit)
     if not candles:
         return JSONResponse({"candles": [], "hasMore": False})
@@ -58,6 +62,7 @@ async def get_candles(
 
 @router.get("/api/backtest")
 async def run_backtest(
+    request: Request,
     symbol: str = Query("BTCUSDT"),
     interval: str = Query("15m"),
     accLen: int = Query(60),
@@ -70,6 +75,7 @@ async def run_backtest(
     sweepFilter: bool = Query(True),
     skipMay: bool = Query(True),
 ):
+    await require_auth(request)
     data = await _load_candles(symbol, interval)
     if not data:
         return JSONResponse({"stats": {}, "setups": []})

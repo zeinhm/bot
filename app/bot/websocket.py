@@ -14,8 +14,6 @@ log = logging.getLogger(__name__)
 
 router = APIRouter()
 
-PHASE1_USER_ID = 1
-
 _latest_prices: dict[str, dict] = {}
 
 
@@ -59,6 +57,11 @@ ws_manager = ConnectionManager()
 
 @router.websocket("/ws/{user_id}")
 async def websocket_endpoint(ws: WebSocket, user_id: int):
+    session_user = ws.session.get("user_id") if hasattr(ws, "session") else None
+    if session_user is not None and session_user != user_id:
+        await ws.close(code=4003)
+        return
+
     await ws_manager.connect(user_id, ws)
     try:
         while True:
@@ -88,11 +91,18 @@ async def start_ws_tasks(bot_manager) -> list[asyncio.Task]:
     ]
 
 
+def _any_worker(bot_manager):
+    for w in bot_manager.workers.values():
+        if w.exchange.market_bsm is not None:
+            return w
+    return None
+
+
 async def _price_stream(bot_manager):
     while True:
         try:
-            worker = bot_manager.get_worker(PHASE1_USER_ID)
-            if worker is None or worker.exchange.market_bsm is None:
+            worker = _any_worker(bot_manager)
+            if worker is None:
                 await asyncio.sleep(2)
                 continue
 
@@ -157,29 +167,7 @@ async def _heartbeat_loop(bot_manager):
             if not ws_manager.has_connections():
                 continue
 
-            worker = bot_manager.get_worker(PHASE1_USER_ID)
-
-            last_candle_age = None
             session = _get_current_session()
-            bot_status = "stopped"
-            uptime_secs = None
-
-            api_status = "disconnected"
-
-            if worker:
-                bot_status = worker.status
-                if worker.exchange.client is not None:
-                    api_status = "connected"
-                if worker.started_at:
-                    uptime_secs = int(time.time() - worker.started_at)
-                for symbol in worker.config.symbols:
-                    buf = worker.candle_buffers.get(symbol, [])
-                    if buf:
-                        last_ts = buf[-1].get("timestamp", 0) / 1000
-                        age = int(time.time() - last_ts)
-                        if last_candle_age is None or age < last_candle_age:
-                            last_candle_age = age
-
             risk_mode = await db.get_state("risk_mode", "static")
             risk_value = await db.get_state("risk_value", 10.0)
 
@@ -188,18 +176,43 @@ async def _heartbeat_loop(bot_manager):
             if recent and recent[0].exit_time:
                 last_trade_ts = int(recent[0].exit_time.timestamp())
 
-            await ws_manager.broadcast_all({
-                "type": "heartbeat",
-                "timestamp": int(time.time()),
-                "last_candle_age_secs": last_candle_age,
-                "session": session,
-                "bot_status": bot_status,
-                "api_status": api_status,
-                "uptime_secs": uptime_secs,
-                "risk_mode": risk_mode,
-                "risk_value": risk_value,
-                "last_trade_ts": last_trade_ts,
-            })
+            for user_id, conns in list(ws_manager.connections.items()):
+                if not conns:
+                    continue
+
+                worker = bot_manager.get_worker(user_id)
+
+                last_candle_age = None
+                bot_status = "stopped"
+                uptime_secs = None
+                api_status = "disconnected"
+
+                if worker:
+                    bot_status = worker.status
+                    if worker.exchange.client is not None:
+                        api_status = "connected"
+                    if worker.started_at:
+                        uptime_secs = int(time.time() - worker.started_at)
+                    for symbol in worker.config.symbols:
+                        buf = worker.candle_buffers.get(symbol, [])
+                        if buf:
+                            last_ts = buf[-1].get("timestamp", 0) / 1000
+                            age = int(time.time() - last_ts)
+                            if last_candle_age is None or age < last_candle_age:
+                                last_candle_age = age
+
+                await ws_manager.send_to_user(user_id, {
+                    "type": "heartbeat",
+                    "timestamp": int(time.time()),
+                    "last_candle_age_secs": last_candle_age,
+                    "session": session,
+                    "bot_status": bot_status,
+                    "api_status": api_status,
+                    "uptime_secs": uptime_secs,
+                    "risk_mode": risk_mode,
+                    "risk_value": risk_value,
+                    "last_trade_ts": last_trade_ts,
+                })
 
         except asyncio.CancelledError:
             break
@@ -208,7 +221,7 @@ async def _heartbeat_loop(bot_manager):
 
 
 async def _position_poll(bot_manager):
-    last_sent: str | None = None
+    last_sent: dict[int, str] = {}
 
     while True:
         try:
@@ -216,50 +229,58 @@ async def _position_poll(bot_manager):
             if not ws_manager.has_connections():
                 continue
 
-            worker = bot_manager.get_worker(PHASE1_USER_ID)
-            if worker is None or not worker.running:
-                continue
+            for user_id, conns in list(ws_manager.connections.items()):
+                if not conns:
+                    continue
 
-            all_positions = await worker.exchange.get_all_positions()
-            bot_trade = await db.get_open_trade()
+                worker = bot_manager.get_worker(user_id)
+                if worker is None or not worker.running:
+                    continue
 
-            positions = []
-            for pos in all_positions:
-                current_price = _latest_prices.get(pos["symbol"], {}).get("price", pos["entry_price"])
+                try:
+                    all_positions = await worker.exchange.get_all_positions()
+                except Exception:
+                    continue
 
-                is_bot = (
-                    bot_trade is not None
-                    and bot_trade.symbol == pos["symbol"]
-                    and bot_trade.direction == pos["side"]
-                )
+                bot_trade = await db.get_open_trade()
 
-                p = {
-                    "symbol": pos["symbol"],
-                    "direction": pos["side"],
-                    "entry_price": pos["entry_price"],
-                    "current_price": round(current_price, 2),
-                    "quantity": pos["quantity"],
-                    "unrealised_pnl_usdt": round(pos["unrealized_pnl"], 2),
-                    "source": "bot" if is_bot else "manual",
-                }
+                positions = []
+                for pos in all_positions:
+                    current_price = _latest_prices.get(pos["symbol"], {}).get("price", pos["entry_price"])
 
-                if is_bot:
-                    sl_dist = abs(bot_trade.entry_price - bot_trade.sl_price)
-                    risk_amt = sl_dist * bot_trade.quantity
-                    p["unrealised_r"] = round(pos["unrealized_pnl"] / risk_amt, 2) if risk_amt > 0 else 0.0
-                    p["sl_price"] = bot_trade.sl_price
-                    p["tp_price"] = bot_trade.tp_price
-                    if bot_trade.entry_time:
-                        delta = datetime.now(timezone.utc) - bot_trade.entry_time
-                        p["time_in_trade_secs"] = int(delta.total_seconds())
+                    is_bot = (
+                        bot_trade is not None
+                        and bot_trade.symbol == pos["symbol"]
+                        and bot_trade.direction == pos["side"]
+                    )
 
-                positions.append(p)
+                    p = {
+                        "symbol": pos["symbol"],
+                        "direction": pos["side"],
+                        "entry_price": pos["entry_price"],
+                        "current_price": round(current_price, 2),
+                        "quantity": pos["quantity"],
+                        "unrealised_pnl_usdt": round(pos["unrealized_pnl"], 2),
+                        "source": "bot" if is_bot else "manual",
+                    }
 
-            data = json.dumps({"type": "positions", "positions": positions})
+                    if is_bot:
+                        sl_dist = abs(bot_trade.entry_price - bot_trade.sl_price)
+                        risk_amt = sl_dist * bot_trade.quantity
+                        p["unrealised_r"] = round(pos["unrealized_pnl"] / risk_amt, 2) if risk_amt > 0 else 0.0
+                        p["sl_price"] = bot_trade.sl_price
+                        p["tp_price"] = bot_trade.tp_price
+                        if bot_trade.entry_time:
+                            delta = datetime.now(timezone.utc) - bot_trade.entry_time
+                            p["time_in_trade_secs"] = int(delta.total_seconds())
 
-            if data != last_sent:
-                await ws_manager.broadcast_all({"type": "positions", "positions": positions})
-                last_sent = data
+                    positions.append(p)
+
+                data = json.dumps({"type": "positions", "positions": positions})
+
+                if data != last_sent.get(user_id):
+                    await ws_manager.send_to_user(user_id, {"type": "positions", "positions": positions})
+                    last_sent[user_id] = data
 
         except asyncio.CancelledError:
             break
@@ -275,15 +296,22 @@ async def _balance_poll(bot_manager):
             if not ws_manager.has_connections():
                 continue
 
-            worker = bot_manager.get_worker(PHASE1_USER_ID)
-            if worker is None or not worker.running:
-                continue
+            for user_id, conns in list(ws_manager.connections.items()):
+                if not conns:
+                    continue
 
-            balance = await worker.exchange.get_balance()
-            await ws_manager.broadcast_all({
-                "type": "balance",
-                "usdt_balance": round(balance, 2),
-            })
+                worker = bot_manager.get_worker(user_id)
+                if worker is None or not worker.running:
+                    continue
+
+                try:
+                    balance = await worker.exchange.get_balance()
+                    await ws_manager.send_to_user(user_id, {
+                        "type": "balance",
+                        "usdt_balance": round(balance, 2),
+                    })
+                except Exception as e:
+                    log.error("Balance poll error for user %d: %s", user_id, e)
 
         except asyncio.CancelledError:
             break
@@ -294,8 +322,8 @@ async def _balance_poll(bot_manager):
 async def _orderbook_stream(bot_manager):
     while True:
         try:
-            worker = bot_manager.get_worker(PHASE1_USER_ID)
-            if worker is None or worker.exchange.market_bsm is None:
+            worker = _any_worker(bot_manager)
+            if worker is None:
                 await asyncio.sleep(2)
                 continue
 
@@ -344,8 +372,8 @@ async def _orderbook_stream(bot_manager):
 async def _agg_trade_stream(bot_manager):
     while True:
         try:
-            worker = bot_manager.get_worker(PHASE1_USER_ID)
-            if worker is None or worker.exchange.market_bsm is None:
+            worker = _any_worker(bot_manager)
+            if worker is None:
                 await asyncio.sleep(2)
                 continue
 

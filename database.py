@@ -11,8 +11,8 @@ import logging
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Column, Integer, Float, String, DateTime, Text, UniqueConstraint,
-    select, delete, func,
+    Column, Integer, Float, String, DateTime, Text, Boolean, UniqueConstraint,
+    ForeignKey, select, delete, func,
 )
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
@@ -81,6 +81,30 @@ class BotEvent(Base):
     category = Column(String(30), nullable=False, default="system")
     message = Column(Text, nullable=False)
     details = Column(Text)
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    google_id = Column(String(100), unique=True, nullable=False)
+    email = Column(String(255), nullable=False)
+    name = Column(String(255))
+    avatar_url = Column(Text)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    last_login = Column(DateTime(timezone=True))
+
+
+class UserConfig(Base):
+    __tablename__ = "user_configs"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    binance_api_key_enc = Column(Text)
+    binance_api_secret_enc = Column(Text)
+    binance_testnet = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True))
 
 
 class CandleBuffer(Base):
@@ -387,3 +411,93 @@ async def get_recent_events(limit: int = 50) -> list[BotEvent]:
             select(BotEvent).order_by(BotEvent.id.desc()).limit(limit)
         )
         return list(result.scalars().all())
+
+
+# --- User CRUD ---
+
+async def get_user(user_id: int) -> User | None:
+    async with get_session() as session:
+        return await session.get(User, user_id)
+
+
+async def get_user_by_google_id(google_id: str) -> User | None:
+    async with get_session() as session:
+        result = await session.execute(
+            select(User).where(User.google_id == google_id)
+        )
+        return result.scalar_one_or_none()
+
+
+async def upsert_user_from_google(google_id: str, email: str, name: str, avatar_url: str) -> User:
+    async with get_session() as session:
+        result = await session.execute(
+            select(User).where(User.google_id == google_id)
+        )
+        user = result.scalar_one_or_none()
+        now = datetime.now(timezone.utc)
+        if user:
+            user.email = email
+            user.name = name
+            user.avatar_url = avatar_url
+            user.last_login = now
+        else:
+            user = User(
+                google_id=google_id,
+                email=email,
+                name=name,
+                avatar_url=avatar_url,
+                last_login=now,
+            )
+            session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        return user
+
+
+# --- UserConfig CRUD ---
+
+async def get_user_config(user_id: int) -> UserConfig | None:
+    async with get_session() as session:
+        result = await session.execute(
+            select(UserConfig).where(UserConfig.user_id == user_id)
+        )
+        return result.scalar_one_or_none()
+
+
+async def save_user_config(
+    user_id: int,
+    api_key_enc: str,
+    api_secret_enc: str,
+    testnet: bool,
+) -> UserConfig:
+    async with get_session() as session:
+        result = await session.execute(
+            select(UserConfig).where(UserConfig.user_id == user_id)
+        )
+        cfg = result.scalar_one_or_none()
+        now = datetime.now(timezone.utc)
+        if cfg:
+            cfg.binance_api_key_enc = api_key_enc
+            cfg.binance_api_secret_enc = api_secret_enc
+            cfg.binance_testnet = testnet
+            cfg.updated_at = now
+        else:
+            cfg = UserConfig(
+                user_id=user_id,
+                binance_api_key_enc=api_key_enc,
+                binance_api_secret_enc=api_secret_enc,
+                binance_testnet=testnet,
+            )
+            session.add(cfg)
+        await session.commit()
+        await session.refresh(cfg)
+        return cfg
+
+
+async def get_all_configured_users() -> list[tuple[User, UserConfig]]:
+    async with get_session() as session:
+        result = await session.execute(
+            select(User, UserConfig).join(UserConfig, User.id == UserConfig.user_id)
+            .where(UserConfig.binance_api_key_enc.isnot(None))
+        )
+        return list(result.all())

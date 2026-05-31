@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZENITH — Setup</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body class="app" style="display:grid;place-items:center;min-height:100vh">
+
+<div style="max-width:480px;width:100%;padding:0 24px">
+    <div style="text-align:center;margin-bottom:28px">
+        <div class="rail-logo" style="width:40px;height:40px;font-size:20px;margin:0 auto 12px">Z</div>
+        <h1 style="font-size:22px;font-weight:700;margin:0 0 6px">Connect your exchange</h1>
+        <p class="muted" style="font-size:13px;margin:0">
+            Welcome, {{ user.name.split(' ')[0] if user.name else 'there' }}. Enter your Binance API credentials to get started.
+        </p>
+    </div>
+
+    <form method="post" action="/setup" class="card" style="padding:28px 24px">
+        <div style="margin-bottom:18px">
+            <label class="field-lbl">API Key</label>
+            <input class="input mono" name="api_key" required placeholder="Enter your Binance API key"
+                   style="font-size:12px" autocomplete="off">
+        </div>
+
+        <div style="margin-bottom:18px">
+            <label class="field-lbl">API Secret</label>
+            <input class="input mono" name="api_secret" type="password" required
+                   placeholder="Enter your Binance API secret" style="font-size:12px" autocomplete="off">
+        </div>
+
+        <div style="margin-bottom:22px">
+            <label class="field-lbl">Mode</label>
+            <div class="seg">
+                <button type="button" class="{{ 'active' if testnet else '' }}" id="btn-testnet"
+                    onclick="this.classList.add('active');document.getElementById('btn-live').classList.remove('active');document.querySelector('[name=testnet]').value='on'">Testnet (paper)</button>
+                <button type="button" class="{{ '' if testnet else 'active' }}" id="btn-live"
+                    onclick="this.classList.add('active');document.getElementById('btn-testnet').classList.remove('active');document.querySelector('[name=testnet]').value='off'">Live</button>
+            </div>
+            <input type="hidden" name="testnet" value="{{ 'on' if testnet else 'off' }}">
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block" style="padding:12px">Connect & Start Bot</button>
+
+        <div class="callout" style="margin-top:18px;padding:10px 12px">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            <span style="font-size:11.5px" class="muted">
+                Create API keys at <strong>Binance &gt; API Management</strong>. Enable Futures only. Restrict to your IP for security.
+            </span>
+        </div>
+    </form>
+
+    <div style="text-align:center;margin-top:16px">
+        <a href="/logout" class="link muted" style="font-size:12px">Sign out</a>
+    </div>
+</div>
+
+</body>
+</html>

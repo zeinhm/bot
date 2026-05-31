@@ -49,7 +49,20 @@ async def broadcast(data: dict):
     _ws_clients -= dead
 
 
+def make_broadcast_fn(user_id: int):
+    async def _broadcast(data: dict):
+        from app.bot.websocket import ws_manager
+        await ws_manager.send_to_user(user_id, data)
+    return _broadcast
+
+
 def get_bot() -> BotWorker | None:
     if _bot_manager is None:
         return None
     return _bot_manager.get_worker(PHASE1_USER_ID)
+
+
+def get_bot_for_user(user_id: int) -> BotWorker | None:
+    if _bot_manager is None:
+        return None
+    return _bot_manager.get_worker(user_id)

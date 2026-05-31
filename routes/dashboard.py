@@ -4,7 +4,8 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
 
-from bot import get_bot
+from auth import require_auth
+from bot import get_bot_for_user
 from config import SYMBOLS, BINANCE_TESTNET, LEVERAGE
 import database as db
 from template_context import get_global_context
@@ -15,8 +16,9 @@ templates = Jinja2Templates(directory="templates")
 
 @router.get("/")
 async def dashboard(request: Request):
-    bot = get_bot()
-    ctx = await get_global_context()
+    user = await require_auth(request)
+    bot = get_bot_for_user(user.id)
+    ctx = await get_global_context(user.id)
 
     open_position = None
     open_trade = await db.get_open_trade()
@@ -65,7 +67,11 @@ async def dashboard(request: Request):
     risk_mode = await db.get_state("risk_mode", "static")
     risk_value = await db.get_state("risk_value", 10.0)
 
+    cfg = await db.get_user_config(user.id)
+    testnet = cfg.binance_testnet if cfg else BINANCE_TESTNET
+
     ctx.update({
+        "user": user,
         "open_position": open_position,
         "today_pnl": today_pnl,
         "today_trade_count": today_trade_count,
@@ -75,7 +81,7 @@ async def dashboard(request: Request):
         "total_r": total_r,
         "win_rate": win_rate,
         "max_dd": max_dd_pct,
-        "testnet": BINANCE_TESTNET,
+        "testnet": testnet,
         "leverage": LEVERAGE,
         "risk_mode": risk_mode,
         "risk_value": risk_value,
@@ -87,12 +93,14 @@ async def dashboard(request: Request):
 
 @router.get("/api/live-candles")
 async def live_candles(
+    request: Request,
     symbol: str = Query("BTCUSDT"),
     interval: str = Query("15m"),
     limit: int = Query(500, ge=1, le=1500),
     endTime: int = Query(None),
 ):
-    bot = get_bot()
+    user = await require_auth(request)
+    bot = get_bot_for_user(user.id)
     if bot and bot.exchange.market_client:
         try:
             kwargs = dict(symbol=symbol, interval=interval, limit=limit)

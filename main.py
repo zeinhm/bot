@@ -8,19 +8,24 @@ import asyncio
 import logging
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 
 from config import (
     DATABASE_URL, BINANCE_API_KEY, BINANCE_API_SECRET, BINANCE_TESTNET,
     SYMBOLS, STRATEGY_PARAMS, COMMISSION_PCT, SLIPPAGE_TICKS,
     TICK_SIZE, CANDLE_BUFFER_SIZE, LEVERAGE, LOT_SIZE,
+    SESSION_SECRET, GOOGLE_CLIENT_ID,
 )
 import database as db
-from bot import broadcast, set_bot_manager
+from bot import broadcast, set_bot_manager, make_broadcast_fn
+from auth import AuthRequired, decrypt
 from app.bot.manager import BotManager
 from app.bot.worker import BotConfig
 
+from routes.auth import router as auth_router
 from routes.dashboard import router as dashboard_router
 from routes.trades import router as trades_router
 from routes.settings import router as settings_router
@@ -38,14 +43,14 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 
-PHASE1_USER_ID = 1
+log = logging.getLogger(__name__)
 
 
-def _build_phase1_config() -> BotConfig:
+def _build_user_config(api_key: str, api_secret: str, testnet: bool) -> BotConfig:
     return BotConfig(
-        api_key=BINANCE_API_KEY,
-        api_secret=BINANCE_API_SECRET,
-        testnet=BINANCE_TESTNET,
+        api_key=api_key,
+        api_secret=api_secret,
+        testnet=testnet,
         symbols=SYMBOLS,
         strategy_params=STRATEGY_PARAMS,
         leverage=LEVERAGE,
@@ -65,8 +70,20 @@ async def lifespan(app: FastAPI):
     set_bot_manager(manager)
     app.state.bot_manager = manager
 
-    config = _build_phase1_config()
-    await manager.start_bot(PHASE1_USER_ID, config, broadcast_fn=broadcast)
+    if GOOGLE_CLIENT_ID:
+        configured = await db.get_all_configured_users()
+        for user, user_cfg in configured:
+            try:
+                api_key = decrypt(user_cfg.binance_api_key_enc)
+                api_secret = decrypt(user_cfg.binance_api_secret_enc)
+                config = _build_user_config(api_key, api_secret, user_cfg.binance_testnet)
+                await manager.start_bot(user.id, config, broadcast_fn=make_broadcast_fn(user.id))
+                log.info("Auto-started bot for user %d (%s)", user.id, user.email)
+            except Exception as e:
+                log.error("Failed to start bot for user %d: %s", user.id, e)
+    elif BINANCE_API_KEY:
+        config = _build_user_config(BINANCE_API_KEY, BINANCE_API_SECRET, BINANCE_TESTNET)
+        await manager.start_bot(1, config, broadcast_fn=broadcast)
 
     ws_tasks = await start_ws_tasks(manager)
 
@@ -75,16 +92,26 @@ async def lifespan(app: FastAPI):
     for t in ws_tasks:
         t.cancel()
 
-    try:
-        await manager.stop_bot(PHASE1_USER_ID)
-    except Exception:
-        pass
+    for uid in list(manager.workers.keys()):
+        try:
+            await manager.stop_bot(uid)
+        except Exception:
+            pass
 
 
 app = FastAPI(title="Trading Futures Bot", lifespan=lifespan)
 
+app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, max_age=86400 * 30)
+
+
+@app.exception_handler(AuthRequired)
+async def auth_required_handler(request: Request, exc: AuthRequired):
+    return RedirectResponse("/login", status_code=303)
+
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+app.include_router(auth_router)
 app.include_router(dashboard_router)
 app.include_router(trades_router)
 app.include_router(settings_router)

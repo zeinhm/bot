@@ -3,7 +3,8 @@ import time
 from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
 
-from bot import get_bot
+from auth import require_auth
+from bot import get_bot_for_user
 from config import BINANCE_TESTNET, LEVERAGE
 import database as db
 from template_context import get_global_context
@@ -14,7 +15,8 @@ templates = Jinja2Templates(directory="templates")
 
 @router.get("/position")
 async def position_page(request: Request):
-    bot = get_bot()
+    user = await require_auth(request)
+    bot = get_bot_for_user(user.id)
     bot_trade = await db.get_open_trade()
 
     positions = []
@@ -69,10 +71,14 @@ async def position_page(request: Request):
     if recent and recent[0].exit_time:
         last_trade_ts = int(recent[0].exit_time.timestamp())
 
-    ctx = await get_global_context()
+    cfg = await db.get_user_config(user.id)
+    testnet = cfg.binance_testnet if cfg else BINANCE_TESTNET
+
+    ctx = await get_global_context(user.id)
     ctx.update({
+        "user": user,
         "positions": positions,
-        "testnet": BINANCE_TESTNET,
+        "testnet": testnet,
         "leverage": LEVERAGE,
         "risk_mode": risk_mode,
         "risk_value": risk_value,

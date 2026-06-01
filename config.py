@@ -42,6 +42,12 @@ STRATEGY_PARAMS = {
     "skip_months": [5],
 }
 
+ACC_RANGE_MODE = {
+    "BTCUSDT": "body",
+    "ETHUSDT": "wick",
+    "SOLUSDT": "wick",
+}
+
 LEVERAGE = 5
 
 COMMISSION_PCT = 0.0004

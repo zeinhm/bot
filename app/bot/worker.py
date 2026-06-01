@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Callable, Awaitable
 
+from config import ACC_RANGE_MODE
 from exchange import BinanceExchange
 from strategy import check_signal
 from telegram_alert import alert_entry, alert_exit, alert_bot_started, alert_bot_stopped
@@ -30,9 +31,9 @@ class BotConfig:
     candle_buffer_size: int
     telegram_chat_id: str = ""
     telegram_owner_id: str = ""
-    loss_streak_threshold: int = 8
+    loss_streak_threshold: int = 4
     reduced_risk_pct: float = 0.25
-    wins_to_recover: int = 3
+    wins_to_recover: int = 2
 
 
 class BotWorker:
@@ -274,7 +275,7 @@ class BotWorker:
 
         rr = await db.get_state("rr_ratio", self.config.strategy_params["rrr"])
         sessions = await db.get_state("active_sessions", self.config.strategy_params["sessions"])
-        params = {**self.config.strategy_params, "rrr": rr, "sessions": sessions}
+        params = {**self.config.strategy_params, "rrr": rr, "sessions": sessions, "acc_range_mode": ACC_RANGE_MODE.get(symbol, "wick")}
 
         candles = self.candle_buffers.get(symbol, [])
         signal = check_signal(candles, params)

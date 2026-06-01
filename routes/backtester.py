@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from auth import require_auth
-from config import STRATEGY_PARAMS
+from config import STRATEGY_PARAMS, ACC_RANGE_MODE
 import amd_engine
 import database as db
 from template_context import get_global_context
@@ -86,6 +86,7 @@ async def run_backtest(
         "atrMult": atrMult, "rrr": rrr,
         "sweepFilter": sweepFilter,
         "skipMonths": [5] if skipMay else [],
+        "accRangeMode": ACC_RANGE_MODE.get(symbol, "wick"),
     }
 
     setups = amd_engine.run(data, cfg)

@@ -185,8 +185,14 @@ def check_signal(candles: list[dict], params: dict) -> dict | None:
     lows = [c["low"] for c in candles]
     closes = [c["close"] for c in candles]
 
-    acc_bhi = _rolling_max(highs, params["acc_len"])
-    acc_blo = _rolling_min(lows, params["acc_len"])
+    if params.get("acc_range_mode") == "body":
+        range_hi = [max(opens[i], closes[i]) for i in range(n)]
+        range_lo = [min(opens[i], closes[i]) for i in range(n)]
+    else:
+        range_hi = highs
+        range_lo = lows
+    acc_bhi = _rolling_max(range_hi, params["acc_len"])
+    acc_blo = _rolling_min(range_lo, params["acc_len"])
     atr = _atr(highs, lows, closes, params["atr_len"])
     atr_acc = _atr(highs, lows, closes, params["acc_len"])
 

@@ -216,6 +216,7 @@ def run(data: list[dict], cfg: dict | None = None) -> list[dict]:
     sweep_len = int(c.get("sweepLen", 5))
     sweep_max_bars = int(c.get("sweepMaxBars", 300))
     skip_months = c.get("skipMonths", [5])
+    acc_range_mode = c.get("accRangeMode", "wick")
 
     # Extract arrays
     times = [d["time"] for d in data]
@@ -225,8 +226,14 @@ def run(data: list[dict], cfg: dict | None = None) -> list[dict]:
     opens = [d["open"] for d in data]
 
     # Precompute
-    acc_bhi = _rolling_max(highs, acc_len)
-    acc_blo = _rolling_min(lows, acc_len)
+    if acc_range_mode == "body":
+        range_hi = [max(opens[i], closes[i]) for i in range(n)]
+        range_lo = [min(opens[i], closes[i]) for i in range(n)]
+    else:
+        range_hi = highs
+        range_lo = lows
+    acc_bhi = _rolling_max(range_hi, acc_len)
+    acc_blo = _rolling_min(range_lo, acc_len)
     atr = _wilder_atr(highs, lows, closes, atr_len)
     atr_acc = _wilder_atr(highs, lows, closes, acc_len)
     in_sess = _session_mask(times, sessions)

@@ -22,6 +22,9 @@
 .setup-nav button { height:26px; padding:0 8px; border-radius:4px; font-size:11px; background:rgba(139,148,158,.08); border:1px solid var(--border); color:var(--text-2); cursor:pointer; font-family:var(--mono); }
 .setup-nav button:hover { color:var(--text-1); background:rgba(139,148,158,.15); }
 .setup-nav span { font-size:11px; color:var(--text-3); font-family:var(--mono); min-width:60px; text-align:center; }
+.param-row { display:flex; justify-content:space-between; align-items:center; padding:5px 0; font-size:12px; }
+.param-row .lbl { color:var(--text-3); }
+.param-row .val { color:var(--text-1); font-size:12px; }
 </style>
 {% endblock %}
 
@@ -43,33 +46,44 @@
             <button class="yr-btn" data-sym="SOLUSDT">SOL</button>
         </div>
 
-        <div class="card-title">Strategy Parameters</div>
-        <div class="slider-row">
-            <div class="slider-head"><span class="lbl">Accumulation Length</span><span class="val" id="v-accLen">{{ params.get('accLen', 60) }} bars</span></div>
-            <input type="range" min="20" max="120" step="5" value="{{ params.get('accLen', 60) }}" id="s-accLen" oninput="document.getElementById('v-accLen').textContent=this.value+' bars'">
-        </div>
-        <div class="slider-row">
-            <div class="slider-head"><span class="lbl">ATR Mult (Acc)</span><span class="val" id="v-atrMultAcc">5.0×</span></div>
-            <input type="range" min="1" max="10" step="0.5" value="5.0" id="s-atrMultAcc" oninput="document.getElementById('v-atrMultAcc').textContent=parseFloat(this.value).toFixed(1)+'×'">
-        </div>
-        <div class="slider-row">
-            <div class="slider-head"><span class="lbl">ATR Mult (SL)</span><span class="val" id="v-atrMult">1.5×</span></div>
-            <input type="range" min="0.5" max="5" step="0.5" value="1.5" id="s-atrMult" oninput="document.getElementById('v-atrMult').textContent=parseFloat(this.value).toFixed(1)+'×'">
-        </div>
-        <div class="slider-row">
-            <div class="slider-head"><span class="lbl">Reward : Risk</span><span class="val" id="v-rrr">2.0</span></div>
-            <input type="range" min="1" max="6" step="0.5" value="2.0" id="s-rrr" oninput="document.getElementById('v-rrr').textContent=parseFloat(this.value).toFixed(1)">
-        </div>
+        <div class="card-title">Accumulation</div>
+        <div class="param-row"><span class="lbl">Acc Length</span><span class="val mono">{{ params.acc_len }} bars</span></div>
+        <div class="param-row"><span class="lbl">Acc Mode</span><span class="val mono">{{ params.acc_mode }}</span></div>
+        <div class="param-row"><span class="lbl">Acc Range Mode</span><span class="val mono" id="v-accRange">{{ acc_range_mode.get('BTCUSDT', 'wick') }}</span></div>
+        {% if params.acc_mode == 'atr' %}
+        <div class="param-row"><span class="lbl">ATR Mult (Acc)</span><span class="val mono">{{ params.atr_mult_acc }}×</span></div>
+        {% if params.atr_mult_acc_min > 0 %}
+        <div class="param-row"><span class="lbl">ATR Mult Acc Min</span><span class="val mono">{{ params.atr_mult_acc_min }}×</span></div>
+        {% endif %}
+        {% else %}
+        <div class="param-row"><span class="lbl">Acc Width</span><span class="val mono">{{ params.acc_width }}%</span></div>
+        {% if params.acc_width_min > 0 %}
+        <div class="param-row"><span class="lbl">Acc Width Min</span><span class="val mono">{{ params.acc_width_min }}%</span></div>
+        {% endif %}
+        {% endif %}
+
+        <div class="card-title" style="margin-top:14px">Detection</div>
+        <div class="param-row"><span class="lbl">Manipulation Lookback</span><span class="val mono">{{ params.man_look }} bars</span></div>
+        <div class="param-row"><span class="lbl">FVG Threshold</span><span class="val mono">{{ params.fvg_threshold }}×</span></div>
+
+        <div class="card-title" style="margin-top:14px">Risk</div>
+        <div class="param-row"><span class="lbl">ATR Length</span><span class="val mono">{{ params.atr_len }}</span></div>
+        <div class="param-row"><span class="lbl">ATR Mult (SL)</span><span class="val mono">{{ params.atr_mult }}×</span></div>
+        <div class="param-row"><span class="lbl">Reward : Risk</span><span class="val mono">{{ params.rrr }}</span></div>
+        <div class="param-row"><span class="lbl">Leverage</span><span class="val mono">{{ leverage }}×</span></div>
+        <div class="param-row"><span class="lbl">Commission</span><span class="val mono">{{ "%.2f" | format(commission_pct * 100) }}%</span></div>
+        <div class="param-row"><span class="lbl">Slippage</span><span class="val mono">{{ slippage_ticks }} ticks</span></div>
 
         <div class="card-title" style="margin-top:14px">Filters</div>
-        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-2);cursor:pointer;margin-bottom:8px">
-            <input type="checkbox" id="s-sweepFilter" checked> Sweep Filter
-        </label>
-        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-2);cursor:pointer;margin-bottom:14px">
-            <input type="checkbox" id="s-skipMay" checked> Skip May
-        </label>
+        <div class="param-row"><span class="lbl">Sweep Filter</span><span class="val mono" style="color:var({% if params.sweep_filter %}--green{% else %}--red{% endif %})">{{ "On" if params.sweep_filter else "Off" }}</span></div>
+        {% if params.sweep_filter %}
+        <div class="param-row"><span class="lbl">Sweep Length</span><span class="val mono">{{ params.sweep_len }} bars</span></div>
+        <div class="param-row"><span class="lbl">Sweep Max Bars</span><span class="val mono">{{ params.sweep_max_bars }}</span></div>
+        {% endif %}
+        <div class="param-row"><span class="lbl">Skip Months</span><span class="val mono" style="color:var({% if params.skip_months %}--green{% else %}--text-3{% endif %})">{% if params.skip_months %}{{ params.skip_months | join(', ') }}{% else %}None{% endif %}</span></div>
+        <div class="param-row"><span class="lbl">Sessions</span><span class="val mono">{{ params.sessions | length }} ({{ params.sessions | join(', ') }})</span></div>
 
-        <button class="btn btn-primary btn-block" id="run-btn">
+        <button class="btn btn-primary btn-block" id="run-btn" style="margin-top:14px">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" stroke="none"><path d="M5 3l14 9-14 9z"/></svg>
             Run Backtest
         </button>
@@ -208,7 +222,7 @@
     function fetchOlder() {
         if (loading || !hasMore || !allData.length) return;
         loading = true;
-        var oldest = allData[0].time;
+        var oldest = allData[0].time - tzOffsetSec;
         fetchCandles(oldest - 1, CHUNK).then(function(res) {
             if (!res.candles || !res.candles.length) { hasMore = false; loading = false; return; }
             hasMore = res.hasMore;
@@ -261,21 +275,19 @@
         candleSeries.setMarkers(markers);
     }
 
+    var accRangeModes = {{ acc_range_mode | tojson }};
+
+    function updateAccRangeLabel() {
+        document.getElementById('v-accRange').textContent = accRangeModes[currentSymbol] || 'wick';
+    }
+
     // ── Run backtest (backend) ──
     function runBacktest() {
         var btn = document.getElementById('run-btn');
         btn.disabled = true;
         btn.textContent = 'Running…';
 
-        var params = [
-            'symbol=' + currentSymbol, 'interval=15m',
-            'accLen=' + document.getElementById('s-accLen').value,
-            'atrMultAcc=' + document.getElementById('s-atrMultAcc').value,
-            'atrMult=' + document.getElementById('s-atrMult').value,
-            'rrr=' + document.getElementById('s-rrr').value,
-            'sweepFilter=' + document.getElementById('s-sweepFilter').checked,
-            'skipMay=' + document.getElementById('s-skipMay').checked
-        ].join('&');
+        var params = 'symbol=' + currentSymbol + '&interval=15m';
 
         fetch('/api/backtest?' + params)
             .then(function(r) { return r.json(); })
@@ -283,7 +295,9 @@
                 setups = (res.setups || []).map(function(s) {
                     if (s.entryTime) s.entryTime += tzOffsetSec;
                     if (s.exitTime) s.exitTime += tzOffsetSec;
+                    if (s.accStartTime) s.accStartTime += tzOffsetSec;
                     if (s.accEndTime) s.accEndTime += tzOffsetSec;
+                    if (s.manipTime) s.manipTime += tzOffsetSec;
                     return s;
                 });
                 setupIdx = 0;
@@ -381,7 +395,7 @@
                 return;
             }
             loading = true;
-            fetchCandles(allData[0].time - 1, 5000).then(function(res) {
+            fetchCandles(allData[0].time - tzOffsetSec - 1, 5000).then(function(res) {
                 if (!res.candles || !res.candles.length) { hasMore = false; loading = false; ensureLoaded(); return; }
                 hasMore = res.hasMore;
                 allData = res.candles.concat(allData);
@@ -404,6 +418,7 @@
         btn.classList.add('active');
         currentSymbol = btn.dataset.sym;
         document.getElementById('chart-pair').textContent = currentSymbol;
+        updateAccRangeLabel();
         allData = [];
         hasMore = true;
         setups = [];

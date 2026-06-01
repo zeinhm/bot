@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from auth import require_auth
-from config import STRATEGY_PARAMS, ACC_RANGE_MODE
+from config import STRATEGY_PARAMS, ACC_RANGE_MODE, LEVERAGE, COMMISSION_PCT, SLIPPAGE_TICKS
 import amd_engine
 import database as db
 from template_context import get_global_context
@@ -41,7 +41,15 @@ def _invalidate_cache(symbol: str = None, interval: str = None):
 async def backtester_page(request: Request):
     user = await require_auth(request)
     ctx = await get_global_context(user.id)
-    ctx.update({"user": user, "params": STRATEGY_PARAMS, "page": "backtester"})
+    ctx.update({
+        "user": user,
+        "params": STRATEGY_PARAMS,
+        "acc_range_mode": ACC_RANGE_MODE,
+        "leverage": LEVERAGE,
+        "commission_pct": COMMISSION_PCT,
+        "slippage_ticks": SLIPPAGE_TICKS,
+        "page": "backtester",
+    })
     return templates.TemplateResponse(request, "backtester.html", ctx)
 
 
@@ -65,15 +73,6 @@ async def run_backtest(
     request: Request,
     symbol: str = Query("BTCUSDT"),
     interval: str = Query("15m"),
-    accLen: int = Query(60),
-    atrMultAcc: float = Query(5.0),
-    manLook: int = Query(10),
-    fvgThreshold: float = Query(0.1),
-    atrLen: int = Query(14),
-    atrMult: float = Query(1.5),
-    rrr: float = Query(2.0),
-    sweepFilter: bool = Query(True),
-    skipMay: bool = Query(True),
 ):
     await require_auth(request)
     data = await _load_candles(symbol, interval)
@@ -81,15 +80,19 @@ async def run_backtest(
         return JSONResponse({"stats": {}, "setups": []})
 
     cfg = {
-        "accLen": accLen, "atrMultAcc": atrMultAcc, "manLook": manLook,
-        "fvgThreshold": fvgThreshold, "atrLen": atrLen,
-        "atrMult": atrMult, "rrr": rrr,
-        "sweepFilter": sweepFilter,
-        "skipMonths": [5] if skipMay else [],
+        "accLen": STRATEGY_PARAMS["acc_len"],
+        "atrMultAcc": STRATEGY_PARAMS["atr_mult_acc"],
+        "manLook": STRATEGY_PARAMS["man_look"],
+        "fvgThreshold": STRATEGY_PARAMS["fvg_threshold"],
+        "atrLen": STRATEGY_PARAMS["atr_len"],
+        "atrMult": STRATEGY_PARAMS["atr_mult"],
+        "rrr": STRATEGY_PARAMS["rrr"],
+        "sweepFilter": STRATEGY_PARAMS["sweep_filter"],
+        "skipMonths": STRATEGY_PARAMS["skip_months"],
         "accRangeMode": ACC_RANGE_MODE.get(symbol, "wick"),
     }
 
     setups = amd_engine.run(data, cfg)
-    stats = amd_engine.compute_stats(setups, rrr)
+    stats = amd_engine.compute_stats(setups, cfg["rrr"])
 
     return JSONResponse({"stats": stats, "setups": setups})

@@ -98,6 +98,9 @@ async def run_backtest(
         "accRangeMode": ACC_RANGE_MODE.get(symbol, "wick"),
         "manipMinMode": STRATEGY_PARAMS.get("manip_min_mode", "off"),
         "manipMinVal": STRATEGY_PARAMS.get("manip_min_val", 0.0),
+        "adxFilter": STRATEGY_PARAMS.get("adx_filter", False),
+        "adxPeriod": STRATEGY_PARAMS.get("adx_period", 42),
+        "adxThreshold": STRATEGY_PARAMS.get("adx_threshold", 35),
     }
 
     equity_cfg = {

@@ -93,6 +93,61 @@ def _wilder_atr(highs, lows, closes, period):
     return atr
 
 
+def _adx(highs, lows, closes, period):
+    """Compute ADX, +DI, -DI using Wilder's smoothing."""
+    n = len(highs)
+    plus_dm = [0.0] * n
+    minus_dm = [0.0] * n
+    tr = [0.0] * n
+    plus_di = [0.0] * n
+    minus_di = [0.0] * n
+    adx = [0.0] * n
+
+    tr[0] = highs[0] - lows[0]
+    for i in range(1, n):
+        up = highs[i] - highs[i - 1]
+        down = lows[i - 1] - lows[i]
+        plus_dm[i] = up if up > down and up > 0 else 0.0
+        minus_dm[i] = down if down > up and down > 0 else 0.0
+        tr[i] = max(
+            highs[i] - lows[i],
+            abs(highs[i] - closes[i - 1]),
+            abs(lows[i] - closes[i - 1]),
+        )
+
+    if n < period:
+        return adx, plus_di, minus_di
+
+    smooth_tr = sum(tr[1:period + 1])
+    smooth_pdm = sum(plus_dm[1:period + 1])
+    smooth_mdm = sum(minus_dm[1:period + 1])
+
+    if smooth_tr > 0:
+        plus_di[period] = smooth_pdm / smooth_tr * 100
+        minus_di[period] = smooth_mdm / smooth_tr * 100
+
+    for i in range(period + 1, n):
+        smooth_tr = smooth_tr - smooth_tr / period + tr[i]
+        smooth_pdm = smooth_pdm - smooth_pdm / period + plus_dm[i]
+        smooth_mdm = smooth_mdm - smooth_mdm / period + minus_dm[i]
+        if smooth_tr > 0:
+            plus_di[i] = smooth_pdm / smooth_tr * 100
+            minus_di[i] = smooth_mdm / smooth_tr * 100
+
+    dx = [0.0] * n
+    for i in range(period, n):
+        di_sum = plus_di[i] + minus_di[i]
+        dx[i] = abs(plus_di[i] - minus_di[i]) / di_sum * 100 if di_sum > 0 else 0
+
+    first_adx_idx = period * 2
+    if first_adx_idx < n:
+        adx[first_adx_idx] = sum(dx[period + 1:first_adx_idx + 1]) / period
+        for i in range(first_adx_idx + 1, n):
+            adx[i] = (adx[i - 1] * (period - 1) + dx[i]) / period
+
+    return adx, plus_di, minus_di
+
+
 def _session_mask(times_sec, sessions):
     mask = [False] * len(times_sec)
     for i, ts in enumerate(times_sec):
@@ -219,6 +274,9 @@ def run(data: list[dict], cfg: dict | None = None) -> list[dict]:
     acc_range_mode = c.get("accRangeMode", "wick")
     manip_min_mode = c.get("manipMinMode", "off")
     manip_min_val = float(c.get("manipMinVal", 0.0))
+    adx_filter = c.get("adxFilter", False)
+    adx_period = int(c.get("adxPeriod", 42))
+    adx_threshold = float(c.get("adxThreshold", 35))
 
     # Extract arrays
     times = [d["time"] for d in data]
@@ -247,6 +305,11 @@ def run(data: list[dict], cfg: dict | None = None) -> list[dict]:
         )
     else:
         in_bull_sweep = in_bear_sweep = [False] * n
+
+    if adx_filter:
+        adx_vals, plus_di, minus_di = _adx(highs, lows, closes, adx_period)
+    else:
+        adx_vals = plus_di = minus_di = [0.0] * n
 
     setups: list[dict] = []
     acc_high = None
@@ -348,11 +411,14 @@ def run(data: list[dict], cfg: dict | None = None) -> list[dict]:
                     m_ext = highs[i]
                     m_idx = i
                 fvg_gap = lows[i - 2] - highs[i]
+                adx_skip = (adx_filter and adx_vals[m_idx] > adx_threshold
+                            and plus_di[m_idx] > minus_di[m_idx])
                 if (
                     fvg_gap > cur_atr * fvg_threshold
                     and closes[i] < acc_high
                     and not active
                     and not in_bull_sweep[i]
+                    and not adx_skip
                 ):
                     entry = closes[i]
                     atr_sl = entry + cur_atr * atr_mult
@@ -383,11 +449,14 @@ def run(data: list[dict], cfg: dict | None = None) -> list[dict]:
                     m_ext = lows[i]
                     m_idx = i
                 fvg_gap = lows[i] - highs[i - 2]
+                adx_skip = (adx_filter and adx_vals[m_idx] > adx_threshold
+                            and minus_di[m_idx] > plus_di[m_idx])
                 if (
                     fvg_gap > cur_atr * fvg_threshold
                     and closes[i] > acc_low
                     and not active
                     and not in_bear_sweep[i]
+                    and not adx_skip
                 ):
                     entry = closes[i]
                     atr_sl = entry - cur_atr * atr_mult

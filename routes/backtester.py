@@ -95,6 +95,7 @@ async def run_backtest(
         "sweepLen": STRATEGY_PARAMS.get("sweep_len", 5),
         "sweepMaxBars": STRATEGY_PARAMS.get("sweep_max_bars", 300),
         "skipMonths": STRATEGY_PARAMS["skip_months"],
+        "skipWeeks": {int(k): v for k, v in STRATEGY_PARAMS.get("skip_weeks", {}).items()},
         "accRangeMode": ACC_RANGE_MODE.get(symbol, "wick"),
         "manipMinMode": STRATEGY_PARAMS.get("manip_min_mode", "off"),
         "manipMinVal": STRATEGY_PARAMS.get("manip_min_val", 0.0),

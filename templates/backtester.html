@@ -85,6 +85,9 @@
         <div class="param-row"><span class="lbl">Sweep Max Bars</span><span class="val mono">{{ params.sweep_max_bars }}</span></div>
         {% endif %}
         <div class="param-row"><span class="lbl">Skip Months</span><span class="val mono" style="color:var({% if params.skip_months %}--green{% else %}--text-3{% endif %})">{% if params.skip_months %}{{ params.skip_months | join(', ') }}{% else %}None{% endif %}</span></div>
+        {% if params.skip_weeks %}
+        <div class="param-row"><span class="lbl">Skip Weeks</span><span class="val mono" style="color:var(--green)">{% for m, ws in params.skip_weeks.items() %}M{{ m }}:W{{ ws | join(',W') }}{% if not loop.last %}; {% endif %}{% endfor %}</span></div>
+        {% endif %}
         <div class="param-row"><span class="lbl">ADX Filter</span><span class="val mono" style="color:var({% if params.adx_filter %}--green{% else %}--text-3{% endif %})">{{ "On" if params.adx_filter else "Off" }}</span></div>
         {% if params.adx_filter %}
         <div class="param-row"><span class="lbl">ADX Period</span><span class="val mono">{{ params.adx_period }} bars</span></div>

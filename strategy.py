@@ -39,6 +39,17 @@ def _in_session(ts_ms: int, sessions: list[str]) -> bool:
     return False
 
 
+def _in_skip_period(ts_ms: int, skip_months: list, skip_weeks: dict) -> bool:
+    dt = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
+    if dt.month in skip_months:
+        return True
+    if skip_weeks and dt.month in skip_weeks:
+        week = min((dt.day - 1) // 7 + 1, 5)
+        if week in skip_weeks[dt.month]:
+            return True
+    return False
+
+
 def _rolling_max(values: list[float], period: int) -> list[float]:
     n = len(values)
     out = [0.0] * n
@@ -307,6 +318,7 @@ def check_signal(candles: list[dict], params: dict) -> dict | None:
             and acc_end is not None
             and i <= acc_end + params["man_look"]
             and _in_session(ts[i], params["sessions"])
+            and not _in_skip_period(ts[i], params.get("skip_months", []), params.get("skip_weeks", {}))
             and i >= 2
             and atr[i] > 0
         ):

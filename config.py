@@ -40,6 +40,7 @@ STRATEGY_PARAMS = {
     "sweep_len": 5,
     "sweep_max_bars": 300,
     "skip_months": [5],
+    "skip_weeks": {4: [2, 4]},
     "manip_min_mode": "atr",
     "manip_min_val": 0.4,
     "adx_filter": True,

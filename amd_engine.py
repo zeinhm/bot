@@ -166,14 +166,18 @@ def _session_mask(times_sec, sessions):
     return mask
 
 
-def _month_mask(times_sec, skip_months):
-    if not skip_months:
+def _month_mask(times_sec, skip_months, skip_weeks=None):
+    if not skip_months and not skip_weeks:
         return [True] * len(times_sec)
     mask = [True] * len(times_sec)
     for i, ts in enumerate(times_sec):
         dt = datetime.fromtimestamp(ts, tz=timezone.utc)
         if dt.month in skip_months:
             mask[i] = False
+        elif skip_weeks and dt.month in skip_weeks:
+            week = min((dt.day - 1) // 7 + 1, 5)
+            if week in skip_weeks[dt.month]:
+                mask[i] = False
     return mask
 
 
@@ -271,6 +275,7 @@ def run(data: list[dict], cfg: dict | None = None) -> list[dict]:
     sweep_len = int(c.get("sweepLen", 5))
     sweep_max_bars = int(c.get("sweepMaxBars", 300))
     skip_months = c.get("skipMonths", [5])
+    skip_weeks = c.get("skipWeeks", {})
     acc_range_mode = c.get("accRangeMode", "wick")
     manip_min_mode = c.get("manipMinMode", "off")
     manip_min_val = float(c.get("manipMinVal", 0.0))
@@ -297,7 +302,7 @@ def run(data: list[dict], cfg: dict | None = None) -> list[dict]:
     atr = _wilder_atr(highs, lows, closes, atr_len)
     atr_acc = _wilder_atr(highs, lows, closes, acc_len)
     in_sess = _session_mask(times, sessions)
-    month_ok = _month_mask(times, skip_months)
+    month_ok = _month_mask(times, skip_months, skip_weeks)
 
     if sweep_filter:
         in_bull_sweep, in_bear_sweep = _compute_sweep_zones(

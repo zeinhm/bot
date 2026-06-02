@@ -64,6 +64,10 @@
 
         <div class="card-title" style="margin-top:14px">Detection</div>
         <div class="param-row"><span class="lbl">Manipulation Lookback</span><span class="val mono">{{ params.man_look }} bars</span></div>
+        <div class="param-row"><span class="lbl">Manip Min Mode</span><span class="val mono">{{ params.manip_min_mode }}</span></div>
+        {% if params.manip_min_mode != 'off' %}
+        <div class="param-row"><span class="lbl">Manip Min Val</span><span class="val mono">{{ params.manip_min_val }}×</span></div>
+        {% endif %}
         <div class="param-row"><span class="lbl">FVG Threshold</span><span class="val mono">{{ params.fvg_threshold }}×</span></div>
 
         <div class="card-title" style="margin-top:14px">Risk</div>
@@ -83,6 +87,11 @@
         <div class="param-row"><span class="lbl">Skip Months</span><span class="val mono" style="color:var({% if params.skip_months %}--green{% else %}--text-3{% endif %})">{% if params.skip_months %}{{ params.skip_months | join(', ') }}{% else %}None{% endif %}</span></div>
         <div class="param-row"><span class="lbl">Sessions</span><span class="val mono">{{ params.sessions | length }} ({{ params.sessions | join(', ') }})</span></div>
 
+        <div class="card-title" style="margin-top:14px">Adaptive Sizing</div>
+        <div class="param-row"><span class="lbl">Loss Streak Trigger</span><span class="val mono">{{ params.loss_streak_threshold }}L</span></div>
+        <div class="param-row"><span class="lbl">Reduced Risk</span><span class="val mono">{{ params.reduced_risk_pct }}%</span></div>
+        <div class="param-row"><span class="lbl">Wins to Recover</span><span class="val mono">{{ params.wins_to_recover }}W</span></div>
+
         <button class="btn btn-primary btn-block" id="run-btn" style="margin-top:14px">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" stroke="none"><path d="M5 3l14 9-14 9z"/></svg>
             Run Backtest
@@ -96,6 +105,11 @@
             <div class="stat"><div class="lbl">Win Rate</div><div class="val mono" id="st-wr">—</div></div>
             <div class="stat"><div class="lbl">Trades</div><div class="val mono" id="st-trades">—</div></div>
             <div class="stat"><div class="lbl">W / L</div><div class="val mono" id="st-wl">—</div></div>
+        </div>
+        <div class="stat-row">
+            <div class="stat"><div class="lbl">Return</div><div class="val mono" id="st-return">—</div></div>
+            <div class="stat"><div class="lbl">Final Equity</div><div class="val mono" id="st-equity">—</div></div>
+            <div class="stat"><div class="lbl">Max DD</div><div class="val mono" id="st-dd">—</div></div>
         </div>
 
         <!-- Chart -->
@@ -119,7 +133,7 @@
         </div>
 
         <div class="card">
-            <div class="card-title">Equity Curve · simulated $1,000 account</div>
+            <div class="card-title">Equity Curve · $10,000 · 2% risk · adaptive sizing</div>
             <div id="bt-equity-chart" style="height:200px;display:grid;place-items:center">
                 <span class="muted" style="font-size:12px">Run a backtest to see results</span>
             </div>
@@ -281,6 +295,39 @@
         document.getElementById('v-accRange').textContent = accRangeModes[currentSymbol] || 'wick';
     }
 
+    // ── Equity curve ──
+    var eqChart = null;
+    var eqSeries = null;
+
+    function renderEquityCurve(curve) {
+        var el = document.getElementById('bt-equity-chart');
+        el.innerHTML = '';
+        el.style.display = 'block';
+
+        if (eqChart) { eqChart.remove(); eqChart = null; }
+
+        eqChart = LightweightCharts.createChart(el, {
+            layout: { background: { type: LightweightCharts.ColorType.Solid, color: 'transparent' }, textColor: '#5C636E', fontSize: 10, fontFamily: "'IBM Plex Mono', monospace" },
+            grid: { vertLines: { color: 'rgba(139,148,158,.05)' }, horzLines: { color: 'rgba(139,148,158,.05)' } },
+            rightPriceScale: { borderColor: 'rgba(139,148,158,.08)' },
+            timeScale: { borderColor: 'rgba(139,148,158,.08)', timeVisible: true, secondsVisible: false },
+            crosshair: { horzLine: { labelBackgroundColor: '#1C2128' }, vertLine: { labelBackgroundColor: '#1C2128' } },
+            handleScroll: true, handleScale: true, height: 200
+        });
+
+        eqSeries = eqChart.addAreaSeries({
+            lineColor: '#00C896', topColor: 'rgba(0,200,150,.25)', bottomColor: 'rgba(0,200,150,.02)',
+            lineWidth: 1.5,
+            priceFormat: { type: 'custom', formatter: function(p) { return '$' + p.toLocaleString(undefined, {maximumFractionDigits: 0}); } }
+        });
+
+        var data = curve.map(function(p) {
+            return { time: p.time + tzOffsetSec, value: p.value };
+        });
+        eqSeries.setData(data);
+        eqChart.timeScale().fitContent();
+    }
+
     // ── Run backtest (backend) ──
     function runBacktest() {
         var btn = document.getElementById('run-btn');
@@ -308,6 +355,9 @@
                     document.getElementById('st-wl').textContent = '—';
                     document.getElementById('st-wr').textContent = '—';
                     document.getElementById('st-r').textContent = '—';
+                    document.getElementById('st-return').textContent = '—';
+                    document.getElementById('st-equity').textContent = '—';
+                    document.getElementById('st-dd').textContent = '—';
                 } else {
                     document.getElementById('st-trades').textContent = st.trades;
                     document.getElementById('st-wl').textContent = st.wins + 'W / ' + st.losses + 'L';
@@ -315,6 +365,15 @@
                     var rEl = document.getElementById('st-r');
                     rEl.textContent = (st.totalR >= 0 ? '+' : '') + st.totalR.toFixed(1) + 'R';
                     rEl.className = 'val mono ' + (st.totalR >= 0 ? 'pos' : 'neg');
+
+                    if (st.equity) {
+                        var retEl = document.getElementById('st-return');
+                        retEl.textContent = (st.equity.returnPct >= 0 ? '+' : '') + st.equity.returnPct.toFixed(1) + '%';
+                        retEl.className = 'val mono ' + (st.equity.returnPct >= 0 ? 'pos' : 'neg');
+                        document.getElementById('st-equity').textContent = '$' + st.equity.finalCapital.toLocaleString();
+                        document.getElementById('st-dd').textContent = st.equity.maxDdPct.toFixed(1) + '%';
+                        renderEquityCurve(st.equity.curve);
+                    }
                 }
 
                 renderSetups();

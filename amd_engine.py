@@ -217,6 +217,8 @@ def run(data: list[dict], cfg: dict | None = None) -> list[dict]:
     sweep_max_bars = int(c.get("sweepMaxBars", 300))
     skip_months = c.get("skipMonths", [5])
     acc_range_mode = c.get("accRangeMode", "wick")
+    manip_min_mode = c.get("manipMinMode", "off")
+    manip_min_val = float(c.get("manipMinVal", 0.0))
 
     # Extract arrays
     times = [d["time"] for d in data]
@@ -326,8 +328,17 @@ def run(data: list[dict], cfg: dict | None = None) -> list[dict]:
         ):
             cur_atr = atr[i]
 
+            if manip_min_mode == "atr":
+                manip_min_dist = cur_atr * manip_min_val
+            elif manip_min_mode == "acc_atr":
+                manip_min_dist = atr_acc[i] * manip_min_val
+            elif manip_min_mode == "range":
+                manip_min_dist = (acc_high - acc_low) * manip_min_val
+            else:
+                manip_min_dist = 0.0
+
             # Bearish manipulation (wick above acc high → sets up short)
-            if not m_high and not m_low and highs[i] > acc_high:
+            if not m_high and not m_low and highs[i] > acc_high + manip_min_dist:
                 m_high = True
                 m_ext = highs[i]
                 m_idx = i
@@ -362,7 +373,7 @@ def run(data: list[dict], cfg: dict | None = None) -> list[dict]:
                     m_high = False
 
             # Bullish manipulation (wick below acc low → sets up long)
-            if not m_low and not m_high and lows[i] < acc_low:
+            if not m_low and not m_high and lows[i] < acc_low - manip_min_dist:
                 m_low = True
                 m_ext = lows[i]
                 m_idx = i
@@ -438,7 +449,7 @@ def _make_setup(direction, acc_start, acc_end, acc_high, acc_low,
     }
 
 
-def compute_stats(setups: list[dict], rrr: float) -> dict:
+def compute_stats(setups: list[dict], rrr: float, equity_cfg: dict | None = None) -> dict:
     wins = losses = 0
     total_r = 0.0
     for s in setups:
@@ -452,10 +463,78 @@ def compute_stats(setups: list[dict], rrr: float) -> dict:
             losses += 1
             total_r -= 1
     total = wins + losses
-    return {
+    stats = {
         "trades": total,
         "wins": wins,
         "losses": losses,
         "winRate": round(wins / total * 100) if total else 0,
         "totalR": round(total_r, 1),
+    }
+
+    if equity_cfg:
+        eq = simulate_equity(setups, rrr, equity_cfg)
+        stats["equity"] = eq
+
+    return stats
+
+
+def simulate_equity(setups: list[dict], rrr: float, cfg: dict) -> dict:
+    initial = cfg.get("initialCapital", 1000.0)
+    risk_pct = cfg.get("riskPct", 0.02)
+    commission_rate = cfg.get("commissionRate", 0.0004)
+    streak_threshold = cfg.get("lossStreakThreshold", 4)
+    reduced_pct = cfg.get("reducedRiskPct", 0.0025)
+    wins_to_recover = cfg.get("winsToRecover", 2)
+
+    capital = initial
+    peak = initial
+    max_dd_pct = 0.0
+    loss_streak = 0
+    consecutive_wins = 0
+    adaptive_active = False
+
+    curve = []
+
+    for s in setups:
+        if s["result"] not in ("win", "loss"):
+            continue
+
+        current_risk_pct = reduced_pct if adaptive_active else risk_pct
+        risk_amount = capital * current_risk_pct
+        sl_dist = abs(s["entryPrice"] - s["sl"])
+        if sl_dist == 0:
+            continue
+        position_value = risk_amount / sl_dist * s["entryPrice"]
+        commission = position_value * commission_rate * 2
+
+        if s["result"] == "win":
+            tp_dist = abs(s["tp"] - s["entryPrice"])
+            actual_rrr = tp_dist / sl_dist if sl_dist > 0 else rrr
+            pnl = risk_amount * actual_rrr - commission
+            loss_streak = 0
+            if adaptive_active:
+                consecutive_wins += 1
+                if consecutive_wins >= wins_to_recover:
+                    adaptive_active = False
+                    consecutive_wins = 0
+        else:
+            pnl = -risk_amount - commission
+            loss_streak += 1
+            consecutive_wins = 0
+            if loss_streak >= streak_threshold and not adaptive_active:
+                adaptive_active = True
+
+        capital += pnl
+        peak = max(peak, capital)
+        dd_pct = (peak - capital) / peak * 100 if peak > 0 else 0
+        max_dd_pct = max(max_dd_pct, dd_pct)
+
+        curve.append({"time": s["entryTime"], "value": round(capital, 2)})
+
+    return {
+        "initialCapital": initial,
+        "finalCapital": round(capital, 2),
+        "returnPct": round((capital - initial) / initial * 100, 1),
+        "maxDdPct": round(max_dd_pct, 1),
+        "curve": curve,
     }

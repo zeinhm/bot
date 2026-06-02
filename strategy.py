@@ -249,7 +249,18 @@ def check_signal(candles: list[dict], params: dict) -> dict | None:
         ):
             cur_atr = atr[i]
 
-            if not m_high and not m_low and highs[i] > acc_high:
+            manip_min_mode = params.get("manip_min_mode", "off")
+            manip_min_val = params.get("manip_min_val", 0.0)
+            if manip_min_mode == "atr":
+                manip_min_dist = cur_atr * manip_min_val
+            elif manip_min_mode == "acc_atr":
+                manip_min_dist = atr_acc[i] * manip_min_val
+            elif manip_min_mode == "range":
+                manip_min_dist = (acc_high - acc_low) * manip_min_val
+            else:
+                manip_min_dist = 0.0
+
+            if not m_high and not m_low and highs[i] > acc_high + manip_min_dist:
                 m_high = True
                 m_ext = highs[i]
 
@@ -277,7 +288,7 @@ def check_signal(candles: list[dict], params: dict) -> dict | None:
                             "timestamp": ts[i],
                         }
 
-            if not m_low and not m_high and lows[i] < acc_low:
+            if not m_low and not m_high and lows[i] < acc_low - manip_min_dist:
                 m_low = True
                 m_ext = lows[i]
 

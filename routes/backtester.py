@@ -81,18 +81,35 @@ async def run_backtest(
 
     cfg = {
         "accLen": STRATEGY_PARAMS["acc_len"],
+        "accMode": STRATEGY_PARAMS["acc_mode"],
         "atrMultAcc": STRATEGY_PARAMS["atr_mult_acc"],
+        "atrMultAccMin": STRATEGY_PARAMS.get("atr_mult_acc_min", 0.0),
+        "accWidth": STRATEGY_PARAMS.get("acc_width", 0.2),
+        "accWidthMin": STRATEGY_PARAMS.get("acc_width_min", 0.0),
         "manLook": STRATEGY_PARAMS["man_look"],
         "fvgThreshold": STRATEGY_PARAMS["fvg_threshold"],
         "atrLen": STRATEGY_PARAMS["atr_len"],
         "atrMult": STRATEGY_PARAMS["atr_mult"],
         "rrr": STRATEGY_PARAMS["rrr"],
         "sweepFilter": STRATEGY_PARAMS["sweep_filter"],
+        "sweepLen": STRATEGY_PARAMS.get("sweep_len", 5),
+        "sweepMaxBars": STRATEGY_PARAMS.get("sweep_max_bars", 300),
         "skipMonths": STRATEGY_PARAMS["skip_months"],
         "accRangeMode": ACC_RANGE_MODE.get(symbol, "wick"),
+        "manipMinMode": STRATEGY_PARAMS.get("manip_min_mode", "off"),
+        "manipMinVal": STRATEGY_PARAMS.get("manip_min_val", 0.0),
+    }
+
+    equity_cfg = {
+        "initialCapital": 10000.0,
+        "riskPct": 0.02,
+        "commissionRate": COMMISSION_PCT,
+        "lossStreakThreshold": STRATEGY_PARAMS.get("loss_streak_threshold", 4),
+        "reducedRiskPct": STRATEGY_PARAMS.get("reduced_risk_pct", 0.25) / 100.0,
+        "winsToRecover": STRATEGY_PARAMS.get("wins_to_recover", 2),
     }
 
     setups = amd_engine.run(data, cfg)
-    stats = amd_engine.compute_stats(setups, cfg["rrr"])
+    stats = amd_engine.compute_stats(setups, cfg["rrr"], equity_cfg)
 
     return JSONResponse({"stats": stats, "setups": setups})

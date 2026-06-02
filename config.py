@@ -40,6 +40,11 @@ STRATEGY_PARAMS = {
     "sweep_len": 5,
     "sweep_max_bars": 300,
     "skip_months": [5],
+    "manip_min_mode": "atr",
+    "manip_min_val": 0.4,
+    "loss_streak_threshold": 4,
+    "reduced_risk_pct": 0.25,
+    "wins_to_recover": 2,
 }
 
 ACC_RANGE_MODE = {

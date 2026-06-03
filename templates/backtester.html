@@ -51,7 +51,7 @@
             <div class="card-title" style="margin:0">Equity Curve · $10,000 · 2% risk · adaptive sizing</div>
             <span class="mono" style="font-size:12px;color:var(--text-2)" id="eq-hover-val"></span>
         </div>
-        <div id="combined-equity-chart" style="height:220px;display:grid;place-items:center">
+        <div id="combined-equity-chart" style="height:320px;display:grid;place-items:center">
             <span class="muted" style="font-size:12px">Loading...</span>
         </div>
     </div>
@@ -298,7 +298,7 @@
             rightPriceScale: { borderColor: 'rgba(139,148,158,.08)' },
             timeScale: { borderColor: 'rgba(139,148,158,.08)', timeVisible: true, secondsVisible: false, fixLeftEdge: true, fixRightEdge: true },
             crosshair: { horzLine: { labelBackgroundColor: '#1C2128' }, vertLine: { labelBackgroundColor: '#1C2128' } },
-            handleScroll: true, handleScale: true, height: 220
+            handleScroll: true, handleScale: true, height: 320
         });
 
         var series = combEqChart.addAreaSeries({

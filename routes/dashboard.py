@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
@@ -17,26 +18,9 @@ templates = Jinja2Templates(directory="templates")
 @router.get("/")
 async def dashboard(request: Request):
     user = await require_auth(request)
-    bot = get_bot_for_user(user.id)
     ctx = await get_global_context(user.id)
 
-    open_position = None
-    open_trade = await db.get_open_trade()
-    if open_trade and bot:
-        try:
-            pos = await bot.exchange.get_position(open_trade.symbol)
-            if pos:
-                open_position = {
-                    "trade": open_trade,
-                    "unrealized_pnl": pos["unrealized_pnl"],
-                }
-        except Exception:
-            open_position = {"trade": open_trade, "unrealized_pnl": 0.0}
-
-    today_pnl = await db.get_today_pnl()
-    today_trade_count = await db.get_today_trade_count()
     recent_trades = await db.get_recent_trades(10)
-
     all_trades = await db.get_all_trades()
     closed = [t for t in all_trades if t.result in ("win", "loss")]
     wins = sum(1 for t in closed if t.result == "win")
@@ -44,25 +28,34 @@ async def dashboard(request: Request):
     total_r = sum(t.r_value or 0 for t in closed)
     win_rate = (wins / len(closed) * 100) if closed else 0
 
-    pnls = [t.pnl_usdt or 0 for t in closed]
-    peak = 0.0
-    max_dd = 0.0
-    cumulative = 0.0
-    for p in pnls:
-        cumulative += p
-        if cumulative > peak:
-            peak = cumulative
-        dd = peak - cumulative
-        if dd > max_dd:
-            max_dd = dd
-    max_dd_pct = (max_dd / peak * 100) if peak > 0 else 0
+    now = datetime.now(timezone.utc)
+    year_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    year_trades = [t for t in closed if t.exit_time and t.exit_time >= year_start]
+    year_pnl = sum(t.pnl_usdt or 0 for t in year_trades)
+    year_trade_count = len(year_trades)
 
-    equity_data = []
-    cum = 0.0
+    equity = 10000.0
+    peak_equity = equity
+    max_dd_pct = 0.0
+    max_dd_date = None
     for t in closed:
-        cum += t.pnl_usdt or 0
+        equity += t.pnl_usdt or 0
+        if equity > peak_equity:
+            peak_equity = equity
+        dd_pct = (peak_equity - equity) / peak_equity * 100 if peak_equity > 0 else 0
+        if dd_pct > max_dd_pct:
+            max_dd_pct = dd_pct
+            max_dd_date = t.exit_time
+
+    by_exit = sorted(closed, key=lambda t: t.exit_time or t.entry_time)
+    eq_map = {}
+    equity = 10000.0
+    for t in by_exit:
+        equity += t.pnl_usdt or 0
         if t.exit_time:
-            equity_data.append({"time": int(t.exit_time.timestamp()), "value": round(cum, 2)})
+            ts = int(t.exit_time.timestamp())
+            eq_map[ts] = round(equity, 2)
+    equity_data = [{"time": k, "value": v} for k, v in sorted(eq_map.items())]
 
     risk_mode = await db.get_state("risk_mode", "static")
     risk_value = await db.get_state("risk_value", 10.0)
@@ -72,15 +65,16 @@ async def dashboard(request: Request):
 
     ctx.update({
         "user": user,
-        "open_position": open_position,
-        "today_pnl": today_pnl,
-        "today_trade_count": today_trade_count,
+        "year_pnl": year_pnl,
+        "year_trade_count": year_trade_count,
+        "now_year": now.year,
         "recent_trades": recent_trades,
         "wins": wins,
         "losses": losses,
         "total_r": total_r,
         "win_rate": win_rate,
         "max_dd": max_dd_pct,
+        "max_dd_date": max_dd_date,
         "testnet": testnet,
         "leverage": LEVERAGE,
         "risk_mode": risk_mode,

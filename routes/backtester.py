@@ -40,6 +40,16 @@ def _invalidate_cache(symbol: str = None, interval: str = None):
 @router.get("/backtester")
 async def backtester_page(request: Request):
     user = await require_auth(request)
+
+    data = await db.get_all_historical_candles("BTCUSDT", "15m")
+    if data:
+        from datetime import datetime, timezone
+        first = datetime.fromtimestamp(data[0]["time"], tz=timezone.utc)
+        last = datetime.fromtimestamp(data[-1]["time"], tz=timezone.utc)
+        data_range = f"{first.strftime('%b %Y')} – {last.strftime('%b %Y')}"
+    else:
+        data_range = "No data"
+
     ctx = await get_global_context(user.id)
     ctx.update({
         "user": user,
@@ -48,6 +58,7 @@ async def backtester_page(request: Request):
         "leverage": LEVERAGE,
         "commission_pct": COMMISSION_PCT,
         "slippage_ticks": SLIPPAGE_TICKS,
+        "data_range": data_range,
         "page": "backtester",
     })
     return templates.TemplateResponse(request, "backtester.html", ctx)

@@ -29,165 +29,77 @@
 </div>
 {% endif %}
 
-<form method="post" action="/settings">
-<div class="grid" style="grid-template-columns:1fr 1fr;align-items:start">
-    <!-- Left Column -->
-    <div class="grid" style="gap:12px">
-        {# Bot Configuration — admin only, will move to admin dashboard #}
-        {#
-        <div class="card">
-            <div class="card-title">Bot Configuration</div>
-
-            <div class="toggle-row" style="margin-bottom:12px;padding-top:0">
-                <span style="font-size:12.5px;color:var(--text-2)">Trading Enabled</span>
-                <input type="hidden" name="bot_enabled_flag" value="1">
-                <button type="button" class="switch {{ 'on' if bot_enabled else '' }}"
-                    onclick="this.classList.toggle('on');var h=this.previousElementSibling;h.name=this.classList.contains('on')?'bot_enabled':'bot_enabled_flag'"></button>
-                {% if bot_enabled %}<input type="hidden" name="bot_enabled" value="on">{% endif %}
+<div style="max-width:600px;margin:0 auto;display:flex;flex-direction:column;gap:12px">
+    <!-- Exchange -->
+    <div class="card">
+        <div class="card-title">Exchange</div>
+        <div class="status-grid" style="margin-bottom:14px">
+            <div class="status-cell">
+                <div class="k">Exchange</div>
+                <div class="v" style="font-family:var(--sans);font-size:12.5px">Binance Futures (USDT-M)</div>
             </div>
-
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">
-                <div>
-                    <label class="field-lbl">Risk per trade</label>
-                    <div class="input-suffix">
-                        <input class="input mono" name="risk_value" value="{{ risk_value }}" step="0.1" min="0.1">
-                        <span class="suffix" id="risk-unit">{{ '%' if risk_mode == 'dynamic' else '$' }}</span>
-                    </div>
-                </div>
-                <div>
-                    <label class="field-lbl">Reward : Risk</label>
-                    <input class="input mono" name="rr_ratio" value="{{ rr_ratio }}" step="0.5" min="1.0" max="10.0">
-                </div>
-                <div>
-                    <label class="field-lbl">Max trades / day</label>
-                    <input class="input mono" name="max_trades" value="{{ max_trades }}" min="1" max="10">
+            <div class="status-cell">
+                <div class="k">Connection</div>
+                <div class="v"><span class="led {{ 'green' if api_key_set else 'red' }}"></span>{{ 'Connected' if api_key_set else 'Not configured' }}</div>
+            </div>
+            <div class="status-cell">
+                <div class="k">Mode</div>
+                <div class="v">
+                    <span class="led {{ 'amber' if testnet else 'green' }}"></span>
+                    {{ 'Testnet' if testnet else 'Live' }}
                 </div>
             </div>
-
-            <label class="field-lbl">Risk Mode</label>
-            <div class="seg" style="margin-bottom:14px">
-                <button type="button" class="{{ 'active' if risk_mode == 'static' else '' }}"
-                    onclick="document.querySelector('[name=risk_mode]').value='static';this.classList.add('active');this.nextElementSibling.classList.remove('active');document.getElementById('risk-unit').textContent='$'">Static ($)</button>
-                <button type="button" class="{{ 'active' if risk_mode == 'dynamic' else '' }}"
-                    onclick="document.querySelector('[name=risk_mode]').value='dynamic';this.classList.add('active');this.previousElementSibling.classList.remove('active');document.getElementById('risk-unit').textContent='%'">Dynamic (%)</button>
+            <div class="status-cell">
+                <div class="k">Leverage</div>
+                <div class="v">{{ leverage }}× <span class="muted" style="font-size:10px;font-family:var(--sans)">set on exchange</span></div>
             </div>
-            <input type="hidden" name="risk_mode" value="{{ risk_mode }}">
-
-            <label class="field-lbl">Sessions</label>
-            <div style="display:flex;gap:10px;margin-bottom:16px">
-                {% for s in all_sessions %}
-                <label style="flex:1;cursor:pointer">
-                    <input type="checkbox" name="session_{{ s }}" value="on"
-                        {% if s in active_sessions %}checked{% endif %} style="display:none"
-                        onchange="this.parentElement.style.borderColor=this.checked?'rgba(0,200,150,.35)':'var(--border)'">
-                    <div class="vcenter gap8" style="justify-content:space-between;padding:9px 11px;background:var(--card-3);border:1px solid {{ 'rgba(0,200,150,.35)' if s in active_sessions else 'var(--border)' }};border-radius:var(--radius-sm);font-size:12.5px;color:var(--text-2)">
-                        <span class="capitalize">{{ s }}</span>
-                        <span class="led {{ 'green' if s in active_sessions else 'gray' }}"></span>
-                    </div>
-                </label>
-                {% endfor %}
-            </div>
-
-            <label class="field-lbl">Active Symbols</label>
-            <div style="display:flex;gap:10px;margin-bottom:16px">
-                {% for s in all_symbols %}
-                <label style="flex:1;cursor:pointer">
-                    <input type="checkbox" name="symbol_{{ s }}" value="on"
-                        {% if s in active_symbols %}checked{% endif %} style="display:none"
-                        onchange="this.parentElement.style.borderColor=this.checked?'rgba(0,200,150,.35)':'var(--border)'">
-                    <div class="vcenter gap8" style="justify-content:center;padding:9px 11px;background:var(--card-3);border:1px solid {{ 'rgba(0,200,150,.35)' if s in active_symbols else 'var(--border)' }};border-radius:var(--radius-sm);font-size:12.5px;color:var(--text-2)">
-                        {{ s.replace('USDT', '') }}
-                    </div>
-                </label>
-                {% endfor %}
-            </div>
-
-            <button type="submit" class="btn btn-primary btn-block">Save Configuration</button>
         </div>
-        #}
 
-        <!-- Exchange -->
-        <div class="card">
-            <div class="card-title">Exchange</div>
-            <div class="status-grid" style="margin-bottom:14px">
-                <div class="status-cell">
-                    <div class="k">Exchange</div>
-                    <div class="v" style="font-family:var(--sans);font-size:12.5px">Binance Futures (USDT-M)</div>
+        <details style="margin-top:4px">
+            <summary style="cursor:pointer;font-size:12px;color:var(--text-2);margin-bottom:10px">
+                {{ 'Update API keys' if api_key_set else 'Configure API keys' }}
+            </summary>
+            <form method="post" action="/settings/api-keys">
+                <div style="margin-bottom:10px">
+                    <label class="field-lbl">API Key</label>
+                    <input class="input mono" name="api_key" required placeholder="{{ '••••••••••' if api_key_set else 'Enter API key' }}" style="font-size:12px" autocomplete="off">
                 </div>
-                <div class="status-cell">
-                    <div class="k">Connection</div>
-                    <div class="v"><span class="led {{ 'green' if api_key_set else 'red' }}"></span>{{ 'Connected' if api_key_set else 'Not configured' }}</div>
+                <div style="margin-bottom:10px">
+                    <label class="field-lbl">API Secret</label>
+                    <input class="input mono" name="api_secret" type="password" required placeholder="{{ '••••••••••' if api_key_set else 'Enter API secret' }}" style="font-size:12px" autocomplete="off">
                 </div>
-                <div class="status-cell">
-                    <div class="k">Mode</div>
-                    <div class="v">
-                        <span class="led {{ 'amber' if testnet else 'green' }}"></span>
-                        {{ 'Testnet' if testnet else 'Live' }}
+                <div style="margin-bottom:12px">
+                    <label class="field-lbl">Mode</label>
+                    <div class="seg">
+                        <button type="button" class="{{ 'active' if testnet else '' }}" id="btn-testnet-key"
+                            onclick="this.classList.add('active');document.getElementById('btn-live-key').classList.remove('active');document.querySelector('[name=testnet]').value='on'">Testnet</button>
+                        <button type="button" class="{{ '' if testnet else 'active' }}" id="btn-live-key"
+                            onclick="this.classList.add('active');document.getElementById('btn-testnet-key').classList.remove('active');document.querySelector('[name=testnet]').value='off'">Live</button>
                     </div>
+                    <input type="hidden" name="testnet" value="{{ 'on' if testnet else 'off' }}">
                 </div>
-                <div class="status-cell">
-                    <div class="k">Leverage</div>
-                    <div class="v">{{ leverage }}× <span class="muted" style="font-size:10px;font-family:var(--sans)">set on exchange</span></div>
+                <button type="submit" class="btn btn-primary btn-block">Save & Restart Bot</button>
+                <div style="margin-top:10px;font-size:11px;color:var(--text-3)">
+                    Whitelist IPs: <span class="mono" style="user-select:all">208.77.246.240, 208.77.246.241, 208.77.246.242</span>
                 </div>
-            </div>
-
-            <details style="margin-top:4px">
-                <summary style="cursor:pointer;font-size:12px;color:var(--text-2);margin-bottom:10px">
-                    {{ 'Update API keys' if api_key_set else 'Configure API keys' }}
-                </summary>
-                <form method="post" action="/settings/api-keys">
-                    <div style="margin-bottom:10px">
-                        <label class="field-lbl">API Key</label>
-                        <input class="input mono" name="api_key" required placeholder="{{ '••••••••••' if api_key_set else 'Enter API key' }}" style="font-size:12px" autocomplete="off">
-                    </div>
-                    <div style="margin-bottom:10px">
-                        <label class="field-lbl">API Secret</label>
-                        <input class="input mono" name="api_secret" type="password" required placeholder="{{ '••••••••••' if api_key_set else 'Enter API secret' }}" style="font-size:12px" autocomplete="off">
-                    </div>
-                    <div style="margin-bottom:12px">
-                        <label class="field-lbl">Mode</label>
-                        <div class="seg">
-                            <button type="button" class="{{ 'active' if testnet else '' }}" id="btn-testnet-key"
-                                onclick="this.classList.add('active');document.getElementById('btn-live-key').classList.remove('active');document.querySelector('[name=testnet]').value='on'">Testnet</button>
-                            <button type="button" class="{{ '' if testnet else 'active' }}" id="btn-live-key"
-                                onclick="this.classList.add('active');document.getElementById('btn-testnet-key').classList.remove('active');document.querySelector('[name=testnet]').value='off'">Live</button>
-                        </div>
-                        <input type="hidden" name="testnet" value="{{ 'on' if testnet else 'off' }}">
-                    </div>
-                    <button type="submit" class="btn btn-primary btn-block">Save & Restart Bot</button>
-                    <div style="margin-top:10px;font-size:11px;color:var(--text-3)">
-                        Whitelist IPs: <span class="mono" style="user-select:all">208.77.246.240, 208.77.246.241, 208.77.246.242</span>
-                    </div>
-                </form>
-            </details>
-        </div>
+            </form>
+        </details>
     </div>
 
-    <!-- Right Column -->
-    <div class="grid" style="gap:12px">
-        <!-- Danger Zone -->
-        <div class="card danger">
-            <div class="card-title">Danger Zone</div>
-            <button type="button" class="btn btn-red btn-block" id="btn-emergency-close"
-                onclick="emergencyClose()">Emergency: Close All Positions</button>
-            <p class="muted" style="font-size:11.5px;margin:8px 0 14px">Immediately closes all open positions at market price.</p>
-            <div id="emergency-result" style="display:none;margin-bottom:14px"></div>
-            <button type="button" class="btn btn-ghost btn-block" disabled>Reset paper trading wallet</button>
-        </div>
+    <!-- Danger Zone -->
+    <div class="card danger">
+        <div class="card-title">Danger Zone</div>
+        <button type="button" class="btn btn-red btn-block" id="btn-emergency-close"
+            onclick="emergencyClose()">Emergency: Close All Positions</button>
+        <p class="muted" style="font-size:11.5px;margin:8px 0 14px">Immediately closes all open positions at market price.</p>
+        <div id="emergency-result" style="display:none;margin-bottom:14px"></div>
+        <button type="button" class="btn btn-ghost btn-block" disabled>Reset paper trading wallet</button>
     </div>
 </div>
-</form>
 {% endblock %}
 
 {% block scripts %}
 <script>
-document.querySelectorAll('label[style*="cursor:pointer"] input[type="checkbox"]').forEach(function(cb) {
-    cb.addEventListener('change', function() {
-        var led = this.parentElement.querySelector('.led');
-        if (led) led.className = 'led ' + (this.checked ? 'green' : 'gray');
-    });
-});
-
 function emergencyClose() {
     if (!confirm('EMERGENCY CLOSE\n\nThis will immediately close ALL open positions at market price.\n\nAre you sure?')) return;
     var btn = document.getElementById('btn-emergency-close');
@@ -215,23 +127,6 @@ function emergencyClose() {
             btn.disabled = false;
             btn.textContent = 'Emergency: Close All Positions';
         });
-}
-
-var switchEl = document.querySelector('.switch');
-if (switchEl && !switchEl.disabled) {
-    var form = document.querySelector('form');
-    switchEl.addEventListener('click', function() {
-        var existing = form.querySelector('input[name="bot_enabled"]');
-        if (this.classList.contains('on')) {
-            if (!existing) {
-                var h = document.createElement('input');
-                h.type = 'hidden'; h.name = 'bot_enabled'; h.value = 'on';
-                form.appendChild(h);
-            }
-        } else {
-            if (existing) existing.remove();
-        }
-    });
 }
 </script>
 {% endblock %}

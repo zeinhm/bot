@@ -8,8 +8,9 @@
     </div>
 </div>
 
-<div class="grid" style="grid-template-columns:1fr 1fr;align-items:start">
-    <!-- Left: Bot Events Log -->
+<div class="grid" style="align-items:start">
+    {# Bot Events — admin only, will move to admin dashboard #}
+    {#
     <div class="card">
         <div class="card-title row">
             <span>Bot Events <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· recent activity</span></span>
@@ -41,6 +42,7 @@
         </div>
         {% endif %}
     </div>
+    #}
 
     <!-- Right: Telegram -->
     <div class="card card-top-accent">

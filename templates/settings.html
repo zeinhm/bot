@@ -33,11 +33,11 @@
 <div class="grid" style="grid-template-columns:1fr 1fr;align-items:start">
     <!-- Left Column -->
     <div class="grid" style="gap:12px">
-        <!-- Bot Configuration -->
+        {# Bot Configuration — admin only, will move to admin dashboard #}
+        {#
         <div class="card">
             <div class="card-title">Bot Configuration</div>
 
-            <!-- Trading Enabled -->
             <div class="toggle-row" style="margin-bottom:12px;padding-top:0">
                 <span style="font-size:12.5px;color:var(--text-2)">Trading Enabled</span>
                 <input type="hidden" name="bot_enabled_flag" value="1">
@@ -64,7 +64,6 @@
                 </div>
             </div>
 
-            <!-- Risk Mode -->
             <label class="field-lbl">Risk Mode</label>
             <div class="seg" style="margin-bottom:14px">
                 <button type="button" class="{{ 'active' if risk_mode == 'static' else '' }}"
@@ -74,7 +73,6 @@
             </div>
             <input type="hidden" name="risk_mode" value="{{ risk_mode }}">
 
-            <!-- Sessions -->
             <label class="field-lbl">Sessions</label>
             <div style="display:flex;gap:10px;margin-bottom:16px">
                 {% for s in all_sessions %}
@@ -90,7 +88,6 @@
                 {% endfor %}
             </div>
 
-            <!-- Symbols -->
             <label class="field-lbl">Active Symbols</label>
             <div style="display:flex;gap:10px;margin-bottom:16px">
                 {% for s in all_symbols %}
@@ -107,6 +104,7 @@
 
             <button type="submit" class="btn btn-primary btn-block">Save Configuration</button>
         </div>
+        #}
 
         <!-- Exchange -->
         <div class="card">

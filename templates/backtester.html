@@ -36,6 +36,28 @@
     </div>
 </div>
 
+<!-- Combined Results -->
+<div class="grid" style="gap:12px;margin-bottom:24px" id="combined-section">
+    <div class="stat-row">
+        <div class="stat"><div class="lbl">Total Trades</div><div class="val mono" id="cb-trades">—</div></div>
+        <div class="stat"><div class="lbl">Win Rate</div><div class="val mono" id="cb-wr">—</div></div>
+        <div class="stat"><div class="lbl">Total R</div><div class="val mono" id="cb-r">—</div></div>
+        <div class="stat"><div class="lbl">Return</div><div class="val mono" id="cb-return">—</div></div>
+        <div class="stat"><div class="lbl">Final Equity</div><div class="val mono" id="cb-equity">—</div></div>
+        <div class="stat"><div class="lbl">Max DD</div><div class="val mono" id="cb-dd">—</div></div>
+    </div>
+    <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+            <div class="card-title" style="margin:0">Equity Curve · $10,000 · 2% risk · adaptive sizing</div>
+            <span class="mono" style="font-size:12px;color:var(--text-2)" id="eq-hover-val"></span>
+        </div>
+        <div id="combined-equity-chart" style="height:220px;display:grid;place-items:center">
+            <span class="muted" style="font-size:12px">Loading...</span>
+        </div>
+    </div>
+</div>
+
+<!-- Per-Asset Backtester -->
 <div class="grid" style="grid-template-columns:320px 1fr;align-items:start">
     <!-- Parameters -->
     <div class="card" style="position:sticky;top:0">
@@ -114,11 +136,6 @@
             <div class="stat"><div class="lbl">Trades</div><div class="val mono" id="st-trades">—</div></div>
             <div class="stat"><div class="lbl">W / L</div><div class="val mono" id="st-wl">—</div></div>
         </div>
-        <div class="stat-row">
-            <div class="stat"><div class="lbl">Return</div><div class="val mono" id="st-return">—</div></div>
-            <div class="stat"><div class="lbl">Final Equity</div><div class="val mono" id="st-equity">—</div></div>
-            <div class="stat"><div class="lbl">Max DD</div><div class="val mono" id="st-dd">—</div></div>
-        </div>
 
         <!-- Chart -->
         <div class="chart-wrap" id="chart-wrap">
@@ -140,12 +157,6 @@
             <div id="chart-el" style="height:560px;position:relative;overflow:hidden;background:#131720"></div>
         </div>
 
-        <div class="card">
-            <div class="card-title">Equity Curve · $10,000 · 2% risk · adaptive sizing</div>
-            <div id="bt-equity-chart" style="height:200px;display:grid;place-items:center">
-                <span class="muted" style="font-size:12px">Run a backtest to see results</span>
-            </div>
-        </div>
     </div>
 </div>
 {% endblock %}
@@ -303,37 +314,84 @@
         document.getElementById('v-accRange').textContent = accRangeModes[currentSymbol] || 'wick';
     }
 
-    // ── Equity curve ──
-    var eqChart = null;
-    var eqSeries = null;
+    // ── Combined equity curve ──
+    var combEqChart = null;
 
-    function renderEquityCurve(curve) {
-        var el = document.getElementById('bt-equity-chart');
+    function renderCombinedEquity(curve) {
+        var el = document.getElementById('combined-equity-chart');
         el.innerHTML = '';
         el.style.display = 'block';
 
-        if (eqChart) { eqChart.remove(); eqChart = null; }
+        if (combEqChart) { combEqChart.remove(); combEqChart = null; }
 
-        eqChart = LightweightCharts.createChart(el, {
+        combEqChart = LightweightCharts.createChart(el, {
             layout: { background: { type: LightweightCharts.ColorType.Solid, color: 'transparent' }, textColor: '#5C636E', fontSize: 10, fontFamily: "'IBM Plex Mono', monospace" },
             grid: { vertLines: { color: 'rgba(139,148,158,.05)' }, horzLines: { color: 'rgba(139,148,158,.05)' } },
             rightPriceScale: { borderColor: 'rgba(139,148,158,.08)' },
-            timeScale: { borderColor: 'rgba(139,148,158,.08)', timeVisible: true, secondsVisible: false },
+            timeScale: { borderColor: 'rgba(139,148,158,.08)', timeVisible: true, secondsVisible: false, fixLeftEdge: true, fixRightEdge: true },
             crosshair: { horzLine: { labelBackgroundColor: '#1C2128' }, vertLine: { labelBackgroundColor: '#1C2128' } },
-            handleScroll: true, handleScale: true, height: 200
+            handleScroll: true, handleScale: true, height: 220
         });
 
-        eqSeries = eqChart.addAreaSeries({
+        var series = combEqChart.addAreaSeries({
             lineColor: '#00C896', topColor: 'rgba(0,200,150,.25)', bottomColor: 'rgba(0,200,150,.02)',
             lineWidth: 1.5,
             priceFormat: { type: 'custom', formatter: function(p) { return '$' + p.toLocaleString(undefined, {maximumFractionDigits: 0}); } }
         });
 
-        var data = curve.map(function(p) {
-            return { time: p.time + tzOffsetSec, value: p.value };
+        var seen = {};
+        var data = [];
+        curve.forEach(function(p) {
+            var t = p.time + tzOffsetSec;
+            if (!seen[t]) {
+                seen[t] = true;
+                data.push({ time: t, value: p.value });
+            } else {
+                data[data.length - 1].value = p.value;
+            }
         });
-        eqSeries.setData(data);
-        eqChart.timeScale().fitContent();
+        series.setData(data);
+        combEqChart.timeScale().fitContent();
+
+        var hoverEl = document.getElementById('eq-hover-val');
+        combEqChart.subscribeCrosshairMove(function(param) {
+            if (!param.time || !param.seriesData.size) {
+                hoverEl.textContent = '';
+                return;
+            }
+            var val = param.seriesData.get(series);
+            if (val && val.value !== undefined) {
+                var pnl = val.value - 10000;
+                var pct = (pnl / 10000 * 100).toFixed(1);
+                hoverEl.textContent = '$' + val.value.toLocaleString(undefined, {maximumFractionDigits: 0}) + '  (' + (pnl >= 0 ? '+' : '') + pct + '%)';
+                hoverEl.style.color = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+            }
+        });
+    }
+
+    function loadCombined() {
+        fetch('/api/backtest/combined')
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                var st = res.stats || {};
+
+                if (st.trades) {
+                    document.getElementById('cb-trades').textContent = st.trades;
+                    document.getElementById('cb-wr').textContent = st.winRate + '%';
+                    var rEl = document.getElementById('cb-r');
+                    rEl.textContent = (st.totalR >= 0 ? '+' : '') + st.totalR.toFixed(1) + 'R';
+                    rEl.className = 'val mono ' + (st.totalR >= 0 ? 'pos' : 'neg');
+                }
+
+                if (st.equity) {
+                    var retEl = document.getElementById('cb-return');
+                    retEl.textContent = (st.equity.returnPct >= 0 ? '+' : '') + st.equity.returnPct.toFixed(1) + '%';
+                    retEl.className = 'val mono ' + (st.equity.returnPct >= 0 ? 'pos' : 'neg');
+                    document.getElementById('cb-equity').textContent = '$' + st.equity.finalCapital.toLocaleString();
+                    document.getElementById('cb-dd').textContent = st.equity.maxDdPct.toFixed(1) + '%';
+                    renderCombinedEquity(st.equity.curve);
+                }
+            });
     }
 
     // ── Run backtest (backend) ──
@@ -363,9 +421,6 @@
                     document.getElementById('st-wl').textContent = '—';
                     document.getElementById('st-wr').textContent = '—';
                     document.getElementById('st-r').textContent = '—';
-                    document.getElementById('st-return').textContent = '—';
-                    document.getElementById('st-equity').textContent = '—';
-                    document.getElementById('st-dd').textContent = '—';
                 } else {
                     document.getElementById('st-trades').textContent = st.trades;
                     document.getElementById('st-wl').textContent = st.wins + 'W / ' + st.losses + 'L';
@@ -373,15 +428,6 @@
                     var rEl = document.getElementById('st-r');
                     rEl.textContent = (st.totalR >= 0 ? '+' : '') + st.totalR.toFixed(1) + 'R';
                     rEl.className = 'val mono ' + (st.totalR >= 0 ? 'pos' : 'neg');
-
-                    if (st.equity) {
-                        var retEl = document.getElementById('st-return');
-                        retEl.textContent = (st.equity.returnPct >= 0 ? '+' : '') + st.equity.returnPct.toFixed(1) + '%';
-                        retEl.className = 'val mono ' + (st.equity.returnPct >= 0 ? 'pos' : 'neg');
-                        document.getElementById('st-equity').textContent = '$' + st.equity.finalCapital.toLocaleString();
-                        document.getElementById('st-dd').textContent = st.equity.maxDdPct.toFixed(1) + '%';
-                        renderEquityCurve(st.equity.curve);
-                    }
                 }
 
                 renderSetups();
@@ -505,6 +551,7 @@
 
     // ── Auto-run on load ──
     initChart();
+    loadCombined();
     fetchCandles(null, CHUNK).then(function(res) {
         allData = res.candles;
         hasMore = res.hasMore;

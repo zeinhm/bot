@@ -79,18 +79,11 @@ async def get_candles(
     return JSONResponse({"candles": candles, "hasMore": has_more})
 
 
-@router.get("/api/backtest")
-async def run_backtest(
-    request: Request,
-    symbol: str = Query("BTCUSDT"),
-    interval: str = Query("15m"),
-):
-    await require_auth(request)
-    data = await _load_candles(symbol, interval)
-    if not data:
-        return JSONResponse({"stats": {}, "setups": []})
+SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
 
-    cfg = {
+
+def _build_cfg(symbol: str) -> dict:
+    return {
         "accLen": STRATEGY_PARAMS["acc_len"],
         "accMode": STRATEGY_PARAMS["acc_mode"],
         "atrMultAcc": STRATEGY_PARAMS["atr_mult_acc"],
@@ -115,7 +108,9 @@ async def run_backtest(
         "adxThreshold": STRATEGY_PARAMS.get("adx_threshold", 35),
     }
 
-    equity_cfg = {
+
+def _equity_cfg() -> dict:
+    return {
         "initialCapital": 10000.0,
         "riskPct": 0.02,
         "commissionRate": COMMISSION_PCT,
@@ -124,7 +119,44 @@ async def run_backtest(
         "winsToRecover": STRATEGY_PARAMS.get("wins_to_recover", 2),
     }
 
+
+@router.get("/api/backtest")
+async def run_backtest(
+    request: Request,
+    symbol: str = Query("BTCUSDT"),
+    interval: str = Query("15m"),
+):
+    await require_auth(request)
+    data = await _load_candles(symbol, interval)
+    if not data:
+        return JSONResponse({"stats": {}, "setups": []})
+
+    cfg = _build_cfg(symbol)
     setups = amd_engine.run(data, cfg)
-    stats = amd_engine.compute_stats(setups, cfg["rrr"], equity_cfg)
+    stats = amd_engine.compute_stats(setups, cfg["rrr"])
 
     return JSONResponse({"stats": stats, "setups": setups})
+
+
+@router.get("/api/backtest/combined")
+async def run_backtest_combined(request: Request):
+    await require_auth(request)
+
+    all_setups = []
+    per_asset = {}
+    for symbol in SYMBOLS:
+        data = await _load_candles(symbol, "15m")
+        if not data:
+            continue
+        cfg = _build_cfg(symbol)
+        setups = amd_engine.run(data, cfg)
+        stats = amd_engine.compute_stats(setups, cfg["rrr"])
+        short = symbol.replace("USDT", "")
+        per_asset[short] = stats
+        all_setups.extend(setups)
+
+    all_setups.sort(key=lambda s: s["entryTime"])
+    rrr = STRATEGY_PARAMS["rrr"]
+    combined_stats = amd_engine.compute_stats(all_setups, rrr, _equity_cfg())
+
+    return JSONResponse({"stats": combined_stats, "perAsset": per_asset})

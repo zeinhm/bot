@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZENITH — Pending Approval</title>
+    <link rel="stylesheet" href="/static/css/app.css?v=4">
+    <style>
+    .gate {
+        min-height: 100vh; display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        padding: 32px 20px 96px; position: relative;
+        background: radial-gradient(900px 520px at 50% -8%, rgba(0,200,150,0.06), transparent 60%), var(--bg);
+    }
+    .gate::before {
+        content: ""; position: absolute; inset: 0; pointer-events: none;
+        background-image:
+            linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+        background-size: 44px 44px;
+        mask-image: radial-gradient(circle at 50% 38%, #000 0%, transparent 72%);
+    }
+    .gate-inner { position: relative; z-index: 1; width: 100%; display: flex; flex-direction: column; align-items: center; }
+    .gate-card {
+        width: 100%; max-width: 400px;
+        background: var(--card); border: 1px solid var(--border);
+        border-radius: 12px; padding: 32px 30px;
+        box-shadow: 0 24px 64px rgba(0,0,0,.45);
+    }
+    .pending-badge {
+        width: 60px; height: 60px; border-radius: 50%; margin: 0 auto 18px;
+        display: grid; place-items: center;
+        background: var(--amber-dim); color: var(--amber); position: relative;
+    }
+    .pending-badge::after {
+        content: ""; position: absolute; inset: -6px; border-radius: 50%;
+        border: 1px solid rgba(245,166,35,.25);
+    }
+    @keyframes pulsering {
+        0% { box-shadow: 0 0 0 0 rgba(245,166,35,.3); }
+        70% { box-shadow: 0 0 0 12px rgba(245,166,35,0); }
+        100% { box-shadow: 0 0 0 0 rgba(245,166,35,0); }
+    }
+    .pending-badge { animation: pulsering 2.6s ease-out infinite; }
+
+    .identity {
+        display: flex; align-items: center; gap: 13px;
+        background: var(--card-3); border: 1px solid var(--border);
+        border-radius: 9px; padding: 13px 15px; margin-bottom: 18px;
+    }
+    .identity img { width: 40px; height: 40px; border-radius: 50%; flex: none; }
+    .identity .nm { font-size: 13.5px; font-weight: 600; }
+    .identity .em { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+
+    .review-steps { display: flex; flex-direction: column; margin-bottom: 18px; }
+    .rstep { display: flex; gap: 12px; }
+    .rstep .rail-col { display: flex; flex-direction: column; align-items: center; flex: none; }
+    .rstep .dot {
+        width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center;
+        flex: none; border: 1px solid var(--border-bri); background: var(--card-3);
+    }
+    .rstep.done .dot { background: var(--green-dim); border-color: var(--green-line); color: var(--green); }
+    .rstep.current .dot { background: var(--amber); border-color: var(--amber); color: #2a1c02; }
+    .rstep .conn { width: 1px; flex: 1; background: var(--border); min-height: 18px; }
+    .rstep.done .conn { background: var(--green-line); }
+    .rstep .rtxt { padding-bottom: 16px; }
+    .rstep:last-child .rtxt { padding-bottom: 0; }
+    .rstep .rtxt .t { font-size: 12.5px; font-weight: 600; }
+    .rstep .rtxt .s { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+    .rstep.future .t { color: var(--muted); font-weight: 500; }
+
+    .wait-row {
+        display: flex; align-items: center; gap: 9px;
+        background: var(--card-3); border: 1px solid var(--border); border-radius: 8px;
+        padding: 11px 14px; font-size: 12.5px; color: var(--text-2);
+    }
+    .wait-row b { color: var(--text); font-weight: 600; }
+    .gate-foot {
+        margin-top: 26px; color: var(--faint); font-size: 11px; text-align: center;
+    }
+    .gate-foot a { color: var(--muted); text-decoration: none; }
+    .gate-foot a:hover { color: var(--text-2); }
+    </style>
+</head>
+<body>
+<div class="gate">
+    <div class="gate-inner">
+        <div style="display:flex;align-items:center;gap:11px;margin-bottom:30px">
+            <div class="rail-logo" style="width:40px;height:40px;font-size:18px">Z</div>
+            <div style="font-size:17px;font-weight:700;letter-spacing:.3px">ZENITH<span class="dot">.</span></div>
+        </div>
+
+        <div class="gate-card">
+            <div style="text-align:center">
+                <div class="pending-badge">
+                    <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+                    </svg>
+                </div>
+                <h1 style="font-size:19px;font-weight:700;margin:0 0 6px">Your account is under review</h1>
+                <p style="color:var(--muted);font-size:13px;margin:0 0 24px;line-height:1.5">
+                    You're signed in. An administrator needs to approve your access before the trading console unlocks.
+                </p>
+            </div>
+
+            <div class="identity">
+                {% if user.avatar_url %}
+                <img src="{{ user.avatar_url }}" alt="">
+                {% else %}
+                <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#1d4ed8);display:grid;place-items:center;font-weight:600;color:#fff;flex:none">{{ user.name[:2]|upper if user.name else '?' }}</div>
+                {% endif %}
+                <div style="min-width:0">
+                    <div class="nm">{{ user.name or 'User' }}</div>
+                    <div class="em">{{ user.email }}</div>
+                </div>
+                <span class="pill amber" style="margin-left:auto">Pending</span>
+            </div>
+
+            <div class="review-steps">
+                <div class="rstep done">
+                    <div class="rail-col">
+                        <div class="dot">
+                            <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                        </div>
+                        <div class="conn"></div>
+                    </div>
+                    <div class="rtxt"><div class="t">Signed in with Google</div><div class="s">Identity verified</div></div>
+                </div>
+                <div class="rstep current">
+                    <div class="rail-col">
+                        <div class="dot"></div>
+                        <div class="conn"></div>
+                    </div>
+                    <div class="rtxt"><div class="t">Awaiting admin approval</div><div class="s">An invitation must be confirmed</div></div>
+                </div>
+                <div class="rstep future">
+                    <div class="rail-col"><div class="dot"></div></div>
+                    <div class="rtxt"><div class="t">Console access granted</div><div class="s">Connect your exchange &amp; start</div></div>
+                </div>
+            </div>
+
+            <div class="wait-row">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:none;color:var(--muted)">
+                    <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+                </svg>
+                <span>Approvals are typically completed <b>within 24 hours</b>. We'll notify you by email.</span>
+            </div>
+        </div>
+
+        <div class="gate-foot">
+            Wrong account? <a href="/logout">Sign out</a>
+        </div>
+    </div>
+</div>
+</body>
+</html>

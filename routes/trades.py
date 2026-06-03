@@ -3,9 +3,9 @@ from typing import Optional
 from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
 
-from auth import require_auth
-import database as db
-from template_context import get_global_context
+from app.auth import require_auth, get_trading_mode
+import app.db as db
+from app.core.context import get_global_context
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -19,8 +19,12 @@ async def trades_page(
     result: Optional[str] = None,
 ):
     user = await require_auth(request)
+    mode = get_trading_mode(request)
+    is_paper = (mode == "paper")
 
     trades = await db.get_trades_filtered(
+        user_id=user.id,
+        is_paper=is_paper,
         symbol=symbol,
         direction=direction,
         result_filter=result,
@@ -33,7 +37,7 @@ async def trades_page(
     total_r = sum(t.r_value or 0 for t in trades if t.result != "open")
     total_pnl = sum(t.pnl_usdt or 0 for t in trades if t.result != "open")
 
-    ctx = await get_global_context(user.id)
+    ctx = await get_global_context(user.id, mode)
     ctx.update({
         "user": user,
         "trades": trades,

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from bot import register_ws, unregister_ws
+from app.bot import register_ws, unregister_ws
 
 router = APIRouter()
 

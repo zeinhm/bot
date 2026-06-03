@@ -33,25 +33,14 @@
     <!-- Exchange -->
     <div class="card">
         <div class="card-title">Exchange</div>
-        <div class="status-grid" style="margin-bottom:14px">
-            <div class="status-cell">
+        <div style="display:flex;gap:12px;margin-bottom:14px">
+            <div class="status-cell" style="flex:1;background:var(--card-3);border-radius:var(--radius-sm);padding:9px 11px">
                 <div class="k">Exchange</div>
                 <div class="v" style="font-family:var(--sans);font-size:12.5px">Binance Futures (USDT-M)</div>
             </div>
-            <div class="status-cell">
+            <div class="status-cell" style="flex:1;background:var(--card-3);border-radius:var(--radius-sm);padding:9px 11px">
                 <div class="k">Connection</div>
                 <div class="v"><span class="led {{ 'green' if api_key_set else 'red' }}"></span>{{ 'Connected' if api_key_set else 'Not configured' }}</div>
-            </div>
-            <div class="status-cell">
-                <div class="k">Mode</div>
-                <div class="v">
-                    <span class="led {{ 'amber' if testnet else 'green' }}"></span>
-                    {{ 'Testnet' if testnet else 'Live' }}
-                </div>
-            </div>
-            <div class="status-cell">
-                <div class="k">Leverage</div>
-                <div class="v">{{ leverage }}× <span class="muted" style="font-size:10px;font-family:var(--sans)">set on exchange</span></div>
             </div>
         </div>
 
@@ -68,19 +57,19 @@
                     <label class="field-lbl">API Secret</label>
                     <input class="input mono" name="api_secret" type="password" required placeholder="{{ '••••••••••' if api_key_set else 'Enter API secret' }}" style="font-size:12px" autocomplete="off">
                 </div>
-                <div style="margin-bottom:12px">
-                    <label class="field-lbl">Mode</label>
-                    <div class="seg">
-                        <button type="button" class="{{ 'active' if testnet else '' }}" id="btn-testnet-key"
-                            onclick="this.classList.add('active');document.getElementById('btn-live-key').classList.remove('active');document.querySelector('[name=testnet]').value='on'">Testnet</button>
-                        <button type="button" class="{{ '' if testnet else 'active' }}" id="btn-live-key"
-                            onclick="this.classList.add('active');document.getElementById('btn-testnet-key').classList.remove('active');document.querySelector('[name=testnet]').value='off'">Live</button>
-                    </div>
-                    <input type="hidden" name="testnet" value="{{ 'on' if testnet else 'off' }}">
-                </div>
+                <input type="hidden" name="testnet" value="off">
                 <button type="submit" class="btn btn-primary btn-block">Save & Restart Bot</button>
-                <div style="margin-top:10px;font-size:11px;color:var(--text-3)">
-                    Whitelist IPs: <span class="mono" style="user-select:all">208.77.246.240, 208.77.246.241, 208.77.246.242</span>
+
+                <div class="callout" style="margin-top:14px;padding:10px 12px;flex-wrap:wrap">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" style="flex:none;margin-top:1px"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+                    <div style="flex:1;min-width:0">
+                        <span style="font-size:11.5px" class="muted">Whitelist these IPs in your Binance API settings:</span>
+                        <div style="margin-top:6px;font-family:var(--mono);font-size:11px;color:var(--text-2);line-height:1.8;user-select:all">
+                            208.77.246.240<br>
+                            208.77.246.241<br>
+                            208.77.246.242
+                        </div>
+                    </div>
                 </div>
             </form>
         </details>

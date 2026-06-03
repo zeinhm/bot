@@ -5,13 +5,15 @@ import logging
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Callable, Awaitable
+from typing import Callable, Awaitable, TYPE_CHECKING
 
 from config import ACC_RANGE_MODE
-from exchange import BinanceExchange
 from strategy import check_signal
 from telegram_alert import alert_entry, alert_exit, alert_bot_started, alert_bot_stopped
-import database as db
+import app.db as db
+
+if TYPE_CHECKING:
+    from app.bot.shared_market import SharedMarketData
 
 log = logging.getLogger(__name__)
 
@@ -34,6 +36,8 @@ class BotConfig:
     loss_streak_threshold: int = 4
     reduced_risk_pct: float = 0.25
     wins_to_recover: int = 2
+    is_paper: bool = False
+    paper_balance: float = 10000.0
 
 
 class BotWorker:
@@ -42,14 +46,23 @@ class BotWorker:
         user_id: int,
         config: BotConfig,
         broadcast_fn: Callable[[dict], Awaitable[None]] | None = None,
+        shared_market: SharedMarketData | None = None,
     ):
         self.user_id = user_id
         self.config = config
-        self.exchange = BinanceExchange(
-            api_key=config.api_key,
-            api_secret=config.api_secret,
-            testnet=config.testnet,
-        )
+        self.is_paper = config.is_paper
+
+        if config.is_paper:
+            from paper_exchange import PaperExchange
+            self.exchange = PaperExchange(user_id, shared_market)
+        else:
+            from exchange import BinanceExchange
+            self.exchange = BinanceExchange(
+                api_key=config.api_key,
+                api_secret=config.api_secret,
+                testnet=config.testnet,
+            )
+
         self.candle_buffers: dict[str, list[dict]] = {}
         self.running = False
         self.status: str = "stopped"
@@ -63,14 +76,17 @@ class BotWorker:
 
         self._tasks: list[asyncio.Task] = []
 
+    def _mode_label(self) -> str:
+        return "paper" if self.is_paper else "live"
+
     async def start(self):
         self.status = "starting"
-        log.info("BotWorker[user=%d] starting...", self.user_id)
+        log.info("BotWorker[user=%d/%s] starting...", self.user_id, self._mode_label())
         await self.exchange.connect()
 
-        enabled = await db.get_state("bot_enabled", True)
+        enabled = await db.get_state("bot_enabled", True, user_id=self.user_id, is_paper=self.is_paper)
         if not enabled:
-            log.info("BotWorker[user=%d] disabled in settings, monitor-only mode", self.user_id)
+            log.info("BotWorker[user=%d/%s] disabled in settings, monitor-only mode", self.user_id, self._mode_label())
 
         await self._load_history()
         await self._crash_recovery()
@@ -78,9 +94,10 @@ class BotWorker:
         self.running = True
         self.status = "running"
         self.started_at = time.time()
-        log.info("BotWorker[user=%d] started — listening for candles", self.user_id)
-        await db.log_event("Bot started", category="system")
-        await alert_bot_started()
+        log.info("BotWorker[user=%d/%s] started — listening for candles", self.user_id, self._mode_label())
+        await db.log_event("Bot started", category="system", user_id=self.user_id, is_paper=self.is_paper)
+        if not self.is_paper:
+            await alert_bot_started()
 
         self._tasks = [
             asyncio.create_task(self._run_kline_stream()),
@@ -95,10 +112,11 @@ class BotWorker:
         for t in self._tasks:
             t.cancel()
         self._tasks.clear()
-        await db.log_event("Bot stopped", category="system")
-        await alert_bot_stopped("shutdown")
+        await db.log_event("Bot stopped", category="system", user_id=self.user_id, is_paper=self.is_paper)
+        if not self.is_paper:
+            await alert_bot_stopped("shutdown")
         await self.exchange.close()
-        log.info("BotWorker[user=%d] stopped", self.user_id)
+        log.info("BotWorker[user=%d/%s] stopped", self.user_id, self._mode_label())
 
     def _get_effective_risk(self) -> float:
         if self.adaptive_active:
@@ -113,8 +131,8 @@ class BotWorker:
                 if not self.adaptive_active:
                     self.adaptive_active = True
                     log.info(
-                        "BotWorker[user=%d] adaptive sizing ACTIVATED after %d consecutive losses",
-                        self.user_id, self.current_streak,
+                        "BotWorker[user=%d/%s] adaptive sizing ACTIVATED after %d consecutive losses",
+                        self.user_id, self._mode_label(), self.current_streak,
                     )
                     asyncio.create_task(self._broadcast({
                         "type": "adaptive_sizing",
@@ -130,8 +148,8 @@ class BotWorker:
                     self.adaptive_active = False
                     self.consecutive_wins = 0
                     log.info(
-                        "BotWorker[user=%d] adaptive sizing DEACTIVATED after %d wins",
-                        self.user_id, self.config.wins_to_recover,
+                        "BotWorker[user=%d/%s] adaptive sizing DEACTIVATED after %d wins",
+                        self.user_id, self._mode_label(), self.config.wins_to_recover,
                     )
                     asyncio.create_task(self._broadcast({
                         "type": "adaptive_sizing",
@@ -155,21 +173,26 @@ class BotWorker:
                 limit=self.config.candle_buffer_size,
             )
             self.candle_buffers[symbol] = candles
-            await db.save_candles(symbol, candles)
+            if not self.is_paper:
+                await db.save_candles(symbol, candles)
             log.info("  %s: loaded %d candles", symbol, len(candles))
 
     async def _crash_recovery(self):
         log.info("Running crash recovery check...")
 
-        open_trade = await db.get_open_trade()
+        open_trade = await db.get_open_trade(self.user_id, self.is_paper)
         if open_trade:
             self._active_trade_id = open_trade.id
             log.info("Found open trade #%d %s %s in DB", open_trade.id, open_trade.symbol, open_trade.direction)
 
             pos = await self.exchange.get_position(open_trade.symbol)
             if pos is None:
-                log.warning("Trade #%d is open in DB but no position on Binance — marking closed", open_trade.id)
-                await db.log_event(f"Orphan trade #{open_trade.id} closed during recovery", level="warn", category="system")
+                log.warning("Trade #%d is open in DB but no position — marking closed", open_trade.id)
+                await db.log_event(
+                    f"Orphan trade #{open_trade.id} closed during recovery",
+                    level="warn", category="system",
+                    user_id=self.user_id, is_paper=self.is_paper,
+                )
                 await db.update_trade(open_trade.id, {
                     "result": "loss",
                     "r_value": -1.0,
@@ -191,16 +214,17 @@ class BotWorker:
                     )
             return
 
-        positions = await self.exchange.get_all_positions()
-        for pos in positions:
-            if pos["symbol"] in self.config.symbols:
-                log.warning(
-                    "Found orphan position on Binance: %s %s qty=%.4f — closing it",
-                    pos["symbol"], pos["side"], pos["quantity"],
-                )
-                close_side = "SELL" if pos["side"] == "long" else "BUY"
-                await self.exchange.place_market_order(pos["symbol"], close_side, pos["quantity"])
-                await self.exchange.cancel_all_orders(pos["symbol"])
+        if not self.is_paper:
+            positions = await self.exchange.get_all_positions()
+            for pos in positions:
+                if pos["symbol"] in self.config.symbols:
+                    log.warning(
+                        "Found orphan position: %s %s qty=%.4f — closing it",
+                        pos["symbol"], pos["side"], pos["quantity"],
+                    )
+                    close_side = "SELL" if pos["side"] == "long" else "BUY"
+                    await self.exchange.place_market_order(pos["symbol"], close_side, pos["quantity"])
+                    await self.exchange.cancel_all_orders(pos["symbol"])
 
         log.info("Crash recovery complete — no open trades")
 
@@ -233,8 +257,8 @@ class BotWorker:
             "volume": float(k["v"]),
         }
 
-        log.info("15m candle closed: %s O=%.2f H=%.2f L=%.2f C=%.2f",
-                 symbol, candle["open"], candle["high"], candle["low"], candle["close"])
+        log.info("[%s] 15m candle closed: %s O=%.2f H=%.2f L=%.2f C=%.2f",
+                 self._mode_label(), symbol, candle["open"], candle["high"], candle["low"], candle["close"])
 
         if symbol not in self.candle_buffers:
             self.candle_buffers[symbol] = []
@@ -242,8 +266,9 @@ class BotWorker:
         if len(self.candle_buffers[symbol]) > self.config.candle_buffer_size:
             self.candle_buffers[symbol] = self.candle_buffers[symbol][-self.config.candle_buffer_size:]
 
-        await db.save_candles(symbol, [candle])
-        await db.trim_candle_buffer(symbol, self.config.candle_buffer_size)
+        if not self.is_paper:
+            await db.save_candles(symbol, [candle])
+            await db.trim_candle_buffer(symbol, self.config.candle_buffer_size)
 
         await self._process_candle(symbol)
 
@@ -251,30 +276,26 @@ class BotWorker:
         now = datetime.now(timezone.utc)
 
         if now.month in self.config.strategy_params["skip_months"]:
-            log.info("Skipping %s — month %d is filtered", symbol, now.month)
             return
 
-        bot_enabled = await db.get_state("bot_enabled", True)
+        bot_enabled = await db.get_state("bot_enabled", True, user_id=self.user_id, is_paper=self.is_paper)
         if not bot_enabled:
-            log.info("Bot disabled — skipping signal check")
             return
 
-        active_symbols = await db.get_state("active_symbols", self.config.symbols)
+        active_symbols = await db.get_state("active_symbols", self.config.symbols, user_id=self.user_id, is_paper=self.is_paper)
         if symbol not in active_symbols:
             return
 
         if self._active_trade_id is not None:
-            log.info("Already in trade #%d — skipping", self._active_trade_id)
             return
 
-        max_trades = await db.get_state("max_trades_per_day", 99)
-        today_count = await db.get_today_trade_count()
+        max_trades = await db.get_state("max_trades_per_day", 99, user_id=self.user_id, is_paper=self.is_paper)
+        today_count = await db.get_today_trade_count(self.user_id, self.is_paper)
         if today_count >= max_trades:
-            log.info("Max trades/day reached (%d/%d) — skipping", today_count, max_trades)
             return
 
-        rr = await db.get_state("rr_ratio", self.config.strategy_params["rrr"])
-        sessions = await db.get_state("active_sessions", self.config.strategy_params["sessions"])
+        rr = await db.get_state("rr_ratio", self.config.strategy_params["rrr"], user_id=self.user_id, is_paper=self.is_paper)
+        sessions = await db.get_state("active_sessions", self.config.strategy_params["sessions"], user_id=self.user_id, is_paper=self.is_paper)
         params = {**self.config.strategy_params, "rrr": rr, "sessions": sessions, "acc_range_mode": ACC_RANGE_MODE.get(symbol, "wick")}
 
         candles = self.candle_buffers.get(symbol, [])
@@ -283,8 +304,8 @@ class BotWorker:
         if signal is None:
             return
 
-        log.info("SIGNAL: %s %s entry=%.2f sl=%.2f tp=%.2f",
-                 signal["direction"], symbol, signal["entry_price"], signal["sl"], signal["tp"])
+        log.info("[%s] SIGNAL: %s %s entry=%.2f sl=%.2f tp=%.2f",
+                 self._mode_label(), signal["direction"], symbol, signal["entry_price"], signal["sl"], signal["tp"])
 
         await self._execute_trade(symbol, signal)
 
@@ -292,8 +313,8 @@ class BotWorker:
 
     async def _execute_trade(self, symbol: str, signal: dict):
         try:
-            risk_mode = await db.get_state("risk_mode", "static")
-            risk_value = await db.get_state("risk_value", 10.0)
+            risk_mode = await db.get_state("risk_mode", "static", user_id=self.user_id, is_paper=self.is_paper)
+            risk_value = await db.get_state("risk_value", 10.0, user_id=self.user_id, is_paper=self.is_paper)
 
             effective_risk = self._get_effective_risk()
 
@@ -331,6 +352,8 @@ class BotWorker:
             entry_comm = fill_price * fill_qty * self.config.commission_pct
 
             trade = await db.create_trade({
+                "user_id": self.user_id,
+                "is_paper": self.is_paper,
                 "symbol": symbol,
                 "direction": signal["direction"],
                 "entry_time": datetime.now(timezone.utc),
@@ -365,12 +388,15 @@ class BotWorker:
                 f"Opened {signal['direction'].upper()} {symbol} @ ${fill_price:.2f}",
                 category="trade",
                 details=f"SL: ${signal['sl']:.2f} | TP: ${signal['tp']:.2f} | Qty: {fill_qty}",
+                user_id=self.user_id, is_paper=self.is_paper,
             )
-            await alert_entry(symbol, signal["direction"], fill_price, signal["sl"], signal["tp"], fill_qty, balance)
+            if not self.is_paper:
+                await alert_entry(symbol, signal["direction"], fill_price, signal["sl"], signal["tp"], fill_qty, balance)
 
         except Exception as e:
             log.error("Failed to execute trade: %s", e, exc_info=True)
-            await db.log_event(f"Trade execution failed: {e}", level="error", category="trade")
+            await db.log_event(f"Trade execution failed: {e}", level="error", category="trade",
+                               user_id=self.user_id, is_paper=self.is_paper)
 
     async def _place_sl_tp(self, symbol: str, direction: str, quantity: float, sl: float, tp: float, trade_id: int):
         close_side = "SELL" if direction == "long" else "BUY"
@@ -410,13 +436,14 @@ class BotWorker:
         if order_type not in ("STOP_MARKET", "TAKE_PROFIT_MARKET"):
             return
 
-        trade = await db.get_open_trade()
+        trade = await db.get_open_trade(self.user_id, self.is_paper)
         if trade is None or trade.symbol != symbol:
             return
 
         is_sl = order_type == "STOP_MARKET"
         result = "loss" if is_sl else "win"
-        rr = await db.get_state("rr_ratio", self.config.strategy_params["rrr"])
+        rr = await db.get_state("rr_ratio", self.config.strategy_params["rrr"],
+                                user_id=self.user_id, is_paper=self.is_paper)
         r_value = -1.0 if is_sl else rr
 
         exit_comm = fill_price * trade.quantity * self.config.commission_pct
@@ -445,13 +472,14 @@ class BotWorker:
 
         self._on_trade_result(result == "win")
 
-        log.info("Trade #%d closed: %s (%.2f USDT)", trade.id, result, pnl)
+        log.info("[%s] Trade #%d closed: %s (%.2f USDT)", self._mode_label(), trade.id, result, pnl)
 
         await db.log_event(
             f"Closed {trade.direction.upper()} {symbol}: {result.upper()} ${pnl:+.2f}",
             level="info" if result == "win" else "warn",
             category="trade",
             details=f"Entry: ${trade.entry_price:.2f} → Exit: ${fill_price:.2f} | {r_value:+.1f}R",
+            user_id=self.user_id, is_paper=self.is_paper,
         )
 
         await self._broadcast({
@@ -466,7 +494,8 @@ class BotWorker:
         })
 
         balance = await self.exchange.get_balance()
-        await alert_exit(symbol, trade.direction, result, trade.entry_price, fill_price, pnl, r_value, balance)
+        if not self.is_paper:
+            await alert_exit(symbol, trade.direction, result, trade.entry_price, fill_price, pnl, r_value, balance)
 
     # --- Fallback Position Poll ---
 
@@ -477,7 +506,7 @@ class BotWorker:
                 if self._active_trade_id is None:
                     continue
 
-                trade = await db.get_open_trade()
+                trade = await db.get_open_trade(self.user_id, self.is_paper)
                 if trade is None:
                     self._active_trade_id = None
                     continue
@@ -496,7 +525,8 @@ class BotWorker:
                         is_sl = last_price >= trade.sl_price
 
                     result = "loss" if is_sl else "win"
-                    rr = await db.get_state("rr_ratio", self.config.strategy_params["rrr"])
+                    rr = await db.get_state("rr_ratio", self.config.strategy_params["rrr"],
+                                            user_id=self.user_id, is_paper=self.is_paper)
                     r_value = -1.0 if is_sl else rr
                     exit_price = trade.sl_price if is_sl else trade.tp_price
 
@@ -536,7 +566,8 @@ class BotWorker:
                     })
 
                     balance = await self.exchange.get_balance()
-                    await alert_exit(trade.symbol, trade.direction, result, trade.entry_price, exit_price, pnl, r_value, balance)
+                    if not self.is_paper:
+                        await alert_exit(trade.symbol, trade.direction, result, trade.entry_price, exit_price, pnl, r_value, balance)
 
             except Exception as e:
                 log.error("Position poll error: %s", e)

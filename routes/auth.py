@@ -5,9 +5,10 @@ from fastapi import APIRouter, Request, Depends, Form
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from auth import require_auth, encrypt
+from app.auth import require_auth, encrypt, decrypt
+from app.bot import make_broadcast_fn, build_user_config
 from config import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
-import database as db
+import app.db as db
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -55,7 +56,53 @@ async def google_callback(request: Request):
     request.session["user_id"] = user.id
     log.info("User logged in: %s (%s)", user.email, user.id)
 
+    # Re-read user from DB to ensure we have latest state
+    fresh_user = await db.get_user(user.id)
+    if fresh_user:
+        user = fresh_user
+
+    if user.is_rejected:
+        from sqlalchemy import select, update
+        from app.db.models import RejectionLog
+        from app.db.models import User as UserModel
+        async with db.get_session() as session:
+            latest = await session.execute(
+                select(RejectionLog)
+                .where(RejectionLog.user_id == user.id)
+                .order_by(RejectionLog.rejected_at.desc())
+                .limit(1)
+            )
+            latest_entry = latest.scalar_one_or_none()
+            if latest_entry and latest_entry.status == "allowed":
+                await session.execute(
+                    update(UserModel).where(UserModel.id == user.id)
+                    .values(is_rejected=False, is_approved=False)
+                )
+                await session.commit()
+                user.is_rejected = False
+                log.info("User %d (%s) re-registered after rejection allow", user.id, user.email)
+            else:
+                return RedirectResponse("/rejected", status_code=303)
+
+    if user.is_approved:
+        manager = request.app.state.bot_manager
+        if manager.get_worker(user.id, "paper") is None:
+            from app.bot import build_paper_config, make_broadcast_fn
+            shared_market = request.app.state.shared_market
+            paper_config = build_paper_config()
+            try:
+                await manager.start_bot(user.id, "paper", paper_config,
+                                        broadcast_fn=make_broadcast_fn(user.id, "paper"),
+                                        shared_market=shared_market)
+            except Exception as e:
+                log.error("Failed to start paper bot for user %d: %s", user.id, e)
+
     cfg = await db.get_user_config(user.id)
+    if cfg and cfg.binance_api_key_enc:
+        request.session["trading_mode"] = "live"
+    else:
+        request.session["trading_mode"] = "paper"
+
     if not cfg or not cfg.binance_api_key_enc:
         return RedirectResponse("/setup", status_code=303)
 
@@ -99,13 +146,34 @@ async def save_setup(
     )
 
     manager = request.app.state.bot_manager
-    from auth import decrypt
-    from main import _build_user_config
-    config = _build_user_config(api_key.strip(), api_secret.strip(), testnet == "on")
+    config = build_user_config(api_key.strip(), api_secret.strip(), testnet == "on")
 
     if manager.get_worker(user.id) is None:
-        from bot import make_broadcast_fn
         await manager.start_bot(user.id, config, broadcast_fn=make_broadcast_fn(user.id))
 
     log.info("User %d configured API keys", user.id)
     return RedirectResponse("/?setup=ok", status_code=303)
+
+
+@router.get("/pending")
+async def pending_page(request: Request):
+    from app.auth import get_current_user
+    user = await get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    if user.is_rejected:
+        return RedirectResponse("/rejected", status_code=303)
+    if user.is_approved:
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse(request, "pending.html", {"user": user})
+
+
+@router.get("/rejected")
+async def rejected_page(request: Request):
+    from app.auth import get_current_user
+    user = await get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    if not user.is_rejected:
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse(request, "rejected.html", {"user": user})

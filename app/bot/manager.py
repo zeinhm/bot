@@ -2,46 +2,61 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import TYPE_CHECKING
 
 from app.bot.worker import BotWorker, BotConfig
 
+if TYPE_CHECKING:
+    from app.bot.shared_market import SharedMarketData
+
 log = logging.getLogger(__name__)
+
+WorkerKey = tuple[int, str]
 
 
 class BotManager:
     def __init__(self):
-        self.workers: dict[int, BotWorker] = {}
-        self._tasks: dict[int, asyncio.Task] = {}
+        self.workers: dict[WorkerKey, BotWorker] = {}
+        self._tasks: dict[WorkerKey, asyncio.Task] = {}
 
-    async def start_bot(self, user_id: int, config: BotConfig, broadcast_fn=None):
-        if user_id in self.workers and self.workers[user_id].running:
-            raise RuntimeError(f"Bot already running for user {user_id}")
+    async def start_bot(
+        self,
+        user_id: int,
+        mode: str,
+        config: BotConfig,
+        broadcast_fn=None,
+        shared_market: SharedMarketData | None = None,
+    ):
+        key = (user_id, mode)
+        if key in self.workers and self.workers[key].running:
+            raise RuntimeError(f"Bot already running for user {user_id} mode {mode}")
 
-        worker = BotWorker(user_id, config, broadcast_fn=broadcast_fn)
-        self.workers[user_id] = worker
+        worker = BotWorker(user_id, config, broadcast_fn=broadcast_fn, shared_market=shared_market)
+        self.workers[key] = worker
         task = asyncio.create_task(worker.start())
-        task.add_done_callback(lambda t: self._on_worker_done(user_id, t))
-        self._tasks[user_id] = task
-        log.info("BotManager: started bot for user %d", user_id)
+        task.add_done_callback(lambda t: self._on_worker_done(key, t))
+        self._tasks[key] = task
+        log.info("BotManager: started %s bot for user %d", mode, user_id)
 
-    def _on_worker_done(self, user_id: int, task: asyncio.Task):
+    def _on_worker_done(self, key: WorkerKey, task: asyncio.Task):
         if task.cancelled():
             return
         exc = task.exception()
         if exc:
-            worker = self.workers.get(user_id)
+            worker = self.workers.get(key)
             if worker:
                 worker.status = "error"
-            log.error("BotManager: worker for user %d crashed: %s", user_id, exc)
+            log.error("BotManager: worker %s crashed: %s", key, exc)
 
-    async def stop_bot(self, user_id: int):
-        if user_id not in self.workers:
-            raise RuntimeError(f"No bot running for user {user_id}")
+    async def stop_bot(self, user_id: int, mode: str):
+        key = (user_id, mode)
+        if key not in self.workers:
+            raise RuntimeError(f"No bot running for user {user_id} mode {mode}")
 
-        worker = self.workers[user_id]
+        worker = self.workers[key]
         await worker.stop()
 
-        task = self._tasks.pop(user_id, None)
+        task = self._tasks.pop(key, None)
         if task:
             task.cancel()
             try:
@@ -49,17 +64,20 @@ class BotManager:
             except asyncio.CancelledError:
                 pass
 
-        del self.workers[user_id]
-        log.info("BotManager: stopped bot for user %d", user_id)
+        del self.workers[key]
+        log.info("BotManager: stopped %s bot for user %d", mode, user_id)
 
-    def get_worker(self, user_id: int) -> BotWorker | None:
-        return self.workers.get(user_id)
+    def get_worker(self, user_id: int, mode: str = "live") -> BotWorker | None:
+        return self.workers.get((user_id, mode))
 
-    def get_status(self, user_id: int) -> str:
-        worker = self.workers.get(user_id)
+    def get_any_worker(self, user_id: int) -> BotWorker | None:
+        return self.workers.get((user_id, "live")) or self.workers.get((user_id, "paper"))
+
+    def get_status(self, user_id: int, mode: str = "live") -> str:
+        worker = self.workers.get((user_id, mode))
         if worker is None:
             return "stopped"
         return worker.status
 
-    def get_all_statuses(self) -> dict[int, bool]:
-        return {uid: w.running for uid, w in self.workers.items()}
+    def get_all_statuses(self) -> dict[WorkerKey, bool]:
+        return {key: w.running for key, w in self.workers.items()}

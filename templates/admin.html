@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+{% block title_suffix %} — Admin{% endblock %}
+
+{% block head %}
+<style>
+.admin-tabs { display: flex; gap: 4px; margin-bottom: 14px; }
+.admin-tabs button {
+    background: transparent; border: 1px solid var(--border); color: var(--text-2);
+    font-family: var(--sans); font-size: 12.5px; font-weight: 600; cursor: pointer;
+    padding: 7px 14px; border-radius: 999px; display: inline-flex; align-items: center; gap: 7px;
+}
+.admin-tabs button.active { background: var(--green-dim); border-color: var(--green-line); color: var(--green); }
+.admin-tabs button .cnt {
+    font-family: var(--mono); font-size: 10.5px; background: rgba(255,255,255,.07);
+    padding: 1px 6px; border-radius: 999px; color: var(--text-2);
+}
+.admin-tabs button.active .cnt { background: rgba(0,200,150,.18); color: var(--green); }
+
+.actions-cell { position: relative; }
+.actions-btn {
+    background: transparent; border: 1px solid var(--border); color: var(--muted);
+    width: 30px; height: 30px; border-radius: var(--radius-sm); cursor: pointer;
+    display: grid; place-items: center; transition: all .12s;
+}
+.actions-btn:hover { background: #1b222c; border-color: var(--border-bri); color: var(--text); }
+
+.actions-drop {
+    display: none; position: absolute; right: 0; top: 100%; margin-top: 4px; z-index: 50;
+    background: #161b22; border: 1px solid var(--border-bri); border-radius: var(--radius);
+    box-shadow: 0 12px 36px rgba(0,0,0,.55); min-width: 160px; padding: 4px;
+}
+.actions-drop.open { display: block; }
+.actions-drop button {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    background: transparent; border: none; color: var(--text-2);
+    font-family: var(--sans); font-size: 12px; font-weight: 500;
+    padding: 8px 10px; border-radius: 4px; cursor: pointer; text-align: left;
+}
+.actions-drop button:hover { background: rgba(255,255,255,.05); color: var(--text); }
+.actions-drop button svg { width: 14px; height: 14px; flex: none; }
+.actions-drop .sep { height: 1px; background: var(--border); margin: 4px 0; }
+
+tr.resolving { opacity: .45; transition: opacity .3s; pointer-events: none; }
+
+.gavatar {
+    width: 32px; height: 32px; border-radius: 50%; flex: none;
+    display: grid; place-items: center; font-size: 12px; font-weight: 600; color: #fff;
+}
+
+@media (max-width: 720px) {
+    .admin-hide-sm { display: none !important; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-narrow">
+    <div class="page-head">
+        <div>
+            <div class="vcenter gap8" style="margin-bottom:4px">
+                <h1 class="page-title">Access Requests</h1>
+                <span class="pill amber" style="gap:5px">
+                    <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    Admin
+                </span>
+            </div>
+            <p class="page-sub">Approve or reject users who have signed in and are awaiting access.</p>
+        </div>
+    </div>
+
+    <div class="stat-row" style="margin-bottom:16px">
+        <div class="stat">
+            <div class="lbl">Awaiting Review</div>
+            <div class="val amber">{{ pending_users|length }}</div>
+            <div class="sub">needs action</div>
+        </div>
+        <div class="stat">
+            <div class="lbl">Approved</div>
+            <div class="val pos">{{ approved_users|length }}</div>
+            <div class="sub">active users</div>
+        </div>
+        <div class="stat">
+            <div class="lbl">Total Users</div>
+            <div class="val">{{ total_users }}</div>
+            <div class="sub">all-time</div>
+        </div>
+        <div class="stat">
+            <div class="lbl">Admins</div>
+            <div class="val">{{ approved_users|selectattr('is_admin')|list|length }}</div>
+            <div class="sub">with full access</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="admin-tabs">
+            <button class="active" id="tab-pending" onclick="switchTab('pending')">
+                Pending <span class="cnt" id="cnt-pending">{{ pending_users|length }}</span>
+            </button>
+            <button id="tab-approved" onclick="switchTab('approved')">
+                Approved <span class="cnt" id="cnt-approved">{{ approved_users|length }}</span>
+            </button>
+            {% if rejection_log %}
+            <button id="tab-rejected" onclick="switchTab('rejected')">
+                Rejected <span class="cnt" id="cnt-rejected">{{ rejection_log|length }}</span>
+            </button>
+            {% endif %}
+        </div>
+
+        <!-- Pending Table -->
+        <table class="tbl" id="table-pending">
+            <thead><tr>
+                <th>User</th>
+                <th class="admin-hide-sm">Email</th>
+                <th class="admin-hide-sm">Signed up</th>
+                <th class="num" style="width:50px"></th>
+            </tr></thead>
+            <tbody>
+                {% for u in pending_users %}
+                <tr id="row-{{ u.id }}">
+                    <td>
+                        <div class="vcenter gap12">
+                            {% if u.avatar_url %}
+                            <img src="{{ u.avatar_url }}" style="width:32px;height:32px;border-radius:50%;flex:none">
+                            {% else %}
+                            <span class="gavatar" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8)">{{ u.name[:2]|upper if u.name else '?' }}</span>
+                            {% endif %}
+                            <div>
+                                <div style="font-weight:600">{{ u.name or u.email }}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="mono muted admin-hide-sm" style="font-size:12px">{{ u.email }}</td>
+                    <td class="admin-hide-sm">
+                        {% if u.created_at %}
+                        <span class="mono local-time" style="font-size:12px" data-utc="{{ u.created_at.strftime('%Y-%m-%dT%H:%M:%SZ') }}" data-fmt="full">{{ u.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="num actions-cell">
+                        <button class="actions-btn" onclick="toggleDrop(event, {{ u.id }})">
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+                        </button>
+                        <div class="actions-drop" id="drop-{{ u.id }}">
+                            <button onclick="doAction({{ u.id }}, 'approve')">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                                Approve
+                            </button>
+                            <button onclick="doAction({{ u.id }}, 'reject')">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                Reject
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not pending_users %}
+                <tr><td colspan="4" style="text-align:center;padding:34px 0;color:var(--muted)">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:0 auto 8px"><path d="M20 6 9 17l-5-5"/></svg>
+                    All caught up — no pending requests.
+                </td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+
+        <!-- Approved Table -->
+        <table class="tbl" id="table-approved" style="display:none">
+            <thead><tr>
+                <th>User</th>
+                <th class="admin-hide-sm">Email</th>
+                <th class="admin-hide-sm">Last login</th>
+                <th class="num">Status</th>
+                <th class="num" style="width:50px"></th>
+            </tr></thead>
+            <tbody>
+                {% for u in approved_users %}
+                <tr id="row-{{ u.id }}">
+                    <td>
+                        <div class="vcenter gap12">
+                            {% if u.avatar_url %}
+                            <img src="{{ u.avatar_url }}" style="width:32px;height:32px;border-radius:50%;flex:none">
+                            {% else %}
+                            <span class="gavatar" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8)">{{ u.name[:2]|upper if u.name else '?' }}</span>
+                            {% endif %}
+                            <div>
+                                <div style="font-weight:600">{{ u.name or u.email }}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="mono muted admin-hide-sm" style="font-size:12px">{{ u.email }}</td>
+                    <td class="admin-hide-sm">
+                        {% if u.last_login %}
+                        <span class="mono local-time" style="font-size:12px" data-utc="{{ u.last_login.strftime('%Y-%m-%dT%H:%M:%SZ') }}" data-fmt="full">{{ u.last_login.strftime('%Y-%m-%d %H:%M') }}</span>
+                        {% else %}
+                        <span class="muted" style="font-size:12px">Never</span>
+                        {% endif %}
+                    </td>
+                    <td class="num">
+                        {% if u.is_admin %}
+                        <span class="pill amber" style="gap:5px">Admin</span>
+                        {% else %}
+                        <span class="pill green" style="gap:5px"><span class="led green"></span> Active</span>
+                        {% endif %}
+                    </td>
+                    <td class="num actions-cell">
+                        {% if u.id != user.id %}
+                        <button class="actions-btn" onclick="toggleDrop(event, {{ u.id }})">
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+                        </button>
+                        <div class="actions-drop" id="drop-{{ u.id }}">
+                            <button onclick="doAction({{ u.id }}, 'toggle-admin')">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                                {{ 'Remove admin' if u.is_admin else 'Make admin' }}
+                            </button>
+                            <div class="sep"></div>
+                            <button onclick="doAction({{ u.id }}, 'disable')">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                                Disable access
+                            </button>
+                        </div>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Rejection History -->
+        {% if rejection_log %}
+        <table class="tbl" id="table-rejected" style="display:none">
+            <thead><tr>
+                <th>User</th>
+                <th class="admin-hide-sm">Email</th>
+                <th class="admin-hide-sm">Rejected</th>
+                <th class="num">Status</th>
+                <th class="num" style="width:50px"></th>
+            </tr></thead>
+            <tbody>
+                {% for r in rejection_log %}
+                <tr id="row-rl-{{ r.id }}">
+                    <td>
+                        <div class="vcenter gap12">
+                            {% if r.avatar_url %}
+                            <img src="{{ r.avatar_url }}" style="width:32px;height:32px;border-radius:50%;flex:none">
+                            {% else %}
+                            <span class="gavatar" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8)">{{ r.name[:2]|upper if r.name else '?' }}</span>
+                            {% endif %}
+                            <div>
+                                <div style="font-weight:600">{{ r.name or r.email }}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="mono muted admin-hide-sm" style="font-size:12px">{{ r.email }}</td>
+                    <td class="admin-hide-sm">
+                        {% if r.rejected_at %}
+                        <span class="mono local-time" style="font-size:12px" data-utc="{{ r.rejected_at.strftime('%Y-%m-%dT%H:%M:%SZ') }}" data-fmt="full">{{ r.rejected_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="num">
+                        {% if r.status == 'rejected' %}
+                        <span class="pill red" style="gap:5px"><span class="led red"></span> Rejected</span>
+                        {% else %}
+                        <span class="pill gray" style="gap:5px">Can re-register</span>
+                        {% endif %}
+                    </td>
+                    <td class="num actions-cell">
+                        {% if r.status == 'rejected' %}
+                        <button class="actions-btn" onclick="toggleDrop(event, 'rl-{{ r.id }}')">
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+                        </button>
+                        <div class="actions-drop" id="drop-rl-{{ r.id }}">
+                            <button onclick="doAction({{ r.id }}, 'allow-reregister')">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.5 9A9 9 0 0 0 5.6 5.6L1 10m22 4l-4.6 4.4A9 9 0 0 1 3.5 15"/></svg>
+                                Allow re-register
+                            </button>
+                        </div>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function switchTab(tab) {
+    document.getElementById('tab-pending').className = tab === 'pending' ? 'active' : '';
+    document.getElementById('tab-approved').className = tab === 'approved' ? 'active' : '';
+    document.getElementById('table-pending').style.display = tab === 'pending' ? '' : 'none';
+    document.getElementById('table-approved').style.display = tab === 'approved' ? '' : 'none';
+    var rejTab = document.getElementById('tab-rejected');
+    var rejTable = document.getElementById('table-rejected');
+    if (rejTab) rejTab.className = tab === 'rejected' ? 'active' : '';
+    if (rejTable) rejTable.style.display = tab === 'rejected' ? '' : 'none';
+}
+
+function toggleDrop(e, id) {
+    e.stopPropagation();
+    var dropId = 'drop-' + id;
+    document.querySelectorAll('.actions-drop.open').forEach(function(el) {
+        if (el.id !== dropId) el.classList.remove('open');
+    });
+    document.getElementById(dropId).classList.toggle('open');
+}
+
+document.addEventListener('click', function() {
+    document.querySelectorAll('.actions-drop.open').forEach(function(el) {
+        el.classList.remove('open');
+    });
+});
+
+function doAction(id, action) {
+    document.querySelectorAll('.actions-drop.open').forEach(function(el) { el.classList.remove('open'); });
+
+    if (action === 'reject' && !confirm('Reject this user? They will see an access declined page.')) return;
+    if (action === 'disable' && !confirm('Disable access for this user? Their bot will be stopped.')) return;
+
+    var row = document.getElementById('row-' + id) || document.getElementById('row-rl-' + id);
+    if (row) row.classList.add('resolving');
+
+    fetch('/admin/' + action + '/' + id, { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.ok) {
+                setTimeout(function() { window.location.reload(); }, 300);
+            } else {
+                alert(data.error || 'Action failed');
+                if (row) row.classList.remove('resolving');
+            }
+        })
+        .catch(function() {
+            alert('Request failed');
+            if (row) row.classList.remove('resolving');
+        });
+}
+</script>
+{% endblock %}

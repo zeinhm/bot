@@ -5,11 +5,11 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
 
-from auth import require_auth
-from bot import get_bot_for_user
+from app.auth import require_auth, get_trading_mode
+from app.bot import get_bot_for_user
 from config import SYMBOLS, BINANCE_TESTNET, LEVERAGE
-import database as db
-from template_context import get_global_context
+import app.db as db
+from app.core.context import get_global_context
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -18,10 +18,12 @@ templates = Jinja2Templates(directory="templates")
 @router.get("/")
 async def dashboard(request: Request):
     user = await require_auth(request)
-    ctx = await get_global_context(user.id)
+    mode = get_trading_mode(request)
+    is_paper = (mode == "paper")
+    ctx = await get_global_context(user.id, mode)
 
-    recent_trades = await db.get_recent_trades(10)
-    all_trades = await db.get_all_trades()
+    recent_trades = await db.get_recent_trades(10, user_id=user.id, is_paper=is_paper)
+    all_trades = await db.get_all_trades(user.id, is_paper)
     closed = [t for t in all_trades if t.result in ("win", "loss")]
     wins = sum(1 for t in closed if t.result == "win")
     losses = len(closed) - wins
@@ -57,8 +59,8 @@ async def dashboard(request: Request):
             eq_map[ts] = round(equity, 2)
     equity_data = [{"time": k, "value": v} for k, v in sorted(eq_map.items())]
 
-    risk_mode = await db.get_state("risk_mode", "static")
-    risk_value = await db.get_state("risk_value", 10.0)
+    risk_mode = await db.get_state("risk_mode", "static", user_id=user.id, is_paper=is_paper)
+    risk_value = await db.get_state("risk_value", 10.0, user_id=user.id, is_paper=is_paper)
 
     cfg = await db.get_user_config(user.id)
     testnet = cfg.binance_testnet if cfg else BINANCE_TESTNET
@@ -94,7 +96,10 @@ async def live_candles(
     endTime: int = Query(None),
 ):
     user = await require_auth(request)
-    bot = get_bot_for_user(user.id)
+    mode = get_trading_mode(request)
+    bot = get_bot_for_user(user.id, mode)
+    if not bot:
+        bot = get_bot_for_user(user.id, "live") or get_bot_for_user(user.id, "paper")
     if bot and bot.exchange.market_client:
         try:
             kwargs = dict(symbol=symbol, interval=interval, limit=limit)

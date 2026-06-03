@@ -11,3 +11,5 @@ authlib
 httpx
 itsdangerous
 cryptography
+alembic
+psycopg2-binary

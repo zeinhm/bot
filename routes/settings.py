@@ -5,11 +5,11 @@ from fastapi import APIRouter, Request, Form
 from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
-from auth import require_auth, encrypt, decrypt
-from bot import get_bot_for_user
+from app.auth import require_auth, encrypt, decrypt, get_trading_mode
+from app.bot import get_bot_for_user, make_broadcast_fn, build_user_config
 from config import SYMBOLS, STRATEGY_PARAMS, LEVERAGE
-import database as db
-from template_context import get_global_context
+import app.db as db
+from app.core.context import get_global_context
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -21,14 +21,16 @@ ALL_SESSIONS = ["sydney", "tokyo", "london", "ny"]
 @router.get("/settings")
 async def settings_page(request: Request):
     user = await require_auth(request)
+    mode = get_trading_mode(request)
+    is_paper = (mode == "paper")
 
-    bot_enabled = await db.get_state("bot_enabled", True)
-    risk_mode = await db.get_state("risk_mode", "static")
-    risk_value = await db.get_state("risk_value", 10.0)
-    rr_ratio = await db.get_state("rr_ratio", STRATEGY_PARAMS["rrr"])
-    max_trades = await db.get_state("max_trades_per_day", 99)
-    active_symbols = await db.get_state("active_symbols", SYMBOLS)
-    active_sessions = await db.get_state("active_sessions", STRATEGY_PARAMS["sessions"])
+    bot_enabled = await db.get_state("bot_enabled", True, user_id=user.id, is_paper=is_paper)
+    risk_mode = await db.get_state("risk_mode", "static", user_id=user.id, is_paper=is_paper)
+    risk_value = await db.get_state("risk_value", 10.0, user_id=user.id, is_paper=is_paper)
+    rr_ratio = await db.get_state("rr_ratio", STRATEGY_PARAMS["rrr"], user_id=user.id, is_paper=is_paper)
+    max_trades = await db.get_state("max_trades_per_day", 99, user_id=user.id, is_paper=is_paper)
+    active_symbols = await db.get_state("active_symbols", SYMBOLS, user_id=user.id, is_paper=is_paper)
+    active_sessions = await db.get_state("active_sessions", STRATEGY_PARAMS["sessions"], user_id=user.id, is_paper=is_paper)
 
     cfg = await db.get_user_config(user.id)
     api_key_set = cfg is not None and cfg.binance_api_key_enc is not None
@@ -38,7 +40,7 @@ async def settings_page(request: Request):
     keys_saved = request.query_params.get("keys_saved")
     error = request.query_params.get("error")
 
-    ctx = await get_global_context(user.id)
+    ctx = await get_global_context(user.id, mode)
     ctx.update({
         "user": user,
         "bot_enabled": bot_enabled,
@@ -70,7 +72,9 @@ async def save_settings(
     rr_ratio: float = Form(2.0),
     max_trades: int = Form(99),
 ):
-    await require_auth(request)
+    user = await require_auth(request)
+    mode = get_trading_mode(request)
+    is_paper = (mode == "paper")
     form = await request.form()
 
     errors = []
@@ -102,13 +106,13 @@ async def save_settings(
     if errors:
         return RedirectResponse(f"/settings?error={errors[0]}", status_code=303)
 
-    await db.set_state("bot_enabled", bot_enabled == "on")
-    await db.set_state("risk_mode", risk_mode)
-    await db.set_state("risk_value", risk_value)
-    await db.set_state("rr_ratio", rr_ratio)
-    await db.set_state("max_trades_per_day", max_trades)
-    await db.set_state("active_symbols", symbols)
-    await db.set_state("active_sessions", sessions)
+    await db.set_state("bot_enabled", bot_enabled == "on", user_id=user.id, is_paper=is_paper)
+    await db.set_state("risk_mode", risk_mode, user_id=user.id, is_paper=is_paper)
+    await db.set_state("risk_value", risk_value, user_id=user.id, is_paper=is_paper)
+    await db.set_state("rr_ratio", rr_ratio, user_id=user.id, is_paper=is_paper)
+    await db.set_state("max_trades_per_day", max_trades, user_id=user.id, is_paper=is_paper)
+    await db.set_state("active_symbols", symbols, user_id=user.id, is_paper=is_paper)
+    await db.set_state("active_sessions", sessions, user_id=user.id, is_paper=is_paper)
 
     return RedirectResponse("/settings?saved=1", status_code=303)
 
@@ -133,17 +137,15 @@ async def save_api_keys(
     )
 
     manager = request.app.state.bot_manager
-    worker = manager.get_worker(user.id)
+    worker = manager.get_worker(user.id, "live")
     if worker:
         try:
-            await manager.stop_bot(user.id)
+            await manager.stop_bot(user.id, "live")
         except Exception:
             pass
 
-    from main import _build_user_config
-    from bot import make_broadcast_fn
-    config = _build_user_config(api_key.strip(), api_secret.strip(), testnet == "on")
-    await manager.start_bot(user.id, config, broadcast_fn=make_broadcast_fn(user.id))
+    config = build_user_config(api_key.strip(), api_secret.strip(), testnet == "on")
+    await manager.start_bot(user.id, "live", config, broadcast_fn=make_broadcast_fn(user.id, "live"))
 
     log.info("User %d updated API keys", user.id)
     return RedirectResponse("/settings?keys_saved=1", status_code=303)
@@ -152,7 +154,9 @@ async def save_api_keys(
 @router.post("/api/emergency-close")
 async def emergency_close(request: Request):
     user = await require_auth(request)
-    bot = get_bot_for_user(user.id)
+    mode = get_trading_mode(request)
+    is_paper = (mode == "paper")
+    bot = get_bot_for_user(user.id, mode)
     if not bot or not bot.exchange.client:
         return JSONResponse({"ok": False, "error": "Bot not connected to exchange"}, status_code=503)
 
@@ -170,7 +174,7 @@ async def emergency_close(request: Request):
             except Exception as e:
                 errors.append(f"{pos['symbol']}: {e}")
 
-        open_trade = await db.get_open_trade()
+        open_trade = await db.get_open_trade(user.id, is_paper)
         if open_trade:
             await db.update_trade(open_trade.id, {
                 "result": "loss",
@@ -180,8 +184,8 @@ async def emergency_close(request: Request):
 
         await db.log_event(
             f"Emergency close: {', '.join(closed) or 'no positions'}",
-            level="warn",
-            category="trade",
+            level="warn", category="trade",
+            user_id=user.id, is_paper=is_paper,
         )
     except Exception as e:
         log.exception("Emergency close failed")

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ZENITH{% block title_suffix %}{% endblock %}</title>
-    <link rel="stylesheet" href="/static/css/app.css?v=3">
+    <link rel="stylesheet" href="/static/css/app.css?v=7">
     {% block head %}{% endblock %}
 </head>
 <body>
@@ -67,6 +67,14 @@
         <div class="rail-spacer"></div>
 
         <div class="rail-group">
+            {% if user and user.is_admin %}
+            <!-- Admin -->
+            <a href="/admin" class="rail-btn {% if page == 'admin' %}active{% endif %}" data-tip="Admin">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+            </a>
+            {% endif %}
             <!-- Settings -->
             <a href="/settings" class="rail-btn {% if page == 'settings' %}active{% endif %}" data-tip="Settings">
                 <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -91,8 +99,15 @@
             </div>
 
             <div class="topbar-right">
+                {% if is_paper %}
+                <span class="pill amber" style="padding:4px 10px;gap:5px;font-size:10px">
+                    <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+                    DEMO
+                </span>
+                {% endif %}
+
                 <div style="text-align:right">
-                    <div class="balance-lbl">Balance</div>
+                    <div class="balance-lbl">{% if is_paper %}Demo balance{% else %}Balance{% endif %}</div>
                     <div class="mono" style="font-size:13px;font-weight:600">
                         <span id="usdt-balance">{{ "$%.2f"|format(balance) if balance is defined else '—' }}</span>
                         <span class="muted" style="font-size:10px">USDT</span>
@@ -110,11 +125,51 @@
                 <span id="ws-status-dot" class="led gray" title="WebSocket"></span>
 
                 {% if user %}
-                <div class="user-menu" style="display:flex;align-items:center;gap:8px;margin-left:8px;padding-left:8px;border-left:1px solid var(--border)">
-                    {% if user.avatar_url %}
-                    <img src="{{ user.avatar_url }}" alt="" style="width:26px;height:26px;border-radius:50%">
-                    {% endif %}
-                    <a href="/logout" class="link muted" style="font-size:11.5px;white-space:nowrap">Sign out</a>
+                <div class="profile-menu" style="position:relative;margin-left:8px;padding-left:8px;border-left:1px solid var(--border)">
+                    <button class="profile-btn" onclick="toggleProfileMenu(event)">
+                        {% if user.avatar_url %}
+                        <img src="{{ user.avatar_url }}" alt="" style="width:28px;height:28px;border-radius:50%">
+                        {% else %}
+                        <div style="width:28px;height:28px;border-radius:50%;background:var(--card-2);display:grid;place-items:center;font-size:12px;font-weight:600;color:var(--muted)">{{ user.name[:1]|upper if user.name else '?' }}</div>
+                        {% endif %}
+                        {% if is_paper %}<span class="profile-demo-dot"></span>{% endif %}
+                    </button>
+                    <div class="profile-drop" id="profile-dropdown" style="display:none;position:absolute;right:0;top:calc(100% + 8px);z-index:60;background:#131820;border:1px solid var(--border-bri);border-radius:10px;box-shadow:0 16px 48px rgba(0,0,0,.6);min-width:240px;padding:6px" onclick="event.stopPropagation()">
+                        <div class="profile-drop-header">
+                            <div class="profile-drop-header-row">
+                                {% if user.avatar_url %}
+                                <img src="{{ user.avatar_url }}" alt="" style="width:36px;height:36px;border-radius:50%;flex:none">
+                                {% else %}
+                                <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#1d4ed8);display:grid;place-items:center;font-size:14px;font-weight:600;color:#fff;flex:none">{{ user.name[:1]|upper if user.name else '?' }}</div>
+                                {% endif %}
+                                <div style="min-width:0">
+                                    <div style="font-size:13px;font-weight:600">{{ user.name or 'User' }}</div>
+                                    <div class="muted" style="font-size:11px">{{ user.email }}{% if is_paper %} · <span class="amber">Demo</span>{% endif %}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="profile-drop-sep"></div>
+                        {% if is_paper %}
+                        <button class="profile-drop-item" onclick="switchMode('live')">
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></svg>
+                            Back to Real Account
+                        </button>
+                        {% else %}
+                        <button class="profile-drop-item" onclick="switchMode('paper')">
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+                            <div style="display:flex;flex-direction:column;align-items:flex-start"><div>Switch to Demo</div><div class="muted" style="font-size:11px;font-weight:400">Paper trading</div></div>
+                        </button>
+                        {% endif %}
+                        <a href="/settings" class="profile-drop-item">
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.8 1V21a2 2 0 0 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.2-2.8H3a2 2 0 0 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
+                            Settings
+                        </a>
+                        <div class="profile-drop-sep"></div>
+                        <a href="/logout" class="profile-drop-item profile-drop-logout">
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+                            Sign out
+                        </a>
+                    </div>
                 </div>
                 {% endif %}
             </div>
@@ -128,6 +183,29 @@
     </div>
 </div>
 
+<script>
+var currentMode = '{{ trading_mode|default("paper") }}';
+function switchMode(mode) {
+    fetch('/api/switch-mode', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({mode: mode})
+    }).then(function() { window.location.reload(); });
+}
+function toggleProfileMenu(e) {
+    e.stopPropagation();
+    var d = document.getElementById('profile-dropdown');
+    if (d.style.display === 'none') {
+        d.style.display = 'block';
+    } else {
+        d.style.display = 'none';
+    }
+}
+document.addEventListener('click', function() {
+    var d = document.getElementById('profile-dropdown');
+    if (d) d.style.display = 'none';
+});
+</script>
 <script src="/static/js/websocket.js?v=2"></script>
 <script>
 var botWS = new BotWebSocket({{ user.id if user else 1 }});
@@ -153,7 +231,7 @@ var botWS = new BotWebSocket({{ user.id if user else 1 }});
                 if (tc) { var s = d.change >= 0 ? '+' : ''; tc.textContent = s + d.change.toFixed(2) + '%'; tc.className = 'mono ' + (d.change >= 0 ? 'pos' : 'neg'); }
             }
         }
-        var bal = localStorage.getItem('zenith_balance');
+        var bal = localStorage.getItem('zenith_balance_' + currentMode);
         if (bal) { var be = document.getElementById('usdt-balance'); if (be) be.textContent = bal; }
     } catch(e) {}
 })();
@@ -194,13 +272,15 @@ botWS.on('price', function(msg) {
 });
 
 botWS.on('balance', function(msg) {
+    if (msg.mode && msg.mode !== currentMode) return;
     var el = document.getElementById('usdt-balance');
     var txt = '$' + msg.usdt_balance.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
     if (el) el.textContent = txt;
-    try { localStorage.setItem('zenith_balance', txt); } catch(e) {}
+    try { localStorage.setItem('zenith_balance_' + currentMode, txt); } catch(e) {}
 });
 
 botWS.on('heartbeat', function(msg) {
+    if (msg.mode && msg.mode !== currentMode) return;
     var el = document.getElementById('last-candle-age');
     if (el && msg.last_candle_age_secs != null) {
         var mins = Math.floor(msg.last_candle_age_secs / 60);

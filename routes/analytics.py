@@ -4,9 +4,9 @@ from collections import defaultdict
 from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
 
-from auth import require_auth
-import database as db
-from template_context import get_global_context
+from app.auth import require_auth, get_trading_mode
+import app.db as db
+from app.core.context import get_global_context
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -41,8 +41,10 @@ def _session_for_hour(hour: int) -> str:
 @router.get("/analytics")
 async def analytics_page(request: Request):
     user = await require_auth(request)
+    mode = get_trading_mode(request)
+    is_paper = (mode == "paper")
 
-    all_trades = await db.get_all_trades()
+    all_trades = await db.get_all_trades(user.id, is_paper)
     closed = [t for t in all_trades if t.result in ("win", "loss")]
     wins = sum(1 for t in closed if t.result == "win")
     losses = len(closed) - wins
@@ -110,7 +112,7 @@ async def analytics_page(request: Request):
             monthly_pnl[key] += t.pnl_usdt
     monthly_data = [{"month": k, "pnl": round(v, 2)} for k, v in sorted(monthly_pnl.items())]
 
-    ctx = await get_global_context(user.id)
+    ctx = await get_global_context(user.id, mode)
     ctx.update({
         "user": user,
         "win_rate": win_rate,

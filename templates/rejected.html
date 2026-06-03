@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZENITH — Access Declined</title>
+    <link rel="stylesheet" href="/static/css/app.css?v=7">
+    <style>
+    .gate {
+        min-height: 100vh; display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        padding: 32px 20px 96px; position: relative;
+        background: radial-gradient(900px 520px at 50% -8%, rgba(255,77,77,0.04), transparent 60%), var(--bg);
+    }
+    .gate::before {
+        content: ""; position: absolute; inset: 0; pointer-events: none;
+        background-image:
+            linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+        background-size: 44px 44px;
+        mask-image: radial-gradient(circle at 50% 38%, #000 0%, transparent 72%);
+    }
+    .gate-inner { position: relative; z-index: 1; width: 100%; display: flex; flex-direction: column; align-items: center; }
+    .gate-card {
+        width: 100%; max-width: 400px;
+        background: var(--card); border: 1px solid var(--border);
+        border-radius: 12px; padding: 32px 30px;
+        box-shadow: 0 24px 64px rgba(0,0,0,.45);
+    }
+    .rejected-badge {
+        width: 60px; height: 60px; border-radius: 50%; margin: 0 auto 18px;
+        display: grid; place-items: center;
+        background: var(--red-dim); color: var(--red); position: relative;
+    }
+    .rejected-badge::after {
+        content: ""; position: absolute; inset: -6px; border-radius: 50%;
+        border: 1px solid rgba(255,77,77,.25);
+    }
+    .gate-foot {
+        margin-top: 26px; color: var(--faint); font-size: 11px; text-align: center;
+    }
+    .gate-foot a { color: var(--muted); text-decoration: none; }
+    .gate-foot a:hover { color: var(--text-2); }
+    </style>
+</head>
+<body>
+<div class="gate">
+    <div class="gate-inner">
+        <div style="display:flex;align-items:center;gap:11px;margin-bottom:30px">
+            <div class="rail-logo" style="width:40px;height:40px;font-size:18px">Z</div>
+            <div style="font-size:17px;font-weight:700;letter-spacing:.3px">ZENITH<span class="dot">.</span></div>
+        </div>
+
+        <div class="gate-card">
+            <div style="text-align:center">
+                <div class="rejected-badge">
+                    <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+                    </svg>
+                </div>
+                <h1 style="font-size:19px;font-weight:700;margin:0 0 6px">Access request declined</h1>
+                <p style="color:var(--muted);font-size:13px;margin:0 0 20px;line-height:1.5">
+                    Your request to access the trading console has been reviewed and declined.
+                </p>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:13px;background:var(--card-3);border:1px solid var(--border);border-radius:9px;padding:13px 15px">
+                {% if user.avatar_url %}
+                <img src="{{ user.avatar_url }}" alt="" style="width:40px;height:40px;border-radius:50%;flex:none" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'">
+                <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#1d4ed8);display:none;place-items:center;font-size:15px;font-weight:600;color:#fff;flex:none">{{ user.name[:1]|upper if user.name else '?' }}</div>
+                {% else %}
+                <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#1d4ed8);display:grid;place-items:center;font-size:15px;font-weight:600;color:#fff;flex:none">{{ user.name[:1]|upper if user.name else '?' }}</div>
+                {% endif %}
+                <div style="min-width:0">
+                    <div style="font-size:13.5px;font-weight:600">{{ user.name or 'User' }}</div>
+                    <div style="font-size:12px;color:var(--muted);font-family:var(--mono)">{{ user.email }}</div>
+                </div>
+                <span class="pill red" style="margin-left:auto">Declined</span>
+            </div>
+        </div>
+
+        <div class="gate-foot">
+            <a href="/logout">Sign out</a>
+        </div>
+    </div>
+</div>
+</body>
+</html>

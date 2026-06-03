@@ -131,6 +131,124 @@
 
     </div>
 </div>
+
+<!-- Trade Log -->
+{% if bt_results %}
+<div class="card" style="margin-top:24px">
+    <div class="card-title">Trade Log <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· {{ bt_results|length }} trades</span></div>
+    <table class="tbl" id="tl-table">
+        <thead><tr>
+            <th>Symbol</th>
+            <th>Direction</th>
+            <th>Entry</th>
+            <th>Exit</th>
+            <th class="num">Entry $</th>
+            <th class="num">Exit $</th>
+            <th class="num">Result</th>
+            <th class="num">R</th>
+            <th class="num">PnL</th>
+            <th class="num">Equity</th>
+        </tr></thead>
+        <tbody id="tl-body"></tbody>
+    </table>
+    <div class="between" style="margin-top:12px">
+        <span class="muted" style="font-size:11px" id="tl-range"></span>
+        <div class="pager" id="tl-pager"></div>
+    </div>
+</div>
+<script>
+(function() {
+    var allRows = [
+        {% for t in bt_results %}
+        {
+            sym: "{{ t.symbol.replace('USDT', '') }}",
+            dir: "{{ t.direction }}",
+            entryUtc: "{{ t.entry_time.strftime('%Y-%m-%dT%H:%M:%SZ') if t.entry_time else '' }}",
+            exitUtc: "{{ t.exit_time.strftime('%Y-%m-%dT%H:%M:%SZ') if t.exit_time else '' }}",
+            entryP: {{ t.entry_price or 0 }},
+            exitP: {{ t.exit_price or 0 }},
+            result: "{{ t.result }}",
+            r: {{ t.r_value if t.r_value is not none else 'null' }},
+            pnl: {{ t.pnl_usdt if t.pnl_usdt is not none else 'null' }}
+        },
+        {% endfor %}
+    ];
+
+    var equity = 10000;
+    allRows.forEach(function(t) {
+        if (t.pnl !== null) equity += t.pnl;
+        t.equity = Math.round(equity * 100) / 100;
+    });
+
+    var PER_PAGE = 25;
+    var page = 0;
+    var totalPages = Math.ceil(allRows.length / PER_PAGE);
+
+    function fmtDate(utc) {
+        if (!utc) return '—';
+        var d = new Date(utc);
+        var yy = d.getFullYear();
+        var mm = String(d.getMonth()+1).padStart(2,'0');
+        var dd = String(d.getDate()).padStart(2,'0');
+        var hh = String(d.getHours()).padStart(2,'0');
+        var mi = String(d.getMinutes()).padStart(2,'0');
+        return yy+'-'+mm+'-'+dd+' '+hh+':'+mi;
+    }
+
+    function render() {
+        var start = page * PER_PAGE;
+        var end = Math.min(start + PER_PAGE, allRows.length);
+        var rows = allRows.slice(start, end);
+
+        var html = '';
+        rows.forEach(function(t) {
+            var cls = t.result === 'win' ? 'row-win' : 'row-loss';
+            var resCls = t.result === 'win' ? 'pos' : 'neg';
+            var rVal = t.r !== null ? (t.r >= 0 ? '+' : '') + t.r.toFixed(1) + 'R' : '—';
+            var rCls = t.r !== null && t.r >= 0 ? 'pos' : 'neg';
+            var pnlVal = t.pnl !== null ? '$' + (t.pnl >= 0 ? '+' : '') + t.pnl.toFixed(2) : '—';
+            var pnlCls = t.pnl !== null && t.pnl >= 0 ? 'pos' : 'neg';
+            html += '<tr class="'+cls+'">'
+                + '<td class="mono">'+t.sym+'</td>'
+                + '<td><span class="dir-badge '+t.dir+'">'+t.dir.toUpperCase()+'</span></td>'
+                + '<td class="mono">'+fmtDate(t.entryUtc)+'</td>'
+                + '<td class="mono">'+fmtDate(t.exitUtc)+'</td>'
+                + '<td class="num mono">$'+t.entryP.toFixed(2)+'</td>'
+                + '<td class="num mono">$'+t.exitP.toFixed(2)+'</td>'
+                + '<td class="num"><span class="'+resCls+'">'+t.result.toUpperCase()+'</span></td>'
+                + '<td class="num mono '+rCls+'">'+rVal+'</td>'
+                + '<td class="num mono '+pnlCls+'">'+pnlVal+'</td>'
+                + '<td class="num mono">$'+t.equity.toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0})+'</td>'
+                + '</tr>';
+        });
+        document.getElementById('tl-body').innerHTML = html;
+        document.getElementById('tl-range').textContent = (start+1) + '–' + end + ' of ' + allRows.length;
+
+        var pagerHtml = '';
+        pagerHtml += '<button ' + (page === 0 ? 'disabled' : '') + ' onclick="window._tlPage(0)">&laquo;</button>';
+        pagerHtml += '<button ' + (page === 0 ? 'disabled' : '') + ' onclick="window._tlPage('+( page-1)+')">&lsaquo;</button>';
+
+        var startP = Math.max(0, page - 2);
+        var endP = Math.min(totalPages, startP + 5);
+        if (endP - startP < 5) startP = Math.max(0, endP - 5);
+        for (var i = startP; i < endP; i++) {
+            pagerHtml += '<button class="' + (i === page ? 'active' : '') + '" onclick="window._tlPage('+i+')">'+(i+1)+'</button>';
+        }
+
+        pagerHtml += '<button ' + (page >= totalPages-1 ? 'disabled' : '') + ' onclick="window._tlPage('+(page+1)+')">&rsaquo;</button>';
+        pagerHtml += '<button ' + (page >= totalPages-1 ? 'disabled' : '') + ' onclick="window._tlPage('+(totalPages-1)+')">&raquo;</button>';
+        document.getElementById('tl-pager').innerHTML = pagerHtml;
+    }
+
+    window._tlPage = function(p) {
+        page = Math.max(0, Math.min(p, totalPages - 1));
+        render();
+    };
+
+    render();
+})();
+</script>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}

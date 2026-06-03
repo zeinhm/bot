@@ -3,11 +3,11 @@ import time
 from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
 
-from auth import require_auth
-from bot import get_bot_for_user
+from app.auth import require_auth, get_trading_mode
+from app.bot import get_bot_for_user
 from config import BINANCE_TESTNET, LEVERAGE
-import database as db
-from template_context import get_global_context
+import app.db as db
+from app.core.context import get_global_context
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -16,8 +16,10 @@ templates = Jinja2Templates(directory="templates")
 @router.get("/position")
 async def position_page(request: Request):
     user = await require_auth(request)
-    bot = get_bot_for_user(user.id)
-    bot_trade = await db.get_open_trade()
+    mode = get_trading_mode(request)
+    is_paper = (mode == "paper")
+    bot = get_bot_for_user(user.id, mode)
+    bot_trade = await db.get_open_trade(user.id, is_paper)
 
     positions = []
     if bot and bot.running:
@@ -54,8 +56,8 @@ async def position_page(request: Request):
                     "tp_price": bot_trade.tp_price,
                 })
 
-    risk_mode = await db.get_state("risk_mode", "static")
-    risk_value = await db.get_state("risk_value", 10.0)
+    risk_mode = await db.get_state("risk_mode", "static", user_id=user.id, is_paper=is_paper)
+    risk_value = await db.get_state("risk_value", 10.0, user_id=user.id, is_paper=is_paper)
 
     bot_status = "stopped"
     api_connected = False
@@ -67,14 +69,14 @@ async def position_page(request: Request):
             uptime_secs = int(time.time() - bot.started_at)
 
     last_trade_ts = None
-    recent = await db.get_recent_trades(1)
+    recent = await db.get_recent_trades(1, user_id=user.id, is_paper=is_paper)
     if recent and recent[0].exit_time:
         last_trade_ts = int(recent[0].exit_time.timestamp())
 
     cfg = await db.get_user_config(user.id)
     testnet = cfg.binance_testnet if cfg else BINANCE_TESTNET
 
-    ctx = await get_global_context(user.id)
+    ctx = await get_global_context(user.id, mode)
     ctx.update({
         "user": user,
         "positions": positions,

@@ -5,11 +5,11 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
 
-from auth import require_auth
+from app.auth import require_auth
 from config import STRATEGY_PARAMS, ACC_RANGE_MODE, LEVERAGE, COMMISSION_PCT, SLIPPAGE_TICKS
 import amd_engine
-import database as db
-from template_context import get_global_context
+import app.db as db
+from app.core.context import get_global_context
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -50,7 +50,12 @@ async def backtester_page(request: Request):
     else:
         data_range = "No data"
 
-    ctx = await get_global_context(user.id)
+    from app.auth import get_trading_mode
+    mode = get_trading_mode(request)
+
+    bt_results = await db.get_backtest_results()
+
+    ctx = await get_global_context(user.id, mode)
     ctx.update({
         "user": user,
         "params": STRATEGY_PARAMS,
@@ -59,6 +64,7 @@ async def backtester_page(request: Request):
         "commission_pct": COMMISSION_PCT,
         "slippage_ticks": SLIPPAGE_TICKS,
         "data_range": data_range,
+        "bt_results": bt_results,
         "page": "backtester",
     })
     return templates.TemplateResponse(request, "backtester.html", ctx)

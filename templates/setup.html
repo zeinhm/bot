@@ -30,33 +30,27 @@
                    placeholder="Enter your Binance API secret" style="font-size:12px" autocomplete="off">
         </div>
 
-        <div style="margin-bottom:22px">
-            <label class="field-lbl">Mode</label>
-            <div class="seg">
-                <button type="button" class="{{ 'active' if testnet else '' }}" id="btn-testnet"
-                    onclick="this.classList.add('active');document.getElementById('btn-live').classList.remove('active');document.querySelector('[name=testnet]').value='on'">Testnet (paper)</button>
-                <button type="button" class="{{ '' if testnet else 'active' }}" id="btn-live"
-                    onclick="this.classList.add('active');document.getElementById('btn-testnet').classList.remove('active');document.querySelector('[name=testnet]').value='off'">Live</button>
-            </div>
-            <input type="hidden" name="testnet" value="{{ 'on' if testnet else 'off' }}">
-        </div>
+        <input type="hidden" name="testnet" value="off">
 
         <button type="submit" class="btn btn-primary btn-block" style="padding:12px">Connect & Start Bot</button>
 
-        <div class="callout" style="margin-top:18px;padding:10px 12px">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-            <span style="font-size:11.5px" class="muted">
-                Create API keys at <strong>Binance &gt; API Management</strong>. Enable Futures only. Whitelist these IPs:
-            </span>
-            <div style="margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--text-2);line-height:1.8;user-select:all">
-                208.77.246.240<br>
-                208.77.246.241<br>
-                208.77.246.242
+        <div class="callout" style="margin-top:18px;padding:10px 12px;flex-wrap:wrap">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" style="flex:none;margin-top:1px"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+            <div style="flex:1;min-width:0">
+                <span style="font-size:11.5px" class="muted">
+                    Create API keys at <strong>Binance &gt; API Management</strong>. Enable Futures only. Whitelist these IPs:
+                </span>
+                <div style="margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--text-2);line-height:1.8;user-select:all">
+                    208.77.246.240<br>
+                    208.77.246.241<br>
+                    208.77.246.242
+                </div>
             </div>
         </div>
     </form>
 
-    <div style="text-align:center;margin-top:16px">
+    <div style="text-align:center;margin-top:16px;display:flex;justify-content:center;gap:16px">
+        <a href="/" class="link muted" style="font-size:12px">Set up later</a>
         <a href="/logout" class="link muted" style="font-size:12px">Sign out</a>
     </div>
 </div>

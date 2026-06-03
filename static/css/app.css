@@ -237,9 +237,20 @@ body {
   background: var(--card-3); border: 1px solid var(--border); color: var(--text);
   border-radius: var(--radius-sm); padding: 8px 10px; font-size: 12.5px;
   font-family: var(--sans); width: 100%; outline: none;
+  -webkit-appearance: none; appearance: none;
 }
 .input:focus, .select:focus { border-color: var(--green-line); }
 .input.mono { font-family: var(--mono); }
+.input:-webkit-autofill,
+.input:-webkit-autofill:hover,
+.input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 0 transparent !important;
+  box-shadow: none !important;
+  -webkit-text-fill-color: var(--text) !important;
+  caret-color: var(--text);
+  background: var(--card-3) !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
 .field-lbl { font-size: 11px; color: var(--muted); font-weight: 600; margin-bottom: 5px; display: block; }
 .input-suffix { position: relative; }
 .input-suffix .suffix { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 12px; }
@@ -386,6 +397,41 @@ input[type=range]::-moz-range-thumb { width: 15px; height: 15px; border: none; b
   50% { box-shadow: 0 0 14px rgba(0,200,150,.9); }
 }
 .led.green.pulse { animation: pulse-green 2s ease-in-out infinite; }
+
+/* profile dropdown */
+.profile-menu { position: relative; margin-left: 8px; padding-left: 8px; border-left: 1px solid var(--border); }
+.profile-btn {
+  display: flex; align-items: center; position: relative;
+  background: transparent; border: none; cursor: pointer; padding: 2px;
+  border-radius: 50%; transition: opacity .12s;
+}
+.profile-btn:hover { opacity: .85; }
+.profile-demo-dot {
+  position: absolute; bottom: -1px; right: -1px; width: 10px; height: 10px;
+  border-radius: 50%; background: var(--amber); border: 2px solid #0d1015;
+}
+.profile-drop {
+  display: none; position: absolute; right: 0; top: calc(100% + 8px); z-index: 60;
+  background: #131820; border: 1px solid var(--border-bri); border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0,0,0,.6); min-width: 240px; padding: 6px;
+}
+.profile-drop.open { display: block; }
+.profile-drop-header { padding: 12px 12px 10px; }
+.profile-drop-header-row { display: flex; align-items: center; gap: 11px; }
+.profile-drop-sep { height: 1px; background: var(--border); margin: 4px 6px; }
+.profile-drop-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  background: transparent; border: none; color: var(--text-2);
+  font-family: var(--sans); font-size: 13px; font-weight: 500;
+  padding: 9px 12px; border-radius: 6px; cursor: pointer; text-decoration: none;
+}
+.profile-drop-item:hover { background: rgba(255,255,255,.05); color: var(--text); }
+.profile-drop-item svg { flex: none; color: var(--muted); }
+.profile-drop-item:hover svg { color: var(--text-2); }
+.profile-drop-logout { color: var(--red); }
+.profile-drop-logout svg { color: var(--red); }
+.profile-drop-logout:hover { background: var(--red-dim); color: var(--red); }
+.profile-drop-logout:hover svg { color: var(--red); }
 
 /* ============================================================
    CHART TOOLBAR (TradingView-style)

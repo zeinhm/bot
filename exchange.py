@@ -139,6 +139,21 @@ class BinanceExchange:
         log.info("TP %s %s @ %.2f — order %s", side, symbol, price, order["orderId"])
         return order
 
+    async def get_order(self, symbol: str, order_id: int) -> dict | None:
+        try:
+            return await self.client.futures_get_order(symbol=symbol, orderId=order_id)
+        except Exception as e:
+            log.warning("Failed to get order %s on %s: %s", order_id, symbol, e)
+            return None
+
+    async def get_trades_for_order(self, symbol: str, order_id: int) -> list[dict]:
+        try:
+            trades = await self.client.futures_account_trades(symbol=symbol)
+            return [t for t in trades if int(t.get("orderId", 0)) == order_id]
+        except Exception as e:
+            log.warning("Failed to get trades for order %s: %s", order_id, e)
+            return []
+
     async def cancel_order(self, symbol: str, order_id: int):
         try:
             await self.client.futures_cancel_order(symbol=symbol, orderId=order_id)

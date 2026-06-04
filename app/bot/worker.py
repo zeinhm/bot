@@ -9,7 +9,7 @@ from typing import Callable, Awaitable, TYPE_CHECKING
 
 from config import ACC_RANGE_MODE
 from strategy import check_signal
-from telegram_alert import alert_entry, alert_exit, alert_bot_started, alert_bot_stopped
+from telegram_alert import alert_entry, alert_exit, alert_bot_started, alert_bot_stopped, send_private
 import app.db as db
 
 if TYPE_CHECKING:
@@ -188,16 +188,52 @@ class BotWorker:
             pos = await self.exchange.get_position(open_trade.symbol)
             if pos is None:
                 log.warning("Trade #%d is open in DB but no position — marking closed", open_trade.id)
+
+                exit_price = 0.0
+                exit_comm = 0.0
+                is_sl = True
+                if not self.is_paper:
+                    for oid_str in [open_trade.sl_order_id, open_trade.tp_order_id]:
+                        if not oid_str:
+                            continue
+                        order_info = await self.exchange.get_order(open_trade.symbol, int(oid_str))
+                        if order_info and order_info.get("status") == "FILLED":
+                            exit_price = float(order_info.get("avgPrice", 0))
+                            is_sl = order_info.get("type") == "STOP_MARKET"
+                            exit_trades = await self.exchange.get_trades_for_order(open_trade.symbol, int(oid_str))
+                            if exit_trades:
+                                total_qty = sum(float(t["qty"]) for t in exit_trades)
+                                if total_qty > 0:
+                                    exit_price = sum(float(t["price"]) * float(t["qty"]) for t in exit_trades) / total_qty
+                                exit_comm = sum(float(t.get("commission", 0)) for t in exit_trades)
+                            break
+
+                result = "loss" if is_sl else "win"
+                rr = self.config.strategy_params.get("rrr", 2.0)
+                r_value = -1.0 if is_sl else rr
+                total_comm = (open_trade.commission or 0) + exit_comm
+
+                if exit_price > 0:
+                    if open_trade.direction == "long":
+                        raw_pnl = (exit_price - open_trade.entry_price) * open_trade.quantity
+                    else:
+                        raw_pnl = (open_trade.entry_price - exit_price) * open_trade.quantity
+                    pnl = raw_pnl - total_comm
+                else:
+                    pnl = 0.0
+
                 await db.log_event(
                     f"Orphan trade #{open_trade.id} closed during recovery",
                     level="warn", category="system",
                     user_id=self.user_id, is_paper=self.is_paper,
                 )
                 await db.update_trade(open_trade.id, {
-                    "result": "loss",
-                    "r_value": -1.0,
+                    "result": result,
+                    "r_value": r_value,
                     "exit_time": datetime.now(timezone.utc),
-                    "pnl_usdt": 0.0,
+                    "exit_price": exit_price if exit_price > 0 else None,
+                    "pnl_usdt": pnl,
+                    "commission": total_comm,
                 })
                 self._active_trade_id = None
             else:
@@ -343,6 +379,12 @@ class BotWorker:
             min_qty = self.config.lot_size.get(symbol, 0.01)
             quantity = max(quantity, min_qty)
 
+            if not self.is_paper:
+                existing_orders = await self.exchange.get_open_orders(symbol)
+                if existing_orders:
+                    log.warning("Cleaning %d stale orders on %s before entry", len(existing_orders), symbol)
+                    await self.exchange.cancel_all_orders(symbol)
+
             side = "BUY" if signal["direction"] == "long" else "SELL"
             order = await self.exchange.place_market_order(symbol, side, quantity)
 
@@ -350,6 +392,10 @@ class BotWorker:
             fill_qty = float(order.get("executedQty", quantity))
 
             entry_comm = fill_price * fill_qty * self.config.commission_pct
+            if not self.is_paper:
+                trades = await self.exchange.get_trades_for_order(symbol, int(order.get("orderId", 0)))
+                if trades:
+                    entry_comm = sum(float(t.get("commission", 0)) for t in trades)
 
             trade = await db.create_trade({
                 "user_id": self.user_id,
@@ -401,13 +447,30 @@ class BotWorker:
     async def _place_sl_tp(self, symbol: str, direction: str, quantity: float, sl: float, tp: float, trade_id: int):
         close_side = "SELL" if direction == "long" else "BUY"
 
-        sl_order = await self.exchange.place_stop_loss(symbol, close_side, quantity, sl)
-        tp_order = await self.exchange.place_take_profit(symbol, close_side, quantity, tp)
+        if not self.is_paper:
+            await self.exchange.cancel_all_orders(symbol)
 
-        await db.update_trade(trade_id, {
-            "sl_order_id": str(sl_order.get("orderId", "")),
-            "tp_order_id": str(tp_order.get("orderId", "")),
-        })
+        sl_order = None
+        tp_order = None
+        for attempt in range(3):
+            try:
+                if sl_order is None:
+                    sl_order = await self.exchange.place_stop_loss(symbol, close_side, quantity, sl)
+                if tp_order is None:
+                    tp_order = await self.exchange.place_take_profit(symbol, close_side, quantity, tp)
+                break
+            except Exception as e:
+                log.warning("SL/TP placement attempt %d failed: %s", attempt + 1, e)
+                if attempt < 2:
+                    await asyncio.sleep(1)
+
+        update = {}
+        if sl_order:
+            update["sl_order_id"] = str(sl_order.get("orderId", ""))
+        if tp_order:
+            update["tp_order_id"] = str(tp_order.get("orderId", ""))
+        if update:
+            await db.update_trade(trade_id, update)
 
     # --- Order Fill Monitoring ---
 
@@ -447,6 +510,14 @@ class BotWorker:
         r_value = -1.0 if is_sl else rr
 
         exit_comm = fill_price * trade.quantity * self.config.commission_pct
+        if not self.is_paper and order_id:
+            exit_trades = await self.exchange.get_trades_for_order(symbol, int(order_id))
+            if exit_trades:
+                total_qty = sum(float(t["qty"]) for t in exit_trades)
+                if total_qty > 0:
+                    fill_price = sum(float(t["price"]) * float(t["qty"]) for t in exit_trades) / total_qty
+                exit_comm = sum(float(t.get("commission", 0)) for t in exit_trades)
+
         total_comm = (trade.commission or 0) + exit_comm
 
         if trade.direction == "long":
@@ -464,9 +535,7 @@ class BotWorker:
             "commission": total_comm,
         })
 
-        cancel_id = trade.tp_order_id if is_sl else trade.sl_order_id
-        if cancel_id:
-            await self.exchange.cancel_order(symbol, int(cancel_id))
+        await self.exchange.cancel_all_orders(symbol)
 
         self._active_trade_id = None
 
@@ -500,37 +569,65 @@ class BotWorker:
     # --- Fallback Position Poll ---
 
     async def _run_position_poll(self):
+        self._sltp_missing_since: float | None = None
+        self._sltp_last_alert: float = 0
+
         while self.running:
-            await asyncio.sleep(30)
+            has_active = self._active_trade_id is not None
+            poll_interval = 10 if (has_active and self._sltp_missing_since) else 30
+            await asyncio.sleep(poll_interval)
             try:
                 if self._active_trade_id is None:
+                    self._sltp_missing_since = None
                     continue
 
                 trade = await db.get_open_trade(self.user_id, self.is_paper)
                 if trade is None:
                     self._active_trade_id = None
+                    self._sltp_missing_since = None
                     continue
 
                 pos = await self.exchange.get_position(trade.symbol)
                 if pos is None:
                     log.info("Position poll: no position found for trade #%d — checking orders", trade.id)
 
-                    last_price = self.candle_buffers.get(trade.symbol, [{}])[-1].get("close", 0)
-                    if last_price == 0:
-                        continue
+                    exit_price = None
+                    exit_comm = 0.0
+                    exit_order_id = None
 
-                    if trade.direction == "long":
-                        is_sl = last_price <= trade.sl_price
-                    else:
-                        is_sl = last_price >= trade.sl_price
+                    if not self.is_paper:
+                        for oid_str in [trade.sl_order_id, trade.tp_order_id]:
+                            if not oid_str:
+                                continue
+                            order_info = await self.exchange.get_order(trade.symbol, int(oid_str))
+                            if order_info and order_info.get("status") == "FILLED":
+                                exit_order_id = int(oid_str)
+                                exit_price = float(order_info.get("avgPrice", 0))
+                                exit_trades = await self.exchange.get_trades_for_order(trade.symbol, exit_order_id)
+                                if exit_trades:
+                                    total_qty = sum(float(t["qty"]) for t in exit_trades)
+                                    if total_qty > 0:
+                                        exit_price = sum(float(t["price"]) * float(t["qty"]) for t in exit_trades) / total_qty
+                                    exit_comm = sum(float(t.get("commission", 0)) for t in exit_trades)
+                                is_sl = order_info.get("type") == "STOP_MARKET"
+                                break
+
+                    if exit_price is None or exit_price == 0:
+                        last_price = self.candle_buffers.get(trade.symbol, [{}])[-1].get("close", 0)
+                        if last_price == 0:
+                            continue
+                        if trade.direction == "long":
+                            is_sl = last_price <= trade.sl_price
+                        else:
+                            is_sl = last_price >= trade.sl_price
+                        exit_price = trade.sl_price if is_sl else trade.tp_price
+                        exit_comm = exit_price * trade.quantity * self.config.commission_pct
 
                     result = "loss" if is_sl else "win"
                     rr = await db.get_state("rr_ratio", self.config.strategy_params["rrr"],
                                             user_id=self.user_id, is_paper=self.is_paper)
                     r_value = -1.0 if is_sl else rr
-                    exit_price = trade.sl_price if is_sl else trade.tp_price
 
-                    exit_comm = exit_price * trade.quantity * self.config.commission_pct
                     total_comm = (trade.commission or 0) + exit_comm
 
                     if trade.direction == "long":
@@ -568,6 +665,63 @@ class BotWorker:
                     balance = await self.exchange.get_balance()
                     if not self.is_paper:
                         await alert_exit(trade.symbol, trade.direction, result, trade.entry_price, exit_price, pnl, r_value, balance)
+
+                    self._sltp_missing_since = None
+                else:
+                    if not self.is_paper:
+                        orders = await self.exchange.get_open_orders(trade.symbol)
+                        has_sl = any(o["type"] == "STOP_MARKET" for o in orders)
+                        has_tp = any(o["type"] == "TAKE_PROFIT_MARKET" for o in orders)
+
+                        if not has_sl or not has_tp:
+                            now = time.time()
+                            if self._sltp_missing_since is None:
+                                self._sltp_missing_since = now
+
+                            close_side = "SELL" if trade.direction == "long" else "BUY"
+                            placed = False
+                            if not has_sl:
+                                try:
+                                    await self.exchange.place_stop_loss(trade.symbol, close_side, pos["quantity"], trade.sl_price)
+                                    placed = True
+                                except Exception as e:
+                                    log.warning("Position poll: failed to re-place SL: %s", e)
+                            if not has_tp:
+                                try:
+                                    await self.exchange.place_take_profit(trade.symbol, close_side, pos["quantity"], trade.tp_price)
+                                    placed = True
+                                except Exception as e:
+                                    log.warning("Position poll: failed to re-place TP: %s", e)
+
+                            if placed:
+                                orders_after = await self.exchange.get_open_orders(trade.symbol)
+                                still_missing_sl = not any(o["type"] == "STOP_MARKET" for o in orders_after)
+                                still_missing_tp = not any(o["type"] == "TAKE_PROFIT_MARKET" for o in orders_after)
+                            else:
+                                still_missing_sl = not has_sl
+                                still_missing_tp = not has_tp
+
+                            if still_missing_sl or still_missing_tp:
+                                elapsed = now - self._sltp_missing_since
+                                if elapsed >= 60 and (now - self._sltp_last_alert) >= 60:
+                                    missing = []
+                                    if still_missing_sl:
+                                        missing.append("SL")
+                                    if still_missing_tp:
+                                        missing.append("TP")
+                                    msg = (
+                                        f"⚠️ Failed to place {'/'.join(missing)} for {trade.symbol} "
+                                        f"({trade.direction.upper()}) — please check your position manually"
+                                    )
+                                    log.error(msg)
+                                    await send_private(msg)
+                                    self._sltp_last_alert = now
+                            else:
+                                log.info("Position poll: re-placed missing SL/TP for trade #%d", trade.id)
+                                self._sltp_missing_since = None
+                                self._sltp_last_alert = 0
+                        else:
+                            self._sltp_missing_since = None
 
             except Exception as e:
                 log.error("Position poll error: %s", e)

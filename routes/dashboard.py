@@ -15,7 +15,7 @@ router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
 
-@router.get("/")
+@router.get("/dashboard")
 async def dashboard(request: Request):
     user = await require_auth(request)
     mode = get_trading_mode(request)

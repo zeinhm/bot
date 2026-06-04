@@ -115,7 +115,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Trading Futures Bot", lifespan=lifespan)
 
-app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, max_age=86400 * 30)
+app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, max_age=86400)
 
 
 @app.exception_handler(AuthRequired)
@@ -142,6 +142,15 @@ async def admin_not_found_handler(request: Request, exc: AdminNotFound):
 
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/landing", StaticFiles(directory="landing-page"), name="landing")
+
+
+@app.get("/")
+async def landing_page():
+    from fastapi.responses import HTMLResponse
+    with open("landing-page/landing-page.html") as f:
+        return HTMLResponse(f.read())
+
 
 app.include_router(auth_router)
 app.include_router(dashboard_router)

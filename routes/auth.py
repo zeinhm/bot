@@ -27,7 +27,7 @@ oauth.register(
 @router.get("/login")
 async def login_page(request: Request):
     if request.session.get("user_id"):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/dashboard", status_code=303)
     return templates.TemplateResponse(request, "login.html")
 
 
@@ -101,7 +101,7 @@ async def google_callback(request: Request):
     if not cfg or not cfg.binance_api_key_enc:
         return RedirectResponse("/setup", status_code=303)
 
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse("/dashboard", status_code=303)
 
 
 @router.get("/logout")
@@ -147,7 +147,7 @@ async def save_setup(
         await manager.start_bot(user.id, config, broadcast_fn=make_broadcast_fn(user.id))
 
     log.info("User %d configured API keys", user.id)
-    return RedirectResponse("/?setup=ok", status_code=303)
+    return RedirectResponse("/dashboard?setup=ok", status_code=303)
 
 
 @router.get("/pending")
@@ -159,7 +159,7 @@ async def pending_page(request: Request):
     if user.is_rejected:
         return RedirectResponse("/rejected", status_code=303)
     if user.is_approved:
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/dashboard", status_code=303)
     return templates.TemplateResponse(request, "pending.html", {"user": user})
 
 
@@ -170,5 +170,5 @@ async def rejected_page(request: Request):
     if not user:
         return RedirectResponse("/login", status_code=303)
     if not user.is_rejected:
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/dashboard", status_code=303)
     return templates.TemplateResponse(request, "rejected.html", {"user": user})

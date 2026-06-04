@@ -58,7 +58,7 @@
         <!-- ===== Trading Navigation ===== -->
         <div class="rail-group">
             <!-- Dashboard -->
-            <a href="/" class="rail-btn {% if page == 'dashboard' %}active{% endif %}" data-tip="Dashboard">
+            <a href="/dashboard" class="rail-btn {% if page == 'dashboard' %}active{% endif %}" data-tip="Dashboard">
                 <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/>
                 </svg>
@@ -269,7 +269,7 @@
 
     {% else %}
     <!-- ===== Trading Bottom Nav ===== -->
-    <a href="/" class="btm-tab {% if page == 'dashboard' %}active{% endif %}">
+    <a href="/dashboard" class="btm-tab {% if page == 'dashboard' %}active{% endif %}">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></svg>
         <span>Home</span>
     </a>
@@ -332,7 +332,7 @@ function toggleAdminMode(enable) {
     fetch('/admin/toggle', { method: 'POST' })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-        if (data.ok) window.location.href = enable ? '/admin' : '/';
+        if (data.ok) window.location.href = enable ? '/admin' : '/dashboard';
     });
 }
 var currentMode = '{{ trading_mode|default("paper") }}';

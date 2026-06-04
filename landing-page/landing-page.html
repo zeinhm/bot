@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ZENITH — Automated AMD FVG Trading on Binance Futures</title>
+<link rel="stylesheet" href="/landing/landing-page.css" />
+</head>
+<body>
+
+<!-- ============================== NAV ============================== -->
+<nav class="nav">
+  <div class="wrap">
+    <a class="logo" href="#top"><span class="z">Z</span> ZENITH</a>
+    <div class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="#dashboard">Dashboard</a>
+      <a href="#features">Features</a>
+      <a href="#performance">Performance</a>
+    </div>
+    <div class="nav-cta">
+      <a class="btn btn-primary" href="/login">Start Trading</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============================== HERO ============================== -->
+<header class="hero" id="top">
+  <div class="hero-bg">
+    <div class="hero-grid"></div>
+    <div class="hero-glow"></div>
+    <div class="hero-curve" id="heroCurve"></div>
+  </div>
+  <div class="wrap">
+    <div class="hero-inner">
+      <div class="hero-copy reveal">
+        <div class="hero-badge"><span class="led"></span> <b>Live</b>&nbsp;· BTC · ETH · SOL on the 15m</div>
+        <h1 class="hero-title">The AMD FVG strategy, <span class="accent">executed without emotion.</span></h1>
+        <p class="hero-sub">ZENITH automates a backtested Accumulation–Manipulation–Distribution strategy on Binance Futures. You see the logic behind every trade. The bot handles the discipline.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary btn-lg" href="/login">Start Trading
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </a>
+        </div>
+        <div class="hero-fine">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          Paper trade with $10k virtual funds — no card required.
+        </div>
+      </div>
+
+      <div class="hero-visual reveal">
+        <div class="term">
+          <div class="term-head">
+            <span class="term-dot" style="background:#FF5C5C"></span>
+            <span class="term-dot" style="background:#F5A623"></span>
+            <span class="term-dot" style="background:#00C896"></span>
+            <span class="term-title">zenith — live session</span>
+          </div>
+          <div class="term-body">
+            <div class="term-row"><span class="k">BTC/USDT · Perp</span><span class="v tag-long">LONG</span></div>
+            <div class="term-row"><span class="k">Entry · FVG close</span><span class="v">$83,420.00</span></div>
+            <div class="term-row"><span class="k">Unrealised</span><span class="v pos">+$214.80&nbsp; (+1.24R)</span></div>
+            <div class="term-chart" id="termChart"></div>
+            <div class="term-row" style="border-top:1px solid var(--border);margin-top:6px;padding-top:12px">
+              <span class="k">Equity · paper</span><span class="v">$24,918.40</span></div>
+            <div class="term-row"><span class="k">Win rate · 30d</span><span class="v">42.8%</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ============================== STATS BAR ============================== -->
+<section class="statsbar">
+  <div class="wrap">
+    <div class="stat-cell"><div class="num mono"><span data-val="770" data-suffix="+">770+</span></div><div class="lbl">Backtested trades</div></div>
+    <div class="stat-cell"><div class="num mono"><span data-val="42.8" data-dec="1" data-suffix="%">42.8%</span></div><div class="lbl">Win rate · profitable via RRR</div></div>
+    <div class="stat-cell"><div class="num mono">2:1</div><div class="lbl">Reward-to-risk, every trade</div></div>
+    <div class="stat-cell"><div class="num mono pos"><span data-val="1249" data-prefix="+" data-suffix="%">+1,249%</span></div><div class="lbl">6-year backtest return</div></div>
+  </div>
+</section>
+
+<!-- ============================== HOW IT WORKS ============================== -->
+<section class="sec" id="how">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="eyebrow">How it works</div>
+      <h2>Not a black box. A rules-based edge you can read.</h2>
+      <p>Every entry walks the same four steps. No discretionary overrides, no hidden signals — the bot acts only when the structure confirms.</p>
+    </div>
+    <div class="steps">
+      <div class="step-card reveal">
+        <div class="sn">01 — ACCUMULATION</div>
+        <div class="diag" id="accDiag"></div>
+        <h3>Price coils</h3>
+        <p>The bot detects when price compresses into a tight range relative to recent volatility — energy building before a move.</p>
+        <svg class="step-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </div>
+      <div class="step-card reveal">
+        <div class="sn">02 — MANIPULATION</div>
+        <div class="diag" id="manDiag"></div>
+        <h3>The sweep</h3>
+        <p>A sharp wick pushes beyond the range, trapping breakout traders and hunting stops — the liquidity grab before the real move.</p>
+        <svg class="step-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </div>
+      <div class="step-card reveal">
+        <div class="sn">03 — DISTRIBUTION</div>
+        <div class="diag" id="fvgDiag"></div>
+        <h3>FVG confirms</h3>
+        <p>A Fair Value Gap forms in the opposite direction, confirming intent. The bot enters at the FVG close — not on hope.</p>
+        <svg class="step-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </div>
+      <div class="step-card reveal">
+        <div class="sn">04 — EXECUTION</div>
+        <div class="diag" id="entryDiag"></div>
+        <h3>2:1 every time</h3>
+        <p>Stop loss sits beyond the manipulation extreme (volatility-based). Take profit at 2× the stop distance. Wins pay double.</p>
+      </div>
+    </div>
+
+    <div class="filters reveal">
+      <span class="filter-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Liquidity-sweep zones block exhausted moves</span>
+      <span class="filter-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Trend filter skips choppy markets</span>
+      <span class="filter-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Seasonal filters sit out weak periods</span>
+      <span class="filter-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Trades active sessions only</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== DASHBOARD PREVIEW ============================== -->
+<section class="sec dashprev" id="dashboard">
+  <div class="wrap">
+    <div class="sec-head center reveal">
+      <div class="eyebrow">The console</div>
+      <h2>Watch every position in real time.</h2>
+      <p>A live trading terminal streamed over WebSocket — equity curve, open trades, full history and analytics, updating tick by tick.</p>
+    </div>
+
+    <div class="browser reveal">
+      <div class="browser-bar">
+        <span class="term-dot" style="background:#FF5C5C"></span>
+        <span class="term-dot" style="background:#F5A623"></span>
+        <span class="term-dot" style="background:#00C896"></span>
+        <span class="browser-url"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4"/></svg> zenithbot.org</span>
+      </div>
+      <div class="dash-mock">
+        <div class="dash-stats">
+          <div class="dash-stat"><div class="dl">Equity</div><div class="dv mono">$24,918</div></div>
+          <div class="dash-stat"><div class="dl">Today</div><div class="dv mono pos">+$214.80</div></div>
+          <div class="dash-stat"><div class="dl">Win rate</div><div class="dv mono">42.8%</div></div>
+          <div class="dash-stat"><div class="dl">Open</div><div class="dv mono" style="color:var(--green)">LONG</div></div>
+        </div>
+        <div class="dash-body">
+          <div class="panel dash-chart-panel">
+            <div class="panel-title">Equity curve · paper account</div>
+            <div id="dashChart" style="margin-top:8px"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-title">Recent trades</div>
+            <div class="dash-trades">
+              <div class="tr"><span class="pair">BTC · LONG</span><span class="pos">+2.00R</span></div>
+              <div class="tr"><span class="pair">ETH · SHORT</span><span class="neg">−1.00R</span></div>
+              <div class="tr"><span class="pair">SOL · LONG</span><span class="pos">+2.00R</span></div>
+              <div class="tr"><span class="pair">BTC · LONG</span><span class="pos">+2.00R</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dash-feats reveal">
+      <div class="dash-feat">
+        <svg class="fi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 6l-9.5 9.5-5-5L1 18"/></svg>
+        <div><div class="ft">Live equity curve</div><div class="fd">Streamed over WebSocket, updating on every tick.</div></div>
+      </div>
+      <div class="dash-feat">
+        <svg class="fi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+        <div><div class="ft">Full trade history</div><div class="fd">Every entry, exit and R-multiple — pulled from Binance.</div></div>
+      </div>
+      <div class="dash-feat">
+        <svg class="fi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="3"/></svg>
+        <div><div class="ft">Open position logic</div><div class="fd">See the accumulation, sweep and FVG behind each trade.</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== FEATURES ============================== -->
+<section class="sec" id="features">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="eyebrow">Built for serious execution</div>
+      <h2>Everything the strategy needs. Nothing it doesn't.</h2>
+    </div>
+    <div class="feat-grid">
+      <div class="feat-card reveal">
+        <div class="feat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 6l-9.5 9.5-5-5L1 18"/></svg></div>
+        <h3>Real-time dashboard</h3>
+        <p>Live equity, open positions, history and analytics streamed over WebSocket — no refreshing, no lag.</p>
+      </div>
+      <div class="feat-card reveal">
+        <div class="feat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7v10l10 5 10-5V7zM2 7l10 5 10-5M12 22V12"/></svg></div>
+        <h3>Paper trading mode</h3>
+        <p>Practice with $10,000 in virtual funds against live prices before risking a cent of real capital.</p>
+      </div>
+      <div class="feat-card reveal">
+        <div class="feat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg></div>
+        <h3>Adaptive position sizing</h3>
+        <p>Risk automatically scales down during losing streaks and back up after recovery — cutting max drawdown nearly in half.</p>
+      </div>
+      <div class="feat-card reveal">
+        <div class="feat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z"/></svg></div>
+        <h3>Multi-asset, multi-user</h3>
+        <p>Trades BTC, ETH and SOL. Every user connects their own Binance keys and runs an independent bot instance.</p>
+      </div>
+      <div class="feat-card reveal">
+        <div class="feat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></div>
+        <h3>Transparent logic</h3>
+        <p>Every trade shows its accumulation zone, manipulation sweep and FVG confirmation. Nothing is hidden.</p>
+      </div>
+      <div class="feat-card reveal">
+        <div class="feat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></div>
+        <h3>Telegram alerts</h3>
+        <p>Entry and exit notifications pushed in real time — so you're never out of the loop.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== PERFORMANCE ============================== -->
+<section class="sec dashprev" id="performance">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="eyebrow">Track record</div>
+      <h2>Six years. 770+ trades. Fully backtested.</h2>
+      <p>BTC, ETH and SOL on the 15-minute timeframe, January 2020 to April 2026, with 2% dynamic risk. The edge comes from a 2:1 payoff — not from being right most of the time.</p>
+    </div>
+    <div class="perf-grid">
+      <div class="panel reveal">
+        <div class="panel-title">Equity curve · $10,000 start <span class="mono pos" style="font-size:13px">+1,249%</span></div>
+        <div id="perfChart" style="margin-top:10px"></div>
+      </div>
+      <div class="panel reveal" style="display:flex;flex-direction:column;justify-content:center">
+        <div class="perf-big"><span class="v pos">$135k</span><span class="mono" style="color:var(--muted);font-size:14px">from $10k</span></div>
+        <div class="perf-mini">
+          <div class="m"><div class="v">770+</div><div class="l">Total trades</div></div>
+          <div class="m"><div class="v">42.8%</div><div class="l">Win rate</div></div>
+          <div class="m"><div class="v">2:1</div><div class="l">Reward-to-risk</div></div>
+          <div class="m"><div class="v pos">~50%</div><div class="l">Drawdown cut by adaptive sizing</div></div>
+        </div>
+        <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:18px">
+          <div class="panel-title" style="margin-bottom:14px">Yearly return</div>
+          <div id="yearBars"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== RISK ============================== -->
+<section class="risk">
+  <div class="wrap">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+    <p><b>Past performance does not guarantee future results.</b> All figures shown are from historical backtesting and paper trading, not live audited returns. Trading crypto futures involves significant risk of loss and is not suitable for every investor. You may lose more than your initial deposit. ZENITH provides execution software only and does not offer financial advice. Connect funds you can afford to lose.</p>
+  </div>
+</section>
+
+<!-- ============================== FINAL CTA ============================== -->
+<section class="cta" id="cta">
+  <div class="cta-glow"></div>
+  <div class="wrap">
+    <h2>Start systematic. Start on paper.</h2>
+    <p>Spin up a paper account with $10k virtual funds in under a minute. Go live when you're ready.</p>
+    <div style="position:relative">
+      <a class="btn btn-primary btn-lg" href="/login">Start Trading
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+    </div>
+    <div class="cta-note">Sign in with Google · your keys, your funds.</div>
+  </div>
+</section>
+
+<!-- ============================== FOOTER ============================== -->
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <a class="logo" href="#top"><span class="z">Z</span> ZENITH</a>
+        <p>Automated AMD FVG execution on Binance Futures. Transparent, backtested, rules-based.</p>
+      </div>
+      <div class="foot-col">
+        <h4>Product</h4>
+        <a href="#how">How it works</a>
+        <a href="#dashboard">Dashboard</a>
+        <a href="#features">Features</a>
+        <a href="#performance">Performance</a>
+      </div>
+      <div class="foot-col">
+        <h4>Company</h4>
+        <a href="#">About</a>
+        <a href="#">Track record</a>
+        <a href="#">Contact</a>
+        <a href="#">Telegram</a>
+      </div>
+      <div class="foot-col">
+        <h4>Legal</h4>
+        <a href="#">Risk disclosure</a>
+        <a href="#">Terms of service</a>
+        <a href="#">Privacy policy</a>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span class="cp">© 2026 ZENITH · zenithbot.org</span>
+      <span class="dis">Crypto futures trading carries substantial risk. ZENITH is execution software, not financial advice. Figures are backtested, not audited live returns.</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/landing/landing-page.js"></script>
+</body>
+</html>

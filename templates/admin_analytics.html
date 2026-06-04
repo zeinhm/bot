@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title_suffix %} — Platform Analytics{% endblock %}
+
+{% block head %}
+<script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.gavatar {
+    width: 28px; height: 28px; border-radius: 50%; flex: none;
+    display: grid; place-items: center; font-size: 11px; font-weight: 600; color: #fff;
+}
+.monthly-bars { display: flex; align-items: flex-end; gap: 4px; height: 80px; padding-top: 4px; }
+.monthly-bar { flex: 1; min-width: 16px; border-radius: 3px 3px 0 0; position: relative; transition: height .3s; }
+.monthly-bar .bar-lbl { position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%); font-size: 9px; color: var(--muted); white-space: nowrap; }
+@media (max-width: 767px) {
+    .two-col { grid-template-columns: 1fr; }
+    .adm-hide-sm { display: none !important; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-narrow">
+    <div class="page-head">
+        <div>
+            <h1 class="page-title">Platform Analytics</h1>
+            <p class="page-sub">Aggregated trading performance across all users (live only).</p>
+        </div>
+    </div>
+
+    <div class="stat-row" style="margin-bottom:16px">
+        <div class="stat">
+            <div class="lbl">Win Rate</div>
+            <div class="val mono">{% if total > 0 %}{{ '%.0f'|format(win_rate) }}%{% else %}&mdash;{% endif %}</div>
+            <div class="sub">{{ total }} trades</div>
+        </div>
+        <div class="stat">
+            <div class="lbl">Total R</div>
+            <div class="val mono {% if total_r > 0 %}pos{% elif total_r < 0 %}neg{% endif %}">{% if total > 0 %}{{ '%+.1f'|format(total_r) }}{% else %}&mdash;{% endif %}</div>
+            <div class="sub">risk units</div>
+        </div>
+        <div class="stat">
+            <div class="lbl">Profit Factor</div>
+            <div class="val mono">{% if total > 0 %}{{ '%.2f'|format(profit_factor) }}{% else %}&mdash;{% endif %}</div>
+            <div class="sub">gross W/L</div>
+        </div>
+        <div class="stat">
+            <div class="lbl">Avg Trades/Day</div>
+            <div class="val mono">{% if total > 0 %}{{ '%.1f'|format(avg_trades_day) }}{% else %}&mdash;{% endif %}</div>
+            <div class="sub">platform-wide</div>
+        </div>
+    </div>
+
+    <div class="two-col" style="margin-bottom:16px">
+        <!-- Equity Curve -->
+        <div class="card">
+            <div class="card-title" style="margin-bottom:10px">Platform Equity Curve</div>
+            <div id="equity-chart" style="height:200px"></div>
+            {% if total == 0 %}
+            <div class="muted" style="text-align:center;padding:40px 0;font-size:13px">No trade data yet.</div>
+            {% endif %}
+        </div>
+
+        <!-- Monthly P&L -->
+        <div class="card">
+            <div class="card-title" style="margin-bottom:10px">Monthly P&L</div>
+            {% if monthly_data %}
+            <div class="monthly-bars" id="monthly-bars"></div>
+            <div style="height:24px"></div>
+            {% else %}
+            <div class="muted" style="text-align:center;padding:40px 0;font-size:13px">No monthly data yet.</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Per-Asset Breakdown -->
+    {% if asset_data %}
+    <div class="card" style="margin-bottom:16px">
+        <div class="card-title" style="margin-bottom:10px">Per-Asset Breakdown</div>
+        <div class="tbl-wrap">
+        <table class="tbl">
+            <thead><tr>
+                <th>Symbol</th>
+                <th class="num">Trades</th>
+                <th class="num">Win Rate</th>
+                <th class="num">Total R</th>
+                <th class="num">P&L</th>
+            </tr></thead>
+            <tbody>
+                {% for a in asset_data %}
+                <tr>
+                    <td class="mono" style="font-weight:600">{{ a.symbol }}</td>
+                    <td class="num mono">{{ a.trades }}</td>
+                    <td class="num mono">{{ '%.0f'|format(a.win_rate) }}%</td>
+                    <td class="num mono {% if a.total_r > 0 %}pos{% elif a.total_r < 0 %}neg{% endif %}">{{ '%+.1f'|format(a.total_r) }}</td>
+                    <td class="num mono {% if a.pnl > 0 %}pos{% elif a.pnl < 0 %}neg{% endif %}">{{ '%+.2f'|format(a.pnl) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Per-User Leaderboard -->
+    {% if leaderboard %}
+    <div class="card">
+        <div class="card-title" style="margin-bottom:10px">User Leaderboard</div>
+        <div class="tbl-wrap">
+        <table class="tbl">
+            <thead><tr>
+                <th>User</th>
+                <th class="num">Trades</th>
+                <th class="num adm-hide-sm">Win Rate</th>
+                <th class="num">Total R</th>
+                <th class="num adm-hide-sm">P&L</th>
+                <th class="num adm-hide-sm">PF</th>
+            </tr></thead>
+            <tbody>
+                {% for row in leaderboard %}
+                <tr style="cursor:pointer" onclick="window.location.href='/admin/user/{{ row.user_id }}'">
+                    <td>
+                        <div class="vcenter gap8">
+                            {% if row.user and row.user.avatar_url %}
+                            <img src="{{ row.user.avatar_url }}" referrerpolicy="no-referrer" style="width:28px;height:28px;border-radius:50%;flex:none">
+                            {% else %}
+                            <span class="gavatar" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8)">{{ row.user.name[:2]|upper if row.user and row.user.name else '?' }}</span>
+                            {% endif %}
+                            <span style="font-weight:600">{{ row.user.name or row.user.email if row.user else 'User #' ~ row.user_id }}</span>
+                        </div>
+                    </td>
+                    <td class="num mono">{{ row.trades }}</td>
+                    <td class="num mono adm-hide-sm">{{ '%.0f'|format(row.win_rate) }}%</td>
+                    <td class="num mono {% if row.total_r > 0 %}pos{% elif row.total_r < 0 %}neg{% endif %}" style="font-weight:600">{{ '%+.1f'|format(row.total_r) }}</td>
+                    <td class="num mono adm-hide-sm {% if row.pnl > 0 %}pos{% elif row.pnl < 0 %}neg{% endif %}">{{ '%+.2f'|format(row.pnl) }}</td>
+                    <td class="num mono adm-hide-sm">{{ row.profit_factor }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    // Equity chart
+    var eqData = {{ equity_json|safe }};
+    if (eqData.length) {
+        var container = document.getElementById('equity-chart');
+        var chart = LightweightCharts.createChart(container, {
+            layout: { background: { color: 'transparent' }, textColor: '#8A8F98', fontSize: 11, fontFamily: 'Inter' },
+            grid: { vertLines: { color: 'rgba(255,255,255,.03)' }, horzLines: { color: 'rgba(255,255,255,.03)' } },
+            rightPriceScale: { borderColor: 'rgba(255,255,255,.08)' },
+            timeScale: { borderColor: 'rgba(255,255,255,.08)' },
+            crosshair: { mode: 0 },
+        });
+        var series = chart.addAreaSeries({
+            lineColor: '#00C896', lineWidth: 2,
+            topColor: 'rgba(0,200,150,.25)', bottomColor: 'rgba(0,200,150,.02)',
+        });
+        series.setData(eqData);
+        chart.timeScale().fitContent();
+        new ResizeObserver(function() { chart.applyOptions({ width: container.clientWidth }); }).observe(container);
+    }
+
+    // Monthly bars
+    var monthly = {{ monthly_json|safe }};
+    if (monthly.length) {
+        var wrap = document.getElementById('monthly-bars');
+        var maxAbs = Math.max.apply(null, monthly.map(function(m) { return Math.abs(m.pnl); }));
+        if (maxAbs === 0) maxAbs = 1;
+        monthly.forEach(function(m) {
+            var bar = document.createElement('div');
+            bar.className = 'monthly-bar';
+            var pct = Math.abs(m.pnl) / maxAbs * 70;
+            bar.style.height = Math.max(pct, 4) + 'px';
+            bar.style.background = m.pnl >= 0 ? 'var(--green)' : 'var(--red)';
+            bar.style.opacity = '0.8';
+            bar.title = m.month + ': $' + m.pnl.toFixed(2);
+            bar.innerHTML = '<span class="bar-lbl">' + m.month.slice(5) + '</span>';
+            wrap.appendChild(bar);
+        });
+    }
+})();
+</script>
+{% endblock %}

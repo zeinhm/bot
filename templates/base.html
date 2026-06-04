@@ -12,8 +12,45 @@
 
     <!-- ======== Sidebar Rail ======== -->
     <nav class="rail">
-        <a href="/" class="rail-logo">Z</a>
+        <a href="{% if admin_mode|default(false) %}/admin{% else %}/{% endif %}" class="rail-logo">Z</a>
 
+        {% if admin_mode|default(false) %}
+        <!-- ===== Admin Navigation ===== -->
+        <div class="rail-group">
+            <a href="/admin" class="rail-btn {% if page == 'admin_dashboard' %}active{% endif %}" data-tip="Overview">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/>
+                </svg>
+            </a>
+            <a href="/admin/users" class="rail-btn {% if page == 'admin_users' %}active{% endif %}" data-tip="Users">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+            </a>
+            <a href="/admin/analytics" class="rail-btn {% if page == 'admin_analytics' %}active{% endif %}" data-tip="Analytics">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 20V10M12 20V4M6 20v-6"/>
+                </svg>
+            </a>
+            <a href="/admin/logs" class="rail-btn {% if page == 'admin_logs' %}active{% endif %}" data-tip="Logs">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
+                </svg>
+            </a>
+        </div>
+
+        <div class="rail-spacer"></div>
+
+        <div class="rail-group">
+            <button class="rail-btn" data-tip="Back" onclick="toggleAdminMode(false)" style="border:none;background:transparent;cursor:pointer">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+                </svg>
+            </button>
+        </div>
+
+        {% else %}
+        <!-- ===== Trading Navigation ===== -->
         <div class="rail-group">
             <!-- Dashboard -->
             <a href="/" class="rail-btn {% if page == 'dashboard' %}active{% endif %}" data-tip="Dashboard">
@@ -67,14 +104,6 @@
         <div class="rail-spacer"></div>
 
         <div class="rail-group">
-            {% if user and user.is_admin %}
-            <!-- Admin -->
-            <a href="/admin" class="rail-btn {% if page == 'admin' %}active{% endif %}" data-tip="Admin">
-                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                </svg>
-            </a>
-            {% endif %}
             <!-- Settings -->
             <a href="/settings" class="rail-btn {% if page == 'settings' %}active{% endif %}" data-tip="Settings">
                 <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -83,6 +112,7 @@
                 </svg>
             </a>
         </div>
+        {% endif %}
     </nav>
 
     <!-- ======== Main Column ======== -->
@@ -92,6 +122,16 @@
         <header class="topbar">
             <div class="wordmark">ZENITH<span class="dot">.</span></div>
 
+            {% if admin_mode|default(false) %}
+            <!-- Admin topbar: just the badge -->
+            <div style="flex:1"></div>
+            <div class="topbar-right">
+                <span class="pill amber" style="padding:4px 10px;gap:5px;font-size:10px">
+                    <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    ADMIN
+                </span>
+            {% else %}
+            <!-- Trading topbar -->
             <div class="topbar-ticker">
                 <span class="pair">BTC / USDT</span>
                 <span class="price mono" id="topbar-price">&mdash;</span>
@@ -123,12 +163,13 @@
                 </span>
 
                 <span id="ws-status-dot" class="led gray" title="WebSocket" style="display:none"></span>
+            {% endif %}
 
                 {% if user %}
                 <div class="profile-menu" style="position:relative;margin-left:8px;padding-left:8px;border-left:1px solid var(--border)">
                     <button class="profile-btn" onclick="toggleProfileMenu(event)">
                         {% if user.avatar_url %}
-                        <img src="{{ user.avatar_url }}" alt="" style="width:28px;height:28px;border-radius:50%">
+                        <img src="{{ user.avatar_url }}" alt="" referrerpolicy="no-referrer" style="width:28px;height:28px;border-radius:50%">
                         {% else %}
                         <div style="width:28px;height:28px;border-radius:50%;background:var(--card-2);display:grid;place-items:center;font-size:12px;font-weight:600;color:var(--muted)">{{ user.name[:1]|upper if user.name else '?' }}</div>
                         {% endif %}
@@ -138,7 +179,7 @@
                         <div class="profile-drop-header">
                             <div class="profile-drop-header-row">
                                 {% if user.avatar_url %}
-                                <img src="{{ user.avatar_url }}" alt="" style="width:36px;height:36px;border-radius:50%;flex:none">
+                                <img src="{{ user.avatar_url }}" alt="" referrerpolicy="no-referrer" style="width:36px;height:36px;border-radius:50%;flex:none">
                                 {% else %}
                                 <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#1d4ed8);display:grid;place-items:center;font-size:14px;font-weight:600;color:#fff;flex:none">{{ user.name[:1]|upper if user.name else '?' }}</div>
                                 {% endif %}
@@ -149,6 +190,12 @@
                             </div>
                         </div>
                         <div class="profile-drop-sep"></div>
+                        {% if admin_mode|default(false) %}
+                        <button class="profile-drop-item" onclick="toggleAdminMode(false)">
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                            Back to Dashboard
+                        </button>
+                        {% else %}
                         {% if is_paper %}
                         <button class="profile-drop-item" onclick="switchMode('live')">
                             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></svg>
@@ -159,6 +206,13 @@
                             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
                             <div style="display:flex;flex-direction:column;align-items:flex-start"><div>Switch to Demo</div><div class="muted" style="font-size:11px;font-weight:400">Paper trading</div></div>
                         </button>
+                        {% endif %}
+                        {% if user and user.is_admin %}
+                        <button class="profile-drop-item" onclick="toggleAdminMode(true)">
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                            <div style="display:flex;flex-direction:column;align-items:flex-start"><div>Switch to Admin</div><div class="muted" style="font-size:11px;font-weight:400">Platform management</div></div>
+                        </button>
+                        {% endif %}
                         {% endif %}
                         <a href="/settings" class="profile-drop-item">
                             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.8 1V21a2 2 0 0 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.2-2.8H3a2 2 0 0 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
@@ -185,6 +239,31 @@
 
 <!-- Bottom Tab Bar (mobile) -->
 <nav class="btm-nav">
+    {% if admin_mode|default(false) %}
+    <!-- ===== Admin Bottom Nav ===== -->
+    <a href="/admin" class="btm-tab {% if page == 'admin_dashboard' %}active{% endif %}">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></svg>
+        <span>Overview</span>
+    </a>
+    <a href="/admin/users" class="btm-tab {% if page == 'admin_users' %}active{% endif %}">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span>Users</span>
+    </a>
+    <a href="/admin/analytics" class="btm-tab {% if page == 'admin_analytics' %}active{% endif %}">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+        <span>Analytics</span>
+    </a>
+    <a href="/admin/logs" class="btm-tab {% if page == 'admin_logs' %}active{% endif %}">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+        <span>Logs</span>
+    </a>
+    <button class="btm-tab" onclick="toggleAdminMode(false)">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        <span>Back</span>
+    </button>
+
+    {% else %}
+    <!-- ===== Trading Bottom Nav ===== -->
     <a href="/" class="btm-tab {% if page == 'dashboard' %}active{% endif %}">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></svg>
         <span>Home</span>
@@ -222,13 +301,8 @@
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.8 1V21a2 2 0 0 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.2-2.8H3a2 2 0 0 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
             Settings
         </a>
-        {% if user and user.is_admin %}
-        <a href="/admin" class="btm-more-item {% if page == 'admin' %}active{% endif %}">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            Admin
-        </a>
-        {% endif %}
     </div>
+    {% endif %}
 </nav>
 
 <!-- Paper Trading Modal -->
@@ -249,6 +323,13 @@
 </div>
 
 <script>
+function toggleAdminMode(enable) {
+    fetch('/admin/toggle', { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.ok) window.location.href = enable ? '/admin' : '/';
+    });
+}
 var currentMode = '{{ trading_mode|default("paper") }}';
 function switchMode(mode) {
     fetch('/api/switch-mode', {

@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title_suffix %} — Logs{% endblock %}
+
+{% block head %}
+<style>
+.log-filters {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; align-items: center;
+}
+.log-filters select {
+    width: auto; min-width: 0; flex: none; font-size: 12px; padding: 6px 28px 6px 10px;
+    background: var(--card-3) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238A8F98'/%3E%3C/svg%3E") no-repeat right 8px center;
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    color: var(--text); font-family: var(--sans);
+    -webkit-appearance: none; -moz-appearance: none; appearance: none; cursor: pointer;
+}
+.log-filters select:hover { border-color: var(--border-bri); }
+.msg-cell { max-width: 500px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gavatar {
+    width: 24px; height: 24px; border-radius: 50%; flex: none;
+    display: grid; place-items: center; font-size: 10px; font-weight: 600; color: #fff;
+}
+@media (max-width: 720px) {
+    .adm-hide-sm { display: none !important; }
+    .msg-cell { max-width: 200px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-narrow">
+    <div class="page-head">
+        <div>
+            <h1 class="page-title">Event Logs</h1>
+            <p class="page-sub">Live event stream across all users.</p>
+        </div>
+    </div>
+
+    <form class="log-filters" method="get" action="/admin/logs">
+        <select name="user_id" onchange="this.form.submit()">
+            <option value="">All users</option>
+            {% for u in all_users %}
+            <option value="{{ u.id }}" {% if filter_user_id == u.id %}selected{% endif %}>{{ u.name or u.email }}</option>
+            {% endfor %}
+        </select>
+        <select name="level" onchange="this.form.submit()">
+            <option value="">All levels</option>
+            <option value="info" {% if filter_level == 'info' %}selected{% endif %}>Info</option>
+            <option value="warn" {% if filter_level == 'warn' %}selected{% endif %}>Warn</option>
+            <option value="error" {% if filter_level == 'error' %}selected{% endif %}>Error</option>
+        </select>
+        <select name="category" onchange="this.form.submit()">
+            <option value="">All categories</option>
+            <option value="system" {% if filter_category == 'system' %}selected{% endif %}>System</option>
+            <option value="trade" {% if filter_category == 'trade' %}selected{% endif %}>Trade</option>
+        </select>
+        <select name="mode" onchange="this.form.submit()">
+            <option value="">All modes</option>
+            <option value="live" {% if filter_mode == 'live' %}selected{% endif %}>Live</option>
+            <option value="paper" {% if filter_mode == 'paper' %}selected{% endif %}>Paper</option>
+        </select>
+    </form>
+
+    <div class="card">
+        <div class="tbl-wrap">
+        <table class="tbl">
+            <thead><tr>
+                <th>Time</th>
+                <th>User</th>
+                <th class="adm-hide-sm">Mode</th>
+                <th>Level</th>
+                <th class="adm-hide-sm">Category</th>
+                <th>Message</th>
+            </tr></thead>
+            <tbody>
+                {% for event, event_user in events %}
+                <tr>
+                    <td>
+                        {% if event.timestamp %}
+                        <span class="mono local-time" style="font-size:12px" data-utc="{{ event.timestamp.strftime('%Y-%m-%dT%H:%M:%SZ') }}" data-fmt="full">{{ event.timestamp.strftime('%m/%d %H:%M') }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if event_user %}
+                        <div class="vcenter gap6">
+                            {% if event_user.avatar_url %}
+                            <img src="{{ event_user.avatar_url }}" referrerpolicy="no-referrer" style="width:24px;height:24px;border-radius:50%;flex:none">
+                            {% else %}
+                            <span class="gavatar" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8)">{{ event_user.name[:1]|upper if event_user.name else '?' }}</span>
+                            {% endif %}
+                            <span style="font-size:12px">{{ event_user.name or event_user.email }}</span>
+                        </div>
+                        {% else %}
+                        <span class="muted" style="font-size:12px">System</span>
+                        {% endif %}
+                    </td>
+                    <td class="adm-hide-sm">
+                        {% if event.is_paper %}
+                        <span class="pill amber" style="font-size:10px">Paper</span>
+                        {% else %}
+                        <span class="pill gray" style="font-size:10px">Live</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if event.level == 'error' %}<span class="pill red">error</span>
+                        {% elif event.level == 'warn' %}<span class="pill amber">warn</span>
+                        {% else %}<span class="pill green">info</span>{% endif %}
+                    </td>
+                    <td class="muted adm-hide-sm" style="font-size:12px">{{ event.category or 'system' }}</td>
+                    <td class="msg-cell" style="font-size:12px" title="{{ event.message }}">{{ event.message }}</td>
+                </tr>
+                {% endfor %}
+                {% if not events %}
+                <tr><td colspan="6" style="text-align:center;padding:34px 0;color:var(--muted)">
+                    No events found{% if filter_level or filter_category or filter_user_id or filter_mode %} matching filters{% endif %}.
+                </td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from config import (
@@ -34,7 +35,7 @@ from routes.backtester import router as backtester_router
 from routes.alerts import router as alerts_router
 from routes.track_record import router as track_record_router
 from routes.bot_control import router as bot_control_router
-from routes.admin import router as admin_router
+from routes.admin import router as admin_router, AdminNotFound
 from routes.ws import router as ws_legacy_router
 
 logging.basicConfig(
@@ -130,6 +131,14 @@ async def pending_handler(request: Request, exc: PendingApproval):
 @app.exception_handler(AccountRejected)
 async def rejected_handler(request: Request, exc: AccountRejected):
     return RedirectResponse("/rejected", status_code=303)
+
+
+_404_templates = Jinja2Templates(directory="templates")
+
+
+@app.exception_handler(AdminNotFound)
+async def admin_not_found_handler(request: Request, exc: AdminNotFound):
+    return _404_templates.TemplateResponse(request, "404.html", {}, status_code=404)
 
 
 app.mount("/static", StaticFiles(directory="static"), name="static")

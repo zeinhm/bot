@@ -67,3 +67,7 @@ async def require_auth(request: Request) -> User:
 
 def get_trading_mode(request: Request) -> str:
     return request.session.get("trading_mode", "live")
+
+
+def get_admin_mode(request: Request) -> bool:
+    return request.session.get("admin_mode", False)

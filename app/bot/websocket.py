@@ -319,6 +319,7 @@ async def _balance_poll(bot_manager):
                         "mode": mode,
                         "usdt_balance": round(balance, 2),
                     })
+                    await db.set_state("last_balance", round(balance, 2), user_id=uid, is_paper=(mode == "paper"))
                 except Exception as e:
                     log.error("Balance poll error for user %d/%s: %s", uid, mode, e)
 

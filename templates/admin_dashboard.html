@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title_suffix %} — Admin{% endblock %}
+
+{% block head %}
+<style>
+.user-row { cursor: pointer; transition: background .1s; }
+.user-row:hover { background: #131820 !important; }
+.gavatar {
+    width: 32px; height: 32px; border-radius: 50%; flex: none;
+    display: grid; place-items: center; font-size: 12px; font-weight: 600; color: #fff;
+}
+@media (max-width: 720px) {
+    .adm-hide-sm { display: none !important; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-narrow">
+    <div class="page-head">
+        <div>
+            <h1 class="page-title">Admin Overview</h1>
+            <p class="page-sub">Platform health and user activity at a glance.</p>
+        </div>
+    </div>
+
+    {% if pending_count > 0 %}
+    <div class="callout amber" style="margin-bottom:14px">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+        <span>{{ pending_count }} user{{ 's' if pending_count != 1 else '' }} waiting for approval — <a href="/admin/users" class="link" style="font-size:inherit">Review now</a></span>
+    </div>
+    {% endif %}
+
+    <div class="stat-row" style="margin-bottom:16px">
+        <div class="stat">
+            <div class="lbl">Total Users</div>
+            <div class="val">{{ total_users }}</div>
+            <div class="sub">approved accounts</div>
+        </div>
+        <div class="stat">
+            <div class="lbl">Active Bots</div>
+            <div class="val {% if active_bots > 0 %}pos{% endif %}">{{ active_bots }}</div>
+            <div class="sub">running now</div>
+        </div>
+        <div class="stat">
+            <div class="lbl">Today's P&L</div>
+            <div class="val mono {% if today_pnl >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.2f'|format(today_pnl) }}</div>
+            <div class="sub">platform-wide (live)</div>
+        </div>
+        <div class="stat">
+            <div class="lbl">Total Trades</div>
+            <div class="val">{{ total_trades }}</div>
+            <div class="sub">all-time (live)</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title" style="margin-bottom:12px">Users</div>
+        <div class="tbl-wrap">
+        <table class="tbl">
+            <thead><tr>
+                <th>User</th>
+                <th class="adm-hide-sm">Bot</th>
+                <th class="num adm-hide-sm">Trades</th>
+                <th class="num adm-hide-sm">Win Rate</th>
+                <th class="num">Today P&L</th>
+                <th class="adm-hide-sm">Last Active</th>
+            </tr></thead>
+            <tbody>
+                {% for row in user_rows %}
+                <tr class="user-row" onclick="window.location.href='/admin/user/{{ row.user.id }}'">
+                    <td>
+                        <div class="vcenter gap12">
+                            {% if row.user.avatar_url %}
+                            <img src="{{ row.user.avatar_url }}" referrerpolicy="no-referrer" style="width:32px;height:32px;border-radius:50%;flex:none">
+                            {% else %}
+                            <span class="gavatar" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8)">{{ row.user.name[:2]|upper if row.user.name else '?' }}</span>
+                            {% endif %}
+                            <div>
+                                <div style="font-weight:600">{{ row.user.name or row.user.email }}</div>
+                                <div class="muted" style="font-size:11px">{{ row.user.email }}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="adm-hide-sm">
+                        <span class="pill {{ row.bot_color }}" style="gap:4px">
+                            <span class="led {{ row.bot_color }}{% if row.bot_color == 'green' %} pulse{% endif %}"></span>
+                            {{ row.bot_label }}
+                        </span>
+                    </td>
+                    <td class="num mono adm-hide-sm">{{ row.trades }}</td>
+                    <td class="num mono adm-hide-sm">{% if row.trades > 0 %}{{ '%.0f'|format(row.win_rate) }}%{% else %}&mdash;{% endif %}</td>
+                    <td class="num mono {% if row.today_pnl > 0 %}pos{% elif row.today_pnl < 0 %}neg{% endif %}">
+                        {% if row.today_pnl != 0 %}{{ '%+.2f'|format(row.today_pnl) }}{% else %}&mdash;{% endif %}
+                    </td>
+                    <td class="adm-hide-sm">
+                        {% if row.user.last_login %}
+                        <span class="mono local-time" style="font-size:12px" data-utc="{{ row.user.last_login.strftime('%Y-%m-%dT%H:%M:%SZ') }}" data-fmt="full">{{ row.user.last_login.strftime('%Y-%m-%d %H:%M') }}</span>
+                        {% else %}
+                        <span class="muted" style="font-size:12px">Never</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not user_rows %}
+                <tr><td colspan="6" style="text-align:center;padding:34px 0;color:var(--muted)">No approved users yet.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

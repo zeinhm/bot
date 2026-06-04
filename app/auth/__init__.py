@@ -7,4 +7,5 @@ from app.auth.service import (  # noqa: F401
     PendingApproval,
     AccountRejected,
     get_trading_mode,
+    get_admin_mode,
 )

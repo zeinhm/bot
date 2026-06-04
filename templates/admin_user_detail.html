@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% block title_suffix %} — {{ target.name or target.email }}{% endblock %}
+
+{% block head %}
+<script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+.user-header {
+    display: flex; align-items: center; gap: 16px; margin-bottom: 20px;
+}
+.user-header img, .user-header .gavatar {
+    width: 48px; height: 48px; border-radius: 50%; flex: none;
+}
+.user-header .gavatar {
+    display: grid; place-items: center; font-size: 18px; font-weight: 600; color: #fff;
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+}
+.badges { display: flex; gap: 6px; margin-top: 4px; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 767px) {
+    .two-col { grid-template-columns: 1fr; }
+    .adm-hide-sm { display: none !important; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-narrow">
+    <div style="margin-bottom:12px">
+        <a href="/admin" class="link muted" style="font-size:12px;display:inline-flex;align-items:center;gap:4px">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            Back to Overview
+        </a>
+    </div>
+
+    <!-- User Header -->
+    <div class="user-header">
+        {% if target.avatar_url %}
+        <img src="{{ target.avatar_url }}" referrerpolicy="no-referrer">
+        {% else %}
+        <div class="gavatar">{{ target.name[:2]|upper if target.name else '?' }}</div>
+        {% endif %}
+        <div>
+            <div style="font-size:18px;font-weight:700">{{ target.name or target.email }}</div>
+            <div class="muted" style="font-size:12px">{{ target.email }}</div>
+            <div class="badges">
+                {% if target.is_admin %}
+                <span class="pill amber" style="gap:4px">Admin</span>
+                {% endif %}
+                {% if target.is_approved %}
+                <span class="pill green" style="gap:4px"><span class="led green"></span>Approved</span>
+                {% endif %}
+                {% if target.created_at %}
+                <span class="muted" style="font-size:11px">Member since <span class="mono local-time" data-utc="{{ target.created_at.strftime('%Y-%m-%dT%H:%M:%SZ') }}" data-fmt="date">{{ target.created_at.strftime('%Y-%m-%d') }}</span></span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Trading Stats -->
+    <div class="stat-row" style="margin-bottom:12px">
+        <div class="stat">
+            <div class="lbl">Win Rate</div>
+            <div class="val mono">{% if live_stats.total > 0 %}{{ '%.0f'|format(live_stats.win_rate) }}%{% else %}&mdash;{% endif %}</div>
+            <div class="sub">{{ live_stats.wins }}W / {{ live_stats.losses }}L</div>
+        </div>
+        <div class="stat">
+            <div class="lbl">Total R</div>
+            <div class="val mono {% if live_stats.total_r > 0 %}pos{% elif live_stats.total_r < 0 %}neg{% endif %}">{% if live_stats.total > 0 %}{{ '%+.1f'|format(live_stats.total_r) }}{% else %}&mdash;{% endif %}</div>
+            <div class="sub">risk units</div>
+        </div>
+        <div class="stat">
+            <div class="lbl">Profit Factor</div>
+            <div class="val mono">{% if live_stats.total > 0 %}{{ '%.2f'|format(live_stats.profit_factor) }}{% else %}&mdash;{% endif %}</div>
+            <div class="sub">gross W/L</div>
+        </div>
+        <div class="stat">
+            <div class="lbl">Total Trades</div>
+            <div class="val">{{ live_stats.total }}</div>
+            <div class="sub">live closed</div>
+        </div>
+    </div>
+
+    <div class="stat-row" style="margin-bottom:16px">
+        <div class="stat">
+            <div class="lbl">Live Balance</div>
+            <div class="val mono" style="font-size:18px">{% if live_balance is not none %}${{ '%.2f'|format(live_balance) }}{% else %}<span class="muted" style="font-size:14px">No API keys</span>{% endif %}</div>
+            <div class="sub">{% if live_balance is not none and live_status != 'running' %}last known{% else %}Binance Futures{% endif %}</div>
+        </div>
+        <div class="stat">
+            <div class="lbl">Paper Balance</div>
+            <div class="val mono" style="font-size:18px">${{ '%.2f'|format(paper_balance) }}</div>
+            <div class="sub">demo account</div>
+        </div>
+        <div class="stat">
+            <div class="lbl">Max Drawdown</div>
+            <div class="val mono neg" style="font-size:18px">{% if live_stats.total > 0 %}{{ '%.1f'|format(live_stats.max_dd_pct) }}%{% else %}&mdash;{% endif %}</div>
+            <div class="sub">peak to trough</div>
+        </div>
+        <div class="stat">
+            <div class="lbl">Avg Hold Time</div>
+            <div class="val mono" style="font-size:18px">{% if avg_hold_mins > 0 %}{{ avg_hold_mins }}m{% else %}&mdash;{% endif %}</div>
+            <div class="sub">per trade</div>
+        </div>
+    </div>
+
+    <!-- Bot Status -->
+    <div class="two-col" style="margin-bottom:16px">
+        <div class="card">
+            <div class="card-title" style="margin-bottom:10px">Live Bot</div>
+            <div class="vcenter gap8">
+                <span class="led {% if live_status == 'running' %}green pulse{% elif live_status == 'starting' %}amber pulse{% else %}gray{% endif %}"></span>
+                <span style="font-size:13px;font-weight:600;text-transform:capitalize">{{ live_status }}</span>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-title" style="margin-bottom:10px">Paper Bot</div>
+            <div class="vcenter gap8">
+                <span class="led {% if paper_status == 'running' %}green pulse{% elif paper_status == 'starting' %}amber pulse{% else %}gray{% endif %}"></span>
+                <span style="font-size:13px;font-weight:600;text-transform:capitalize">{{ paper_status }}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Equity Curve -->
+    {% if live_stats.total > 0 %}
+    <div class="card" style="margin-bottom:16px">
+        <div class="card-title" style="margin-bottom:10px">Equity Curve (Live)</div>
+        <div id="equity-chart" style="height:200px"></div>
+    </div>
+    {% endif %}
+
+    <!-- Recent Trades -->
+    <div class="card" style="margin-bottom:16px">
+        <div class="card-title" style="margin-bottom:10px">Recent Trades (Live)</div>
+        <div class="tbl-wrap">
+        <table class="tbl">
+            <thead><tr>
+                <th>Date</th>
+                <th>Pair</th>
+                <th>Dir</th>
+                <th class="num adm-hide-sm">Entry</th>
+                <th class="num adm-hide-sm">Exit</th>
+                <th class="num">Result</th>
+                <th class="num">R</th>
+                <th class="num">P&L</th>
+            </tr></thead>
+            <tbody>
+                {% for t in recent_trades %}
+                <tr class="{% if t.result == 'win' %}row-win{% elif t.result == 'loss' %}row-loss{% endif %}">
+                    <td>
+                        {% if t.entry_time %}
+                        <span class="mono local-time" style="font-size:12px" data-utc="{{ t.entry_time.strftime('%Y-%m-%dT%H:%M:%SZ') }}">{{ t.entry_time.strftime('%m/%d %H:%M') }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="mono" style="font-size:12px">{{ t.symbol }}</td>
+                    <td><span class="dir-badge {{ t.direction }}">{{ t.direction|upper }}</span></td>
+                    <td class="num mono adm-hide-sm">${{ '%.2f'|format(t.entry_price) if t.entry_price else '—' }}</td>
+                    <td class="num mono adm-hide-sm">${{ '%.2f'|format(t.exit_price) if t.exit_price else '—' }}</td>
+                    <td class="num">
+                        {% if t.result == 'win' %}<span class="pill green">WIN</span>
+                        {% elif t.result == 'loss' %}<span class="pill red">LOSS</span>
+                        {% else %}<span class="pill blue">OPEN</span>{% endif %}
+                    </td>
+                    <td class="num mono {% if (t.r_value or 0) > 0 %}pos{% elif (t.r_value or 0) < 0 %}neg{% endif %}">{{ '%+.1f'|format(t.r_value) if t.r_value else '—' }}</td>
+                    <td class="num mono {% if (t.pnl_usdt or 0) > 0 %}pos{% elif (t.pnl_usdt or 0) < 0 %}neg{% endif %}">{{ '%+.2f'|format(t.pnl_usdt) if t.pnl_usdt else '—' }}</td>
+                </tr>
+                {% endfor %}
+                {% if not recent_trades %}
+                <tr><td colspan="8" style="text-align:center;padding:24px 0;color:var(--muted)">No trades yet.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+
+    <!-- Recent Events -->
+    <div class="card">
+        <div class="card-title" style="margin-bottom:10px">Recent Events</div>
+        <div class="tbl-wrap">
+        <table class="tbl">
+            <thead><tr>
+                <th>Time</th>
+                <th>Level</th>
+                <th class="adm-hide-sm">Category</th>
+                <th>Message</th>
+            </tr></thead>
+            <tbody>
+                {% for e in events %}
+                <tr>
+                    <td>
+                        {% if e.timestamp %}
+                        <span class="mono local-time" style="font-size:12px" data-utc="{{ e.timestamp.strftime('%Y-%m-%dT%H:%M:%SZ') }}">{{ e.timestamp.strftime('%m/%d %H:%M') }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if e.level == 'error' %}<span class="pill red">error</span>
+                        {% elif e.level == 'warn' %}<span class="pill amber">warn</span>
+                        {% else %}<span class="pill green">info</span>{% endif %}
+                    </td>
+                    <td class="muted adm-hide-sm" style="font-size:12px">{{ e.category or 'system' }}</td>
+                    <td style="font-size:12px;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ e.message }}</td>
+                </tr>
+                {% endfor %}
+                {% if not events %}
+                <tr><td colspan="4" style="text-align:center;padding:24px 0;color:var(--muted)">No events yet.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if live_stats.total > 0 %}
+<script>
+(function() {
+    var data = {{ equity_json|safe }};
+    if (!data.length) return;
+    var container = document.getElementById('equity-chart');
+    var chart = LightweightCharts.createChart(container, {
+        layout: { background: { color: 'transparent' }, textColor: '#8A8F98', fontSize: 11, fontFamily: 'Inter' },
+        grid: { vertLines: { color: 'rgba(255,255,255,.03)' }, horzLines: { color: 'rgba(255,255,255,.03)' } },
+        rightPriceScale: { borderColor: 'rgba(255,255,255,.08)' },
+        timeScale: { borderColor: 'rgba(255,255,255,.08)' },
+        crosshair: { mode: 0 },
+    });
+    var series = chart.addAreaSeries({
+        lineColor: '#00C896', lineWidth: 2,
+        topColor: 'rgba(0,200,150,.25)', bottomColor: 'rgba(0,200,150,.02)',
+    });
+    series.setData(data);
+    chart.timeScale().fitContent();
+    new ResizeObserver(function() { chart.applyOptions({ width: container.clientWidth }); }).observe(container);
+})();
+</script>
+{% endif %}
+{% endblock %}

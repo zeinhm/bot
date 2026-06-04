@@ -5,6 +5,7 @@ from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import require_auth
+from app.email import send_approval_email, send_rejection_email
 import app.db as db
 from app.core.context import get_global_context
 
@@ -71,6 +72,10 @@ async def approve_user(request: Request, user_id: int):
     target = await db.get_user(user_id)
     log.info("Admin approved user %d (%s)", user_id, target.email if target else "?")
     await db.log_event(f"Approved user: {target.email if target else user_id}", category="system")
+
+    if target:
+        send_approval_email(target.email, target.name)
+
     return JSONResponse({"ok": True})
 
 
@@ -96,6 +101,10 @@ async def reject_user(request: Request, user_id: int):
 
     log.info("Admin rejected user %d (%s)", user_id, target.email if target else "?")
     await db.log_event(f"Rejected user: {target.email if target else user_id}", category="system")
+
+    if target:
+        send_rejection_email(target.email, target.name)
+
     return JSONResponse({"ok": True})
 
 

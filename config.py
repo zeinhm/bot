@@ -18,6 +18,9 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 SESSION_SECRET = os.getenv("SESSION_SECRET", "change-me-in-production")
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", "")
 
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+EMAIL_FROM = os.getenv("EMAIL_FROM", "ZENITH BOT <noreply@zenithbot.org>")
+
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
 
 TICK_SIZE = {"BTCUSDT": 0.10, "ETHUSDT": 0.01, "SOLUSDT": 0.01}

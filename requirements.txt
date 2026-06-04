@@ -13,3 +13,4 @@ itsdangerous
 cryptography
 alembic
 psycopg2-binary
+resend

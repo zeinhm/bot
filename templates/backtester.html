@@ -39,12 +39,10 @@
 <!-- Combined Results -->
 <div class="grid" style="gap:12px;margin-bottom:24px" id="combined-section">
     <div class="stat-row">
-        <div class="stat"><div class="lbl">Total Trades</div><div class="val mono" id="cb-trades">—</div></div>
-        <div class="stat"><div class="lbl">Win Rate</div><div class="val mono" id="cb-wr">—</div></div>
-        <div class="stat"><div class="lbl">Total R</div><div class="val mono" id="cb-r">—</div></div>
-        <div class="stat"><div class="lbl">Return</div><div class="val mono" id="cb-return">—</div></div>
-        <div class="stat"><div class="lbl">Final Equity</div><div class="val mono" id="cb-equity">—</div></div>
-        <div class="stat"><div class="lbl">Max DD</div><div class="val mono" id="cb-dd">—</div></div>
+        <div class="stat"><div class="lbl">Starting Equity</div><div class="val mono">$10,000</div></div>
+        <div class="stat"><div class="lbl">Total Trades</div><div class="val mono" id="cb-trades">—</div><div class="sub" id="cb-trades-detail"></div></div>
+        <div class="stat"><div class="lbl">Max Drawdown</div><div class="val mono" id="cb-dd">—</div></div>
+        <div class="stat"><div class="lbl">Final Equity</div><div class="val mono" id="cb-equity">—</div><div class="sub" id="cb-equity-detail"></div></div>
     </div>
     <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between">
@@ -58,16 +56,9 @@
 </div>
 
 <!-- Per-Asset Backtester -->
-<div class="grid" style="grid-template-columns:320px 1fr;align-items:start">
+<div class="grid bt-grid" style="grid-template-columns:320px 1fr;align-items:start">
     <!-- Parameters -->
     <div class="card" style="position:sticky;top:0">
-        <div class="card-title">Asset</div>
-        <div style="display:flex;gap:4px;margin-bottom:14px" id="asset-btns">
-            <button class="yr-btn active" data-sym="BTCUSDT">BTC</button>
-            <button class="yr-btn" data-sym="ETHUSDT">ETH</button>
-            <button class="yr-btn" data-sym="SOLUSDT">SOL</button>
-        </div>
-
         <div class="card-title">Strategy</div>
         <p style="font-size:12px;color:var(--text-2);line-height:1.6;margin:0 0 12px">
             The bot scans for periods where price coils into a tight range relative to recent volatility — accumulation. It then watches for a sharp wick that sweeps beyond the range boundary, trapping breakout traders and hunting stop losses — manipulation.
@@ -94,7 +85,7 @@
             During losing streaks, position size scales down dramatically. After consecutive wins, it scales back up. This cut max drawdown nearly in half while increasing total returns.
         </p>
 
-        <button class="btn btn-primary btn-block" id="run-btn" style="margin-top:14px">
+        <button class="btn btn-primary btn-block" id="run-btn" style="margin-top:14px;display:none">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" stroke="none"><path d="M5 3l14 9-14 9z"/></svg>
             Run Backtest
         </button>
@@ -102,11 +93,25 @@
 
     <!-- Results -->
     <div class="grid" style="gap:12px">
-        <div class="stat-row">
-            <div class="stat"><div class="lbl">Total R</div><div class="val mono" id="st-r">—</div></div>
-            <div class="stat"><div class="lbl">Win Rate</div><div class="val mono" id="st-wr">—</div></div>
-            <div class="stat"><div class="lbl">Trades</div><div class="val mono" id="st-trades">—</div></div>
-            <div class="stat"><div class="lbl">W / L</div><div class="val mono" id="st-wl">—</div></div>
+        <!-- Ticker Bar -->
+        <div class="bt-ticker" style="padding:8px 16px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);display:flex;align-items:center;gap:20px;position:relative;z-index:50">
+            <div id="asset-dropdown" style="position:relative;flex-shrink:0">
+                <div id="asset-trigger" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 8px;border-radius:4px">
+                    <span class="mono" id="asset-label" style="font-size:14px;font-weight:700">BTCUSDT</span>
+                    <span style="font-size:10px;color:var(--muted)">&#9662;</span>
+                </div>
+                <div id="asset-menu" style="display:none;position:absolute;top:100%;left:0;margin-top:4px;width:140px;background:#1e222d;border:1px solid var(--border);border-radius:6px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.6);overflow:hidden">
+                    {% for sym in ['BTCUSDT','ETHUSDT','SOLUSDT'] %}
+                    <div class="asset-opt {% if loop.first %}active{% endif %}" data-sym="{{ sym }}" style="padding:10px 14px;cursor:pointer;font-size:12px;font-family:var(--mono)">{{ sym }}</div>
+                    {% endfor %}
+                </div>
+            </div>
+            <div style="width:1px;height:24px;background:var(--border);flex-shrink:0"></div>
+            <div class="bt-stats" style="display:flex;gap:14px;flex-shrink:0">
+                <div><div class="muted" style="font-size:9px;text-transform:uppercase;letter-spacing:.5px">Total R</div><div class="mono" id="st-r" style="font-size:13px;font-weight:600">—</div></div>
+                <div><div class="muted" style="font-size:9px;text-transform:uppercase;letter-spacing:.5px">Win Rate</div><div class="mono" id="st-wr" style="font-size:13px">—</div></div>
+                <div><div class="muted" style="font-size:9px;text-transform:uppercase;letter-spacing:.5px">Trades</div><div class="mono" id="st-trades" style="font-size:13px">—</div></div>
+            </div>
         </div>
 
         <!-- Chart -->
@@ -119,14 +124,12 @@
                     <span id="setup-counter">1 / 0</span>
                     <button id="next-setup">▶</button>
                 </div>
-                <div class="chart-ohlc">
-                    <span>O <span class="v" id="ohlc-o">—</span></span>
-                    <span>H <span class="v" id="ohlc-h">—</span></span>
-                    <span>L <span class="v" id="ohlc-l">—</span></span>
-                    <span>C <span class="v" id="ohlc-c">—</span></span>
-                </div>
             </div>
-            <div id="chart-el" style="height:560px;position:relative;overflow:hidden;background:#131720"></div>
+            <div style="position:relative">
+                <div id="bt-ohlc-legend" style="position:absolute;top:8px;left:12px;z-index:10;font-size:11px;font-family:var(--mono);pointer-events:none;display:flex;gap:6px"></div>
+                <div id="bt-vol-legend" style="position:absolute;bottom:18%;left:12px;z-index:10;font-size:11px;font-family:var(--mono);pointer-events:none;display:flex;gap:6px"></div>
+                <div id="chart-el" style="height:560px;overflow:hidden;background:#131720"></div>
+            </div>
         </div>
 
     </div>
@@ -136,6 +139,7 @@
 {% if bt_results %}
 <div class="card" style="margin-top:24px">
     <div class="card-title">Trade Log <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· {{ bt_results|length }} trades</span></div>
+    <div class="tbl-wrap">
     <table class="tbl" id="tl-table">
         <thead><tr>
             <th>Symbol</th>
@@ -151,6 +155,7 @@
         </tr></thead>
         <tbody id="tl-body"></tbody>
     </table>
+    </div>
     <div class="between" style="margin-top:12px">
         <span class="muted" style="font-size:11px" id="tl-range"></span>
         <div class="pager" id="tl-pager"></div>
@@ -276,7 +281,7 @@
         boxEls = [];
 
         chart = LightweightCharts.createChart(chartEl, {
-            layout: { background: { type: LightweightCharts.ColorType.Solid, color: 'transparent' }, textColor: '#5C636E', fontSize: 11, fontFamily: "'IBM Plex Mono', monospace" },
+            layout: { background: { type: LightweightCharts.ColorType.Solid, color: 'transparent' }, textColor: '#5C636E', fontSize: 11, fontFamily: "'Inter', sans-serif" },
             grid: { vertLines: { color: 'rgba(139,148,158,.05)' }, horzLines: { color: 'rgba(139,148,158,.05)' } },
             crosshair: {
                 mode: LightweightCharts.CrosshairMode.Normal,
@@ -320,16 +325,33 @@
         }).observe(chartEl);
     }
 
-    // ── OHLC crosshair ──
+    // ── OHLC + Volume crosshair overlay ──
+    var ohlcLegend = document.getElementById('bt-ohlc-legend');
+    var volLegend = document.getElementById('bt-vol-legend');
+    function fmtVol(n) {
+        if (n >= 1e9) return (n/1e9).toFixed(3) + 'B';
+        if (n >= 1e6) return (n/1e6).toFixed(3) + 'M';
+        if (n >= 1e3) return (n/1e3).toFixed(3) + 'K';
+        return n.toFixed(3);
+    }
     function onCrosshair(p) {
-        var oO = document.getElementById('ohlc-o'), oH = document.getElementById('ohlc-h');
-        var oL = document.getElementById('ohlc-l'), oC = document.getElementById('ohlc-c');
-        if (!p || !p.time || !p.seriesData || !p.seriesData.size) { oO.textContent=oH.textContent=oL.textContent=oC.textContent='—'; return; }
+        if (!ohlcLegend) return;
+        if (!p || !p.time || !p.seriesData || !p.seriesData.size) { ohlcLegend.innerHTML = ''; if (volLegend) volLegend.innerHTML = ''; return; }
         var d = p.seriesData.get(candleSeries);
-        if (!d) return;
-        var f = function(v) { return v.toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1}); };
-        oO.textContent=f(d.open); oH.textContent=f(d.high); oL.textContent=f(d.low); oC.textContent=f(d.close);
-        oC.style.color = d.close >= d.open ? '#00C896' : '#FF4D4D';
+        if (!d) { ohlcLegend.innerHTML = ''; if (volLegend) volLegend.innerHTML = ''; return; }
+        var c = d.close >= d.open ? '#00C896' : '#FF4D4D';
+        var f = function(v) { return v.toFixed(2); };
+        ohlcLegend.innerHTML =
+            '<span style="color:var(--muted)">O</span> <span style="color:' + c + '">' + f(d.open) + '</span> ' +
+            '<span style="color:var(--muted)">H</span> <span style="color:' + c + '">' + f(d.high) + '</span> ' +
+            '<span style="color:var(--muted)">L</span> <span style="color:' + c + '">' + f(d.low) + '</span> ' +
+            '<span style="color:var(--muted)">C</span> <span style="color:' + c + '">' + f(d.close) + '</span>';
+        var vol = p.seriesData.get(volSeries);
+        if (volLegend && vol && vol.value !== undefined) {
+            volLegend.innerHTML = '<span style="color:var(--muted)">Volume</span> <span style="color:' + c + '">' + fmtVol(vol.value) + '</span>';
+        } else if (volLegend) {
+            volLegend.innerHTML = '';
+        }
     }
 
     // ── Fetch candles from API ──
@@ -411,7 +433,7 @@
         if (combEqChart) { combEqChart.remove(); combEqChart = null; }
 
         combEqChart = LightweightCharts.createChart(el, {
-            layout: { background: { type: LightweightCharts.ColorType.Solid, color: 'transparent' }, textColor: '#5C636E', fontSize: 10, fontFamily: "'IBM Plex Mono', monospace" },
+            layout: { background: { type: LightweightCharts.ColorType.Solid, color: 'transparent' }, textColor: '#5C636E', fontSize: 10, fontFamily: "'Inter', sans-serif" },
             grid: { vertLines: { color: 'rgba(139,148,158,.05)' }, horzLines: { color: 'rgba(139,148,158,.05)' } },
             rightPriceScale: { borderColor: 'rgba(139,148,158,.08)' },
             timeScale: { borderColor: 'rgba(139,148,158,.08)', timeVisible: true, secondsVisible: false, fixLeftEdge: true, fixRightEdge: true },
@@ -463,17 +485,16 @@
 
                 if (st.trades) {
                     document.getElementById('cb-trades').textContent = st.trades;
-                    document.getElementById('cb-wr').textContent = st.winRate + '%';
-                    var rEl = document.getElementById('cb-r');
-                    rEl.textContent = (st.totalR >= 0 ? '+' : '') + st.totalR.toFixed(1) + 'R';
-                    rEl.className = 'val mono ' + (st.totalR >= 0 ? 'pos' : 'neg');
+                    document.getElementById('cb-trades-detail').textContent = st.wins + 'W / ' + st.losses + 'L · ' + st.winRate + '% WR';
                 }
 
                 if (st.equity) {
-                    var retEl = document.getElementById('cb-return');
-                    retEl.textContent = (st.equity.returnPct >= 0 ? '+' : '') + st.equity.returnPct.toFixed(1) + '%';
-                    retEl.className = 'val mono ' + (st.equity.returnPct >= 0 ? 'pos' : 'neg');
-                    document.getElementById('cb-equity').textContent = '$' + st.equity.finalCapital.toLocaleString();
+                    var eqEl = document.getElementById('cb-equity');
+                    eqEl.textContent = '$' + st.equity.finalCapital.toLocaleString(undefined, {maximumFractionDigits: 0});
+                    eqEl.className = 'val mono ' + (st.equity.returnPct >= 0 ? 'pos' : 'neg');
+                    var sign = st.equity.returnPct >= 0 ? '+' : '';
+                    var rSign = st.totalR >= 0 ? '+' : '';
+                    document.getElementById('cb-equity-detail').textContent = sign + st.equity.returnPct.toFixed(1) + '% · ' + rSign + st.totalR.toFixed(1) + 'R';
                     document.getElementById('cb-dd').textContent = st.equity.maxDdPct.toFixed(1) + '%';
                     renderCombinedEquity(st.equity.curve);
                 }
@@ -504,12 +525,10 @@
 
                 if (!st.trades && st.trades !== 0) {
                     document.getElementById('st-trades').textContent = '—';
-                    document.getElementById('st-wl').textContent = '—';
                     document.getElementById('st-wr').textContent = '—';
                     document.getElementById('st-r').textContent = '—';
                 } else {
-                    document.getElementById('st-trades').textContent = st.trades;
-                    document.getElementById('st-wl').textContent = st.wins + 'W / ' + st.losses + 'L';
+                    document.getElementById('st-trades').textContent = st.trades + ' (' + st.wins + 'W / ' + st.losses + 'L)';
                     document.getElementById('st-wr').textContent = st.trades ? st.winRate + '%' : '—';
                     var rEl = document.getElementById('st-r');
                     rEl.textContent = (st.totalR >= 0 ? '+' : '') + st.totalR.toFixed(1) + 'R';
@@ -609,14 +628,26 @@
     document.getElementById('prev-setup').addEventListener('click', function() { goToSetup(setupIdx - 1); });
     document.getElementById('next-setup').addEventListener('click', function() { goToSetup(setupIdx + 1); });
 
-    // ── Asset buttons ──
-    document.getElementById('asset-btns').addEventListener('click', function(e) {
-        var btn = e.target.closest('[data-sym]');
-        if (!btn) return;
-        this.querySelectorAll('.yr-btn').forEach(function(b) { b.classList.remove('active'); });
-        btn.classList.add('active');
-        currentSymbol = btn.dataset.sym;
+    // ── Asset dropdown ──
+    var assetTrigger = document.getElementById('asset-trigger');
+    var assetMenu = document.getElementById('asset-menu');
+    assetTrigger.addEventListener('click', function(e) {
+        e.stopPropagation();
+        assetMenu.style.display = assetMenu.style.display === 'none' ? 'block' : 'none';
+    });
+    document.addEventListener('click', function(e) {
+        if (assetMenu && !assetMenu.contains(e.target)) assetMenu.style.display = 'none';
+    });
+    assetMenu.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var opt = e.target.closest('[data-sym]');
+        if (!opt) return;
+        this.querySelectorAll('.asset-opt').forEach(function(o) { o.classList.remove('active'); });
+        opt.classList.add('active');
+        currentSymbol = opt.dataset.sym;
+        document.getElementById('asset-label').textContent = currentSymbol;
         document.getElementById('chart-pair').textContent = currentSymbol;
+        assetMenu.style.display = 'none';
         allData = [];
         hasMore = true;
         setups = [];

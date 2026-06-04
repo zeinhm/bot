@@ -65,6 +65,7 @@
             <a href="/trades" class="link">View all trades &rarr;</a>
         </div>
         {% if recent_trades %}
+        <div class="tbl-wrap">
         <table class="tbl">
             <thead><tr>
                 <th>Date</th>
@@ -103,6 +104,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
         {% else %}
         <div style="text-align:center;padding:30px 0" class="muted">No trades yet</div>
         {% endif %}
@@ -122,7 +124,7 @@
     var chart = LightweightCharts.createChart(el, {
         width: el.clientWidth,
         height: 320,
-        layout: { background: { type: LightweightCharts.ColorType.Solid, color: 'transparent' }, textColor: '#5C636E', fontSize: 10, fontFamily: "'IBM Plex Mono', monospace" },
+        layout: { background: { type: LightweightCharts.ColorType.Solid, color: 'transparent' }, textColor: '#5C636E', fontSize: 10, fontFamily: "'Inter', sans-serif" },
         grid: { vertLines: { color: 'rgba(139,148,158,.05)' }, horzLines: { color: 'rgba(139,148,158,.05)' } },
         rightPriceScale: { borderColor: 'rgba(139,148,158,.08)' },
         timeScale: { borderColor: 'rgba(139,148,158,.08)', timeVisible: true, secondsVisible: false, fixLeftEdge: true, fixRightEdge: true },
@@ -136,6 +138,7 @@
         topColor: 'rgba(0,200,150,.25)',
         bottomColor: 'rgba(0,200,150,.02)',
         lineWidth: 1.5,
+        priceLineColor: '#006b53',
         priceFormat: { type: 'custom', formatter: function(p) { return '$' + p.toLocaleString(undefined, {maximumFractionDigits: 0}); } }
     });
 

@@ -3,7 +3,7 @@
    Design tokens + base styles. Dark terminal aesthetic.
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root {
   /* surfaces */
@@ -37,8 +37,8 @@
   --faint:     #5C636E;
 
   /* type */
-  --sans: 'IBM Plex Sans', system-ui, sans-serif;
-  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --sans: 'Inter', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
 
   /* layout */
   --rail: 56px;
@@ -374,6 +374,7 @@ input[type=range]::-moz-range-thumb { width: 15px; height: 15px; border: none; b
 /* two col */
 .cols { display: grid; gap: 14px; }
 
+
 /* ============================================================
    RESPONSIVE
    ============================================================ */
@@ -456,6 +457,8 @@ input[type=range]::-moz-range-thumb { width: 15px; height: 15px; border: none; b
   cursor: pointer; font-family: var(--sans);
 }
 .ind-opt:hover { background: rgba(139,148,158,.1); }
+.asset-opt:hover { background: rgba(139,148,158,.1); color: var(--text); }
+.asset-opt.active { color: var(--green); }
 .ind-opt input[type="checkbox"] {
   width: 14px; height: 14px; accent-color: #00C896; cursor: pointer; margin: 0;
 }
@@ -464,3 +467,108 @@ input[type=range]::-moz-range-thumb { width: 15px; height: 15px; border: none; b
 }
 #bt-candle-chart.hline-mode,
 #bt-candle-chart.hline-mode canvas { cursor: crosshair !important; }
+
+/* ============================================================
+   BOTTOM TAB BAR (mobile nav)
+   ============================================================ */
+.btm-nav {
+  display: none; position: fixed; bottom: 0; left: 0; right: 0;
+  height: 56px; background: #0C0E13; border-top: 1px solid var(--border);
+  z-index: 100; align-items: center; justify-content: space-around;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.btm-tab {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px; flex: 1; height: 100%; background: none; border: none;
+  color: var(--muted); font-size: 10px; font-family: var(--sans);
+  text-decoration: none; cursor: pointer; transition: color .15s;
+}
+.btm-tab svg { width: 20px; height: 20px; }
+.btm-tab.active { color: var(--green); }
+.btm-tab:hover { color: var(--text-2); }
+.btm-more-panel {
+  display: none; flex-direction: column; position: absolute; bottom: 100%;
+  left: 0; right: 0; background: #131820; border-top: 1px solid var(--border-bri);
+  border-radius: 12px 12px 0 0; box-shadow: 0 -8px 32px rgba(0,0,0,.5);
+  padding: 8px 6px;
+}
+.btm-more-item {
+  display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+  color: var(--text-2); font-size: 14px; font-family: var(--sans);
+  text-decoration: none; border-radius: 8px; transition: background .12s;
+}
+.btm-more-item:hover { background: rgba(255,255,255,.05); color: var(--text); }
+.btm-more-item.active { color: var(--green); }
+.btm-more-item svg { flex: none; }
+
+/* ============================================================
+   MOBILE (max-width: 767px)
+   ============================================================ */
+@media (max-width: 767px) {
+  .btm-nav { display: flex; }
+  .content { padding: 12px 10px 72px !important; }
+  .content.content-flush { padding: 6px 6px 72px !important; }
+
+  /* Topbar: hide ticker, tighten */
+  .topbar { gap: 10px; padding: 0 10px !important; }
+  .topbar-ticker { display: none; }
+  .balance-lbl { display: none; }
+  .wordmark { font-size: 13px; }
+
+  /* Profile dropdown */
+  .profile-drop { right: -8px !important; min-width: 220px !important; max-width: calc(100vw - 16px); }
+
+  /* Tables: horizontal scroll */
+  .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* Position page */
+  .ticker-price-wrap { display: flex; flex-direction: column; }
+  .ticker-price-wrap #ticker-change { margin-left: 0 !important; font-size: 10px !important; }
+  .pos-grid { display: flex !important; flex-direction: column !important; height: auto !important; gap: 6px !important; }
+  .pos-grid > :nth-child(1) { order: 3; }
+  .pos-grid > :nth-child(2) { order: 2; }
+  .pos-right { display: contents !important; }
+  .pos-bot-status { order: 1; margin-bottom: 0; }
+  .pos-market-trades { order: 4; }
+  .pos-chart-card { overflow: visible !important; }
+  .pos-chart-card #position-chart { overflow: hidden; }
+  .tf-dropdown { left: auto !important; right: 0 !important; }
+  .ticker-bar { padding: 8px 12px !important; gap: 8px !important; flex-wrap: wrap !important; }
+  .ticker-bar > div[style*="width:1px"] { display: none; }
+  .ticker-price-wrap { margin-left: auto; }
+  .ticker-stats { width: 100%; flex-direction: row !important; justify-content: space-between; gap: 0 !important; }
+  .ticker-bar { gap: 10px !important; flex-wrap: wrap; }
+  #sym-menu { width: calc(100vw - 24px) !important; max-width: 340px; }
+
+  /* Analytics */
+  .analytics-grid { grid-template-columns: 1fr !important; }
+
+  /* Backtester */
+  .bt-grid { grid-template-columns: 1fr !important; }
+  .bt-ticker { gap: 8px !important; padding: 6px 10px !important; }
+  .bt-stats { gap: 4px !important; }
+  .bt-grid > .card { position: static !important; }
+
+  /* Hero stats */
+  .hero-stat { padding: 16px 18px; }
+  .hero-stat .v { font-size: 28px; }
+
+  /* Page head */
+  .page-title { font-size: 18px; }
+}
+
+/* ============================================================
+   SMALL PHONE (max-width: 479px)
+   ============================================================ */
+@media (max-width: 479px) {
+  .stat-row { grid-template-columns: 1fr !important; }
+
+  .hero-stats { grid-template-columns: 1fr !important; }
+  .hero-stat:nth-child(n) { border-right: none; border-bottom: 1px solid var(--border); }
+  .hero-stat:last-child { border-bottom: none; }
+
+  .stat .val { font-size: 20px; }
+  .content { padding: 8px 8px 72px !important; }
+  .page-title { font-size: 17px; }
+  .hero-stat .v { font-size: 24px; }
+}

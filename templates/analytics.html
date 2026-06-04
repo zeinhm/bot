@@ -36,7 +36,7 @@
     </div>
 </div>
 
-<div class="grid" style="grid-template-columns:1fr 1fr;align-items:start">
+<div class="grid analytics-grid" style="grid-template-columns:1fr 1fr;align-items:start">
     <div class="grid" style="gap:12px">
         <div class="card">
             <div class="card-title">Drawdown · all-time</div>
@@ -133,7 +133,7 @@
     if (ddEl && ddData.length && typeof LightweightCharts !== 'undefined') {
         ddEl.innerHTML = '';
         var chart = LightweightCharts.createChart(ddEl, {
-            layout: { background: { color: 'transparent' }, textColor: '#5C636E', fontSize: 10, fontFamily: "'IBM Plex Mono', monospace" },
+            layout: { background: { color: 'transparent' }, textColor: '#5C636E', fontSize: 10, fontFamily: "'Inter', sans-serif" },
             grid: { vertLines: { visible: false }, horzLines: { color: 'rgba(139,148,158,.06)' } },
             rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.05, bottom: 0.1 } },
             timeScale: { borderVisible: false, timeVisible: true },

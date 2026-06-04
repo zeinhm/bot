@@ -13,7 +13,7 @@
 
 {% block content %}
 <!-- Ticker Bar -->
-<div style="padding:8px 16px;margin-bottom:6px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);display:flex;align-items:center;gap:20px;position:relative;z-index:50">
+<div class="ticker-bar" style="padding:8px 16px;margin-bottom:6px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);display:flex;align-items:center;gap:20px;position:relative;z-index:50">
     <!-- Symbol Dropdown -->
     <div id="sym-dropdown" style="position:relative;flex-shrink:0">
         <div id="sym-trigger" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 8px;border-radius:4px">
@@ -45,12 +45,12 @@
         </div>
     </div>
     <div style="width:1px;height:24px;background:var(--border);flex-shrink:0"></div>
-    <div style="flex-shrink:0">
+    <div class="ticker-price-wrap" style="flex-shrink:0">
         <span class="mono" id="ticker-price" style="font-size:16px;font-weight:700">—</span>
         <span class="mono" id="ticker-change" style="font-size:11px;margin-left:6px">—</span>
     </div>
     <div style="width:1px;height:24px;background:var(--border);flex-shrink:0"></div>
-    <div style="display:flex;gap:20px;flex-shrink:0">
+    <div class="ticker-stats" style="display:flex;gap:20px;flex-shrink:0">
         <div><div class="muted" style="font-size:9px;text-transform:uppercase;letter-spacing:.5px">24h High</div><div class="mono" id="ticker-high" style="font-size:12px">—</div></div>
         <div><div class="muted" style="font-size:9px;text-transform:uppercase;letter-spacing:.5px">24h Low</div><div class="mono" id="ticker-low" style="font-size:12px">—</div></div>
         <div><div class="muted" style="font-size:9px;text-transform:uppercase;letter-spacing:.5px">24h Vol (USDT)</div><div class="mono" id="ticker-vol" style="font-size:12px">—</div></div>
@@ -58,7 +58,7 @@
 </div>
 
 <!-- Main: OrderBook | Chart + Position | Bot Status + Trades -->
-<div style="display:grid;grid-template-columns:280px 1fr 280px;gap:6px;height:calc(100vh - 120px)">
+<div class="pos-grid" style="display:grid;grid-template-columns:280px 1fr 280px;gap:6px;height:calc(100vh - 120px)">
 
     <!-- LEFT: Order Book -->
     <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);display:flex;flex-direction:column;padding:0;overflow:hidden">
@@ -84,13 +84,13 @@
     <!-- CENTER: Chart (top) + Open Position (bottom) -->
     <div style="display:flex;flex-direction:column;min-width:0;gap:6px;overflow:hidden">
         <!-- Chart card -->
-        <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);display:flex;flex-direction:column;flex:13;overflow:hidden;min-height:0">
+        <div class="pos-chart-card" style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);display:flex;flex-direction:column;flex:13;overflow:hidden;min-height:0">
         <!-- Timeframe bar -->
         <div style="display:flex;align-items:center;gap:2px;padding:6px 12px;border-bottom:1px solid var(--border);position:relative">
             <div id="tf-pinned" style="display:flex;gap:2px"></div>
             <div id="tf-more-wrap" style="position:relative;margin-left:2px">
                 <button id="tf-more-btn" class="tf-btn" style="padding:3px 8px;font-size:14px;line-height:1">&#9662;</button>
-                <div id="tf-more-menu" style="display:none;position:absolute;top:100%;left:0;margin-top:4px;background:#1e222d;border:1px solid var(--border);border-radius:6px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.6);padding:10px 12px;width:220px">
+                <div id="tf-more-menu" class="tf-dropdown" style="display:none;position:absolute;top:100%;left:0;margin-top:4px;background:#1e222d;border:1px solid var(--border);border-radius:6px;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.6);padding:10px 12px;width:220px">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                         <span class="muted" style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Pinned</span>
                         <button id="tf-edit-btn" style="background:none;border:none;color:var(--accent);font-size:11px;font-weight:600;cursor:pointer">Edit</button>
@@ -182,9 +182,9 @@
     </div>
 
     <!-- RIGHT: Bot Status + Market Trades -->
-    <div style="display:flex;flex-direction:column;gap:6px">
+    <div class="pos-right" style="display:flex;flex-direction:column;gap:6px">
         <!-- Bot Status card -->
-        <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;overflow:hidden">
+        <div class="pos-bot-status" style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;overflow:hidden">
             <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:10px">Bot Status</div>
             <div style="display:flex;flex-direction:column;gap:8px">
                 <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px">
@@ -210,7 +210,7 @@
             </div>
         </div>
         <!-- Market Trades card -->
-        <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);flex:1;display:flex;flex-direction:column;overflow:hidden">
+        <div class="pos-market-trades" style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);flex:1;display:flex;flex-direction:column;overflow:hidden">
             <div style="padding:10px 12px 6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)">Market Trades</div>
             <div style="display:flex;justify-content:space-between;padding:0 12px 6px;border-bottom:1px solid var(--border)">
                 <span class="muted" style="font-size:9.5px;text-transform:uppercase;letter-spacing:.5px">Price</span>
@@ -327,7 +327,7 @@
 
     // --- Chart ---
     var chart = LightweightCharts.createChart(el, {
-        layout: { background: { color: 'transparent' }, textColor: '#5C636E', fontSize: 10, fontFamily: "'IBM Plex Mono', monospace" },
+        layout: { background: { color: 'transparent' }, textColor: '#5C636E', fontSize: 10, fontFamily: "'Inter', sans-serif" },
         grid: { vertLines: { visible: false }, horzLines: { color: 'rgba(139,148,158,.06)' } },
         rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.08, bottom: 0.18 } },
         timeScale: { borderVisible: false, timeVisible: true },
@@ -354,6 +354,7 @@
 
     var sma7Series = chart.addLineSeries({ color: 'rgba(255,183,77,.8)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
     var sma25Series = chart.addLineSeries({ color: 'rgba(100,181,246,.8)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+    var sma99Series = chart.addLineSeries({ color: 'rgba(186,104,255,.8)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
 
     var legendOhlc = document.getElementById('legend-ohlc');
     var legendMa = document.getElementById('legend-ma');
@@ -373,6 +374,7 @@
     function updateSMAs() {
         sma7Series.setData(computeSMA(allCandles, 7));
         sma25Series.setData(computeSMA(allCandles, 25));
+        sma99Series.setData(computeSMA(allCandles, 99));
     }
 
     function fmtVol(n) {
@@ -407,6 +409,8 @@
         var maHtml = '';
         if (s7 && s7.value !== undefined) maHtml += '<span style="color:rgba(255,183,77,.8)">MA7 ' + s7.value.toFixed(2) + '</span>';
         if (s25 && s25.value !== undefined) maHtml += '<span style="color:rgba(100,181,246,.8)">MA25 ' + s25.value.toFixed(2) + '</span>';
+        var s99 = param.seriesData ? param.seriesData.get(sma99Series) : null;
+        if (s99 && s99.value !== undefined) maHtml += '<span style="color:rgba(186,104,255,.8)">MA99 ' + s99.value.toFixed(2) + '</span>';
         legendMa.innerHTML = maHtml;
 
         if (legendVol && vol) {
@@ -576,7 +580,7 @@
         fetch('/api/live-candles?symbol=' + sym + '&interval=' + chartInterval + '&limit=1500')
             .then(function(r) { return r.json(); })
             .then(function(candles) {
-                if (!candles.length) { candleSeries.setData([]); volumeSeries.setData([]); sma7Series.setData([]); sma25Series.setData([]); return; }
+                if (!candles.length) { candleSeries.setData([]); volumeSeries.setData([]); sma7Series.setData([]); sma25Series.setData([]); sma99Series.setData([]); return; }
                 var parsed = parseCandles(candles);
                 allCandles = parsed.data;
                 allVols = parsed.vols;
@@ -748,8 +752,9 @@
         var maxQty = 0;
         bids.concat(asks).forEach(function(r) { if (r[1] > maxQty) maxQty = r[1]; });
 
+        var maxRows = window.innerWidth <= 767 ? 10 : bids.length;
         var bhtml = '';
-        bids.forEach(function(r) {
+        bids.slice(0, maxRows).forEach(function(r) {
             var pct = maxQty > 0 ? (r[1] / maxQty * 100) : 0;
             bhtml += '<div class="between" style="padding:2px 12px;position:relative">' +
                 '<div style="position:absolute;right:0;top:0;bottom:0;width:' + pct + '%;background:rgba(0,200,150,.08);pointer-events:none"></div>' +
@@ -758,7 +763,7 @@
         });
         bidsEl.innerHTML = bhtml;
 
-        var reversed = asks.slice().reverse();
+        var reversed = asks.slice(0, maxRows).reverse();
         var ahtml = '';
         reversed.forEach(function(r) {
             var pct = maxQty > 0 ? (r[1] / maxQty * 100) : 0;
@@ -792,7 +797,8 @@
 
         tradesEl.insertBefore(row, tradesEl.firstChild);
 
-        while (tradesEl.children.length > 30) {
+        var maxTrades = window.innerWidth <= 767 ? 10 : 30;
+        while (tradesEl.children.length > maxTrades) {
             tradesEl.removeChild(tradesEl.lastChild);
         }
     });

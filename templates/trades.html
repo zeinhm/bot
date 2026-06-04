@@ -49,6 +49,7 @@
 
 <div class="card">
     {% if trades %}
+    <div class="tbl-wrap">
     <table class="tbl">
         <thead><tr>
             <th>#</th>
@@ -89,6 +90,7 @@
             {% endfor %}
         </tbody>
     </table>
+    </div>
     <div class="between" style="margin-top:12px">
         <span class="muted" style="font-size:11.5px">{{ total }} trades</span>
     </div>

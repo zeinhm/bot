@@ -107,6 +107,7 @@ tr.resolving { opacity: .45; transition: opacity .3s; pointer-events: none; }
         </div>
 
         <!-- Pending Table -->
+        <div class="tbl-wrap">
         <table class="tbl" id="table-pending">
             <thead><tr>
                 <th>User</th>
@@ -160,8 +161,10 @@ tr.resolving { opacity: .45; transition: opacity .3s; pointer-events: none; }
                 {% endif %}
             </tbody>
         </table>
+        </div>
 
         <!-- Approved Table -->
+        <div class="tbl-wrap">
         <table class="tbl" id="table-approved" style="display:none">
             <thead><tr>
                 <th>User</th>
@@ -222,9 +225,11 @@ tr.resolving { opacity: .45; transition: opacity .3s; pointer-events: none; }
                 {% endfor %}
             </tbody>
         </table>
+        </div>
 
         <!-- Rejection History -->
         {% if rejection_log %}
+        <div class="tbl-wrap">
         <table class="tbl" id="table-rejected" style="display:none">
             <thead><tr>
                 <th>User</th>
@@ -278,6 +283,7 @@ tr.resolving { opacity: .45; transition: opacity .3s; pointer-events: none; }
                 {% endfor %}
             </tbody>
         </table>
+        </div>
         {% endif %}
     </div>
 </div>

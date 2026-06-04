@@ -183,6 +183,54 @@
     </div>
 </div>
 
+<!-- Bottom Tab Bar (mobile) -->
+<nav class="btm-nav">
+    <a href="/" class="btm-tab {% if page == 'dashboard' %}active{% endif %}">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></svg>
+        <span>Home</span>
+    </a>
+    <a href="/position" class="btm-tab {% if page == 'position' %}active{% endif %}">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>
+        <span>Position</span>
+    </a>
+    <a href="/backtester" class="btm-tab {% if page == 'backtester' %}active{% endif %}">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5M3.05 13a9 9 0 1 0 2.6-6.4L3 8M12 7v5l3 2"/></svg>
+        <span>Backtest</span>
+    </a>
+    <a href="/trades" class="btm-tab {% if page == 'trades' or page == 'history' %}active{% endif %}">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+        <span>History</span>
+    </a>
+    <button class="btm-tab" id="btm-more-btn" onclick="toggleMorePanel()">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+        <span>More</span>
+    </button>
+    <div class="btm-more-panel" id="btm-more-panel" style="display:none">
+        <a href="/analytics" class="btm-more-item {% if page == 'analytics' %}active{% endif %}">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+            Analytics
+        </a>
+        <a href="/alerts" class="btm-more-item {% if page == 'alerts' %}active{% endif %}">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+            Alerts
+        </a>
+        <a href="/track-record" class="btm-more-item {% if page == 'public' %}active{% endif %}">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z"/></svg>
+            Track Record
+        </a>
+        <a href="/settings" class="btm-more-item {% if page == 'settings' %}active{% endif %}">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.8 1V21a2 2 0 0 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.2-2.8H3a2 2 0 0 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
+            Settings
+        </a>
+        {% if user and user.is_admin %}
+        <a href="/admin" class="btm-more-item {% if page == 'admin' %}active{% endif %}">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            Admin
+        </a>
+        {% endif %}
+    </div>
+</nav>
+
 <!-- Paper Trading Modal -->
 <div id="paper-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.5);backdrop-filter:blur(1px);display:none;place-items:center">
     <div style="background:#131820;border:1px solid var(--border-bri);border-radius:12px;box-shadow:0 24px 64px rgba(0,0,0,.7);max-width:380px;width:90%;padding:28px 24px;text-align:center">
@@ -241,9 +289,16 @@ function toggleProfileMenu(e) {
         d.style.display = 'none';
     }
 }
-document.addEventListener('click', function() {
+function toggleMorePanel() {
+    var p = document.getElementById('btm-more-panel');
+    if (p) p.style.display = p.style.display === 'none' ? 'flex' : 'none';
+}
+document.addEventListener('click', function(e) {
     var d = document.getElementById('profile-dropdown');
     if (d) d.style.display = 'none';
+    var p = document.getElementById('btm-more-panel');
+    var btn = document.getElementById('btm-more-btn');
+    if (p && btn && !btn.contains(e.target) && !p.contains(e.target)) p.style.display = 'none';
 });
 </script>
 <script src="/static/js/websocket.js?v=2"></script>

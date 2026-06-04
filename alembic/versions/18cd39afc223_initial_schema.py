@@ -20,7 +20,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.drop_index(op.f('idx_hist_sym_int_ts'), table_name='historical_candles')
+    op.drop_index(op.f('idx_hist_sym_int_ts'), table_name='historical_candles', if_exists=True)
     op.add_column('users', sa.Column('is_approved', sa.Boolean(), nullable=False, server_default=sa.text('true')))
     op.add_column('users', sa.Column('is_admin', sa.Boolean(), nullable=False, server_default=sa.text('false')))
 

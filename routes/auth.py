@@ -84,7 +84,7 @@ async def google_callback(request: Request):
             else:
                 return RedirectResponse("/rejected", status_code=303)
 
-    if user.is_approved:
+    if user.is_approved and user.paper_bot_started:
         manager = request.app.state.bot_manager
         if manager.get_worker(user.id, "paper") is None:
             from app.bot import build_paper_config, make_broadcast_fn
@@ -98,11 +98,6 @@ async def google_callback(request: Request):
                 log.error("Failed to start paper bot for user %d: %s", user.id, e)
 
     cfg = await db.get_user_config(user.id)
-    if cfg and cfg.binance_api_key_enc:
-        request.session["trading_mode"] = "live"
-    else:
-        request.session["trading_mode"] = "paper"
-
     if not cfg or not cfg.binance_api_key_enc:
         return RedirectResponse("/setup", status_code=303)
 

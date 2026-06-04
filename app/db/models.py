@@ -95,6 +95,7 @@ class User(Base):
     is_approved = Column(Boolean, default=False, nullable=False)
     is_rejected = Column(Boolean, default=False, nullable=False)
     is_admin = Column(Boolean, default=False, nullable=False)
+    paper_bot_started = Column(Boolean, default=False, nullable=False)
 
 
 class UserConfig(Base):

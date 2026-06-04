@@ -122,7 +122,7 @@
                     <span id="bot-status-label">{% if bot_status == 'running' and bot_enabled %}Running{% elif bot_status == 'starting' %}Starting{% elif bot_status == 'running' %}Monitoring{% elif bot_status == 'error' %}Error{% else %}—{% endif %}</span>
                 </span>
 
-                <span id="ws-status-dot" class="led gray" title="WebSocket"></span>
+                <span id="ws-status-dot" class="led gray" title="WebSocket" style="display:none"></span>
 
                 {% if user %}
                 <div class="profile-menu" style="position:relative;margin-left:8px;padding-left:8px;border-left:1px solid var(--border)">
@@ -152,7 +152,7 @@
                         {% if is_paper %}
                         <button class="profile-drop-item" onclick="switchMode('live')">
                             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></svg>
-                            Back to Real Account
+                            Back to Live
                         </button>
                         {% else %}
                         <button class="profile-drop-item" onclick="switchMode('paper')">
@@ -183,6 +183,23 @@
     </div>
 </div>
 
+<!-- Paper Trading Modal -->
+<div id="paper-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.5);backdrop-filter:blur(1px);display:none;place-items:center">
+    <div style="background:#131820;border:1px solid var(--border-bri);border-radius:12px;box-shadow:0 24px 64px rgba(0,0,0,.7);max-width:380px;width:90%;padding:28px 24px;text-align:center">
+        <div style="width:48px;height:48px;border-radius:12px;background:var(--amber-dim);display:grid;place-items:center;margin:0 auto 16px">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="var(--amber)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+        </div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:6px">Start Paper Trading?</div>
+        <div class="muted" style="font-size:13px;line-height:1.5;margin-bottom:20px">
+            Practice trading with $10,000 virtual funds. No real money at risk.
+        </div>
+        <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost" style="flex:1" onclick="closePaperModal(false)">Skip</button>
+            <button class="btn btn-primary" style="flex:1" onclick="closePaperModal(true)">Start Demo</button>
+        </div>
+    </div>
+</div>
+
 <script>
 var currentMode = '{{ trading_mode|default("paper") }}';
 function switchMode(mode) {
@@ -190,7 +207,30 @@ function switchMode(mode) {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({mode: mode})
-    }).then(function() { window.location.reload(); });
+    }).then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (mode === 'paper' && !data.paper_bot_started && !data.paper_bot_running) {
+            var m = document.getElementById('paper-modal');
+            if (m) m.style.display = 'grid';
+            return;
+        }
+        if (mode === 'paper' && data.paper_bot_started && !data.paper_bot_running) {
+            fetch('/bot/start-paper', { method: 'POST' })
+                .then(function() { window.location.reload(); });
+            return;
+        }
+        window.location.reload();
+    });
+}
+function closePaperModal(start) {
+    var m = document.getElementById('paper-modal');
+    if (m) m.style.display = 'none';
+    if (start) {
+        fetch('/bot/start-paper', { method: 'POST' })
+            .then(function() { window.location.reload(); });
+    } else {
+        window.location.reload();
+    }
 }
 function toggleProfileMenu(e) {
     e.stopPropagation();

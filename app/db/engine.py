@@ -19,6 +19,7 @@ async def _ensure_schema(eng):
             ("is_approved", "true"),
             ("is_admin", "false"),
             ("is_rejected", "false"),
+            ("paper_bot_started", "false"),
         ]:
             await conn.execute(text(
                 f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} BOOLEAN NOT NULL DEFAULT {default}"

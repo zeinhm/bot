@@ -2,10 +2,12 @@ import logging
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import update
 
 from app.auth import require_auth, get_trading_mode
-from app.bot import get_bot_for_user, make_broadcast_fn, build_user_config
+from app.bot import get_bot_for_user, make_broadcast_fn, build_user_config, build_paper_config
 from app.auth import decrypt
+from app.db.models import User
 import app.db as db
 
 router = APIRouter()
@@ -19,7 +21,7 @@ async def start_bot(request: Request):
     manager = request.app.state.bot_manager
 
     if mode == "paper":
-        return JSONResponse({"ok": False, "error": "Paper bot starts automatically"}, status_code=400)
+        return JSONResponse({"ok": False, "error": "Use /bot/start-paper"}, status_code=400)
 
     if manager.get_worker(user.id, "live") is not None:
         return JSONResponse({"ok": False, "error": "Bot already running"}, status_code=409)
@@ -45,13 +47,39 @@ async def stop_bot(request: Request):
     manager = request.app.state.bot_manager
 
     if mode == "paper":
-        return JSONResponse({"ok": False, "error": "Paper bot cannot be stopped manually"}, status_code=400)
+        return JSONResponse({"ok": False, "error": "Paper bot cannot be stopped"}, status_code=400)
 
     if manager.get_worker(user.id, "live") is None:
         return JSONResponse({"ok": False, "error": "Bot not running"}, status_code=404)
 
     await manager.stop_bot(user.id, "live")
     log.info("User %d stopped live bot via API", user.id)
+    return JSONResponse({"ok": True})
+
+
+@router.post("/bot/start-paper")
+async def start_paper_bot(request: Request):
+    user = await require_auth(request)
+    manager = request.app.state.bot_manager
+
+    if manager.get_worker(user.id, "paper") is not None:
+        return JSONResponse({"ok": False, "error": "Paper bot already running"}, status_code=409)
+
+    shared_market = request.app.state.shared_market
+    paper_config = build_paper_config()
+    await manager.start_bot(
+        user.id, "paper", paper_config,
+        broadcast_fn=make_broadcast_fn(user.id, "paper"),
+        shared_market=shared_market,
+    )
+
+    async with db.get_session() as session:
+        await session.execute(
+            update(User).where(User.id == user.id).values(paper_bot_started=True)
+        )
+        await session.commit()
+
+    log.info("User %d started paper bot", user.id)
     return JSONResponse({"ok": True})
 
 
@@ -72,4 +100,16 @@ async def switch_mode(request: Request):
     if mode not in ("paper", "live"):
         return JSONResponse({"ok": False, "error": "Invalid mode"}, status_code=400)
     request.session["trading_mode"] = mode
-    return JSONResponse({"ok": True, "mode": mode})
+
+    manager = request.app.state.bot_manager
+    paper_bot_running = manager.get_worker(user.id, "paper") is not None
+
+    fresh_user = await db.get_user(user.id)
+    paper_bot_started = fresh_user.paper_bot_started if fresh_user else False
+
+    return JSONResponse({
+        "ok": True,
+        "mode": mode,
+        "paper_bot_running": paper_bot_running,
+        "paper_bot_started": paper_bot_started,
+    })

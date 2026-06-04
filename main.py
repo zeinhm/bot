@@ -66,14 +66,15 @@ async def lifespan(app: FastAPI):
             approved_users = list(result.scalars().all())
 
         for user in approved_users:
-            try:
-                paper_config = build_paper_config()
-                await manager.start_bot(user.id, "paper", paper_config,
-                                        broadcast_fn=make_broadcast_fn(user.id, "paper"),
-                                        shared_market=shared_market)
-                log.info("Auto-started paper bot for user %d (%s)", user.id, user.email)
-            except Exception as e:
-                log.error("Failed to start paper bot for user %d: %s", user.id, e)
+            if user.paper_bot_started:
+                try:
+                    paper_config = build_paper_config()
+                    await manager.start_bot(user.id, "paper", paper_config,
+                                            broadcast_fn=make_broadcast_fn(user.id, "paper"),
+                                            shared_market=shared_market)
+                    log.info("Auto-started paper bot for user %d (%s)", user.id, user.email)
+                except Exception as e:
+                    log.error("Failed to start paper bot for user %d: %s", user.id, e)
 
             user_cfg = await db.get_user_config(user.id)
             if user_cfg and user_cfg.binance_api_key_enc:

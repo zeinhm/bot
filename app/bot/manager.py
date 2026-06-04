@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import TYPE_CHECKING
 
 from app.bot.worker import BotWorker, BotConfig
@@ -46,6 +47,8 @@ class BotManager:
             worker = self.workers.get(key)
             if worker:
                 worker.status = "error"
+                worker.last_error = str(exc)
+                worker.last_error_time = time.time()
             log.error("BotManager: worker %s crashed: %s", key, exc)
 
     async def stop_bot(self, user_id: int, mode: str):
@@ -81,3 +84,18 @@ class BotManager:
 
     def get_all_statuses(self) -> dict[WorkerKey, bool]:
         return {key: w.running for key, w in self.workers.items()}
+
+    def get_all_bot_info(self) -> list[dict]:
+        result = []
+        for (uid, mode), worker in self.workers.items():
+            result.append({
+                "user_id": uid,
+                "mode": mode,
+                "status": worker.status,
+                "running": worker.running,
+                "uptime_secs": int(time.time() - worker.started_at) if worker.started_at and worker.running else None,
+                "last_error": worker.last_error,
+                "last_error_time": worker.last_error_time,
+                "symbols": worker.config.symbols if worker.config else [],
+            })
+        return result

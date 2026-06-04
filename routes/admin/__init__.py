@@ -34,12 +34,14 @@ async def toggle_admin_mode(request: Request):
 
 
 from routes.admin.dashboard import router as dashboard_router  # noqa: E402
+from routes.admin.bots import router as bots_router  # noqa: E402
 from routes.admin.users import router as users_router  # noqa: E402
 from routes.admin.user_detail import router as user_detail_router  # noqa: E402
 from routes.admin.analytics import router as analytics_router  # noqa: E402
 from routes.admin.logs import router as logs_router  # noqa: E402
 
 router.include_router(dashboard_router)
+router.include_router(bots_router)
 router.include_router(users_router)
 router.include_router(user_detail_router)
 router.include_router(analytics_router)

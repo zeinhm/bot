@@ -67,6 +67,8 @@ class BotWorker:
         self.running = False
         self.status: str = "stopped"
         self.started_at: float | None = None
+        self.last_error: str | None = None
+        self.last_error_time: float | None = None
         self._active_trade_id: int | None = None
         self._broadcast_fn = broadcast_fn
 
@@ -94,6 +96,8 @@ class BotWorker:
         self.running = True
         self.status = "running"
         self.started_at = time.time()
+        self.last_error = None
+        self.last_error_time = None
         log.info("BotWorker[user=%d/%s] started — listening for candles", self.user_id, self._mode_label())
         await db.log_event("Bot started", category="system", user_id=self.user_id, is_paper=self.is_paper)
         if not self.is_paper:

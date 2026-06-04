@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import logging
-import os
 
-from alembic import command
-from alembic.config import Config
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 log = logging.getLogger(__name__)
@@ -13,21 +11,45 @@ engine = None
 SessionLocal = None
 
 
-def _run_migrations(database_url: str):
-    sync_url = database_url
-    if sync_url.startswith("postgresql+asyncpg://"):
-        sync_url = sync_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
-    elif sync_url.startswith("postgresql://"):
-        sync_url = sync_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+async def _ensure_schema(eng):
+    """Add columns/tables that migrations would create, idempotently."""
+    async with eng.begin() as conn:
+        # users columns
+        for col, default in [
+            ("is_approved", "true"),
+            ("is_admin", "false"),
+            ("is_rejected", "false"),
+        ]:
+            await conn.execute(text(
+                f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} BOOLEAN NOT NULL DEFAULT {default}"
+            ))
 
-    alembic_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "alembic")
-    alembic_ini = os.path.join(os.path.dirname(alembic_dir), "alembic.ini")
+        # trades columns
+        for col, typ, default in [
+            ("user_id", "INTEGER NOT NULL", "1"),
+            ("is_paper", "BOOLEAN NOT NULL", "false"),
+        ]:
+            await conn.execute(text(
+                f"ALTER TABLE trades ADD COLUMN IF NOT EXISTS {col} {typ} DEFAULT {default}"
+            ))
 
-    cfg = Config(alembic_ini)
-    cfg.set_main_option("sqlalchemy.url", sync_url)
-    cfg.set_main_option("script_location", alembic_dir)
-    command.upgrade(cfg, "head")
-    log.info("Alembic migrations applied")
+        # bot_events columns
+        await conn.execute(text(
+            "ALTER TABLE bot_events ADD COLUMN IF NOT EXISTS user_id INTEGER"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE bot_events ADD COLUMN IF NOT EXISTS is_paper BOOLEAN NOT NULL DEFAULT false"
+        ))
+
+        # bot_state columns
+        await conn.execute(text(
+            "ALTER TABLE bot_state ADD COLUMN IF NOT EXISTS user_id INTEGER"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE bot_state ADD COLUMN IF NOT EXISTS is_paper BOOLEAN NOT NULL DEFAULT false"
+        ))
+
+    log.info("Schema columns ensured")
 
 
 async def init_db(database_url: str):
@@ -36,10 +58,10 @@ async def init_db(database_url: str):
     if database_url.startswith("postgresql://"):
         database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-    _run_migrations(database_url)
-
     engine = create_async_engine(database_url, echo=False)
     SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    await _ensure_schema(engine)
 
     from app.db.models import Base
     async with engine.begin() as conn:

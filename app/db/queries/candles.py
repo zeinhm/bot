@@ -3,40 +3,34 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from sqlalchemy import select, delete, func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.db.engine import get_session
 from app.db.models import CandleBuffer, HistoricalCandle
 
 
 async def save_candles(symbol: str, candles: list[dict]):
+    if not candles:
+        return
     async with get_session() as session:
-        timestamps = []
+        rows = []
         for c in candles:
             ts = c["timestamp"]
             if isinstance(ts, (int, float)):
                 ts = datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
-            timestamps.append(ts)
+            rows.append({
+                "symbol": symbol,
+                "timestamp": ts,
+                "open": c["open"],
+                "high": c["high"],
+                "low": c["low"],
+                "close": c["close"],
+                "volume": c["volume"],
+            })
 
-        existing_result = await session.execute(
-            select(CandleBuffer.timestamp).where(
-                CandleBuffer.symbol == symbol,
-                CandleBuffer.timestamp.in_(timestamps),
-            )
-        )
-        existing_ts = {row[0] for row in existing_result.all()}
-
-        for c, ts in zip(candles, timestamps):
-            if ts in existing_ts:
-                continue
-            session.add(CandleBuffer(
-                symbol=symbol,
-                timestamp=ts,
-                open=c["open"],
-                high=c["high"],
-                low=c["low"],
-                close=c["close"],
-                volume=c["volume"],
-            ))
+        stmt = pg_insert(CandleBuffer).values(rows)
+        stmt = stmt.on_conflict_do_nothing(constraint="uq_candle")
+        await session.execute(stmt)
         await session.commit()
 
 

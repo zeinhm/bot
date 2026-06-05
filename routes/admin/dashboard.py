@@ -35,8 +35,6 @@ async def admin_dashboard(request: Request):
         else:
             bal = await db.get_state("last_balance", 0, user_id=u.id, is_paper=False)
             total_equity += bal or 0
-        paper_bal = await db.get_paper_balance(u.id)
-        total_equity += paper_bal
 
     user_rows = []
     for u in approved_users:

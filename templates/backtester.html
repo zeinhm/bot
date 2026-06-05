@@ -609,7 +609,8 @@
         function ensureLoaded() {
             if (!allData.length || allData[0].time <= fromTime || !hasMore) {
                 chart.timeScale().setVisibleRange({ from: fromTime, to: toTime });
-                setTimeout(updateBoxes, 100);
+                chartEl.style.visibility = '';
+                setTimeout(updateBoxes, 50);
                 return;
             }
             loading = true;
@@ -648,17 +649,50 @@
         document.getElementById('asset-label').textContent = currentSymbol;
         document.getElementById('chart-pair').textContent = currentSymbol;
         assetMenu.style.display = 'none';
-        allData = [];
-        hasMore = true;
-        setups = [];
-        boxEls.forEach(function(b) { b.el.remove(); });
-        boxEls = [];
-        candleSeries.setMarkers([]);
-        fetchCandles(null, CHUNK).then(function(res) {
-            allData = res.candles;
-            hasMore = res.hasMore;
+
+        var params = 'symbol=' + currentSymbol + '&interval=15m';
+        Promise.all([
+            fetchCandles(null, CHUNK),
+            fetch('/api/backtest?' + params).then(function(r) { return r.json(); })
+        ]).then(function(results) {
+            var candleRes = results[0];
+            var btRes = results[1];
+
+            allData = candleRes.candles;
+            hasMore = candleRes.hasMore;
+
+            setups = (btRes.setups || []).map(function(s) {
+                if (s.entryTime) s.entryTime += tzOffsetSec;
+                if (s.exitTime) s.exitTime += tzOffsetSec;
+                if (s.accStartTime) s.accStartTime += tzOffsetSec;
+                if (s.accEndTime) s.accEndTime += tzOffsetSec;
+                if (s.manipTime) s.manipTime += tzOffsetSec;
+                return s;
+            });
+            setupIdx = 0;
+
+            var st = btRes.stats || {};
+            if (st.trades || st.trades === 0) {
+                document.getElementById('st-trades').textContent = st.trades + ' (' + st.wins + 'W / ' + st.losses + 'L)';
+                document.getElementById('st-wr').textContent = st.trades ? st.winRate + '%' : '—';
+                var rEl = document.getElementById('st-r');
+                rEl.textContent = (st.totalR >= 0 ? '+' : '') + st.totalR.toFixed(1) + 'R';
+                rEl.className = 'val mono ' + (st.totalR >= 0 ? 'pos' : 'neg');
+            }
+
+            initChart();
+            chartEl.style.visibility = 'hidden';
             applyData();
-            runBacktest();
+
+            var nav = document.getElementById('setup-nav');
+            if (setups.length > 0) {
+                nav.style.display = 'flex';
+                goToSetup(setups.length - 1);
+            } else {
+                nav.style.display = 'none';
+                chart.timeScale().fitContent();
+                chartEl.style.visibility = '';
+            }
         });
     });
 
@@ -667,12 +701,44 @@
 
     // ── Auto-run on load ──
     initChart();
+    chartEl.style.visibility = 'hidden';
     loadCombined();
-    fetchCandles(null, CHUNK).then(function(res) {
-        allData = res.candles;
-        hasMore = res.hasMore;
+    var params = 'symbol=' + currentSymbol + '&interval=15m';
+    Promise.all([
+        fetchCandles(null, CHUNK),
+        fetch('/api/backtest?' + params).then(function(r) { return r.json(); })
+    ]).then(function(results) {
+        allData = results[0].candles;
+        hasMore = results[0].hasMore;
+
+        setups = (results[1].setups || []).map(function(s) {
+            if (s.entryTime) s.entryTime += tzOffsetSec;
+            if (s.exitTime) s.exitTime += tzOffsetSec;
+            if (s.accStartTime) s.accStartTime += tzOffsetSec;
+            if (s.accEndTime) s.accEndTime += tzOffsetSec;
+            if (s.manipTime) s.manipTime += tzOffsetSec;
+            return s;
+        });
+
+        var st = results[1].stats || {};
+        if (st.trades || st.trades === 0) {
+            document.getElementById('st-trades').textContent = st.trades + ' (' + st.wins + 'W / ' + st.losses + 'L)';
+            document.getElementById('st-wr').textContent = st.trades ? st.winRate + '%' : '—';
+            var rEl = document.getElementById('st-r');
+            rEl.textContent = (st.totalR >= 0 ? '+' : '') + st.totalR.toFixed(1) + 'R';
+            rEl.className = 'val mono ' + (st.totalR >= 0 ? 'pos' : 'neg');
+        }
+
         applyData();
-        runBacktest();
+        var nav = document.getElementById('setup-nav');
+        if (setups.length > 0) {
+            nav.style.display = 'flex';
+            goToSetup(setups.length - 1);
+        } else {
+            nav.style.display = 'none';
+            chart.timeScale().fitContent();
+            chartEl.style.visibility = '';
+        }
     });
 })();
 </script>

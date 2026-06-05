@@ -41,11 +41,11 @@ def _invalidate_cache(symbol: str = None, interval: str = None):
 async def backtester_page(request: Request):
     user = await require_auth(request)
 
-    data = await db.get_all_historical_candles("BTCUSDT", "15m")
-    if data:
+    first_ts, last_ts = await db.get_historical_candle_range("BTCUSDT", "15m")
+    if first_ts and last_ts:
         from datetime import datetime, timezone
-        first = datetime.fromtimestamp(data[0]["time"], tz=timezone.utc)
-        last = datetime.fromtimestamp(data[-1]["time"], tz=timezone.utc)
+        first = datetime.fromtimestamp(first_ts, tz=timezone.utc)
+        last = datetime.fromtimestamp(last_ts, tz=timezone.utc)
         data_range = f"{first.strftime('%b %Y')} – {last.strftime('%b %Y')}"
     else:
         data_range = "No data"

@@ -112,6 +112,17 @@ async def get_historical_candles(
         return candles, has_more
 
 
+async def get_historical_candle_range(symbol: str, interval: str) -> tuple:
+    async with get_session() as session:
+        from sqlalchemy import func as sqlfunc
+        result = await session.execute(
+            select(sqlfunc.min(HistoricalCandle.timestamp), sqlfunc.max(HistoricalCandle.timestamp))
+            .where(HistoricalCandle.symbol == symbol, HistoricalCandle.interval == interval)
+        )
+        row = result.one()
+        return row[0], row[1]
+
+
 async def get_all_historical_candles(symbol: str, interval: str) -> list[dict]:
     async with get_session() as session:
         result = await session.execute(

@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% block title_suffix %} — Bot Status{% endblock %}
 
-{% block head %}
+{% block head %}{% endblock %}
+
+{% block content %}
 <style>
 .error-msg {
     font-family: var(--mono); font-size: 11px; color: var(--red);
@@ -17,9 +19,6 @@
     .error-msg { max-width: 150px; }
 }
 </style>
-{% endblock %}
-
-{% block content %}
 <div class="content-narrow">
     <div class="page-head">
         <div>

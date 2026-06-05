@@ -2,7 +2,6 @@
 {% block title_suffix %} — Dashboard{% endblock %}
 
 {% block head %}
-<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 {% endblock %}
 
 {% block content %}
@@ -110,9 +109,6 @@
         {% endif %}
     </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
 <script>
 (function() {
     var el = document.getElementById('equity-chart');

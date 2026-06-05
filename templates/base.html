@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ZENITH{% block title_suffix %}{% endblock %}</title>
     <link rel="stylesheet" href="/static/css/app.css?v=7">
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="/static/js/websocket.js?v=2"></script>
+    <script>var botWS = new BotWebSocket({{ user.id if user else 1 }});</script>
     {% block head %}{% endblock %}
 </head>
 <body>
@@ -17,27 +21,27 @@
         {% if admin_mode|default(false) %}
         <!-- ===== Admin Navigation ===== -->
         <div class="rail-group">
-            <a href="/admin" class="rail-btn {% if page == 'admin_dashboard' %}active{% endif %}" data-tip="Overview">
+            <a href="/admin" hx-get="/admin" hx-target="#page-content" hx-select="#page-content" hx-swap="outerHTML" hx-push-url="true" class="rail-btn {% if page == 'admin_dashboard' %}active{% endif %}" data-tip="Overview">
                 <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/>
                 </svg>
             </a>
-            <a href="/admin/bots" class="rail-btn {% if page == 'admin_bots' %}active{% endif %}" data-tip="Bots">
+            <a href="/admin/bots" hx-get="/admin/bots" hx-target="#page-content" hx-select="#page-content" hx-swap="outerHTML" hx-push-url="true" class="rail-btn {% if page == 'admin_bots' %}active{% endif %}" data-tip="Bots">
                 <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
                 </svg>
             </a>
-            <a href="/admin/users" class="rail-btn {% if page == 'admin_users' %}active{% endif %}" data-tip="Users">
+            <a href="/admin/users" hx-get="/admin/users" hx-target="#page-content" hx-select="#page-content" hx-swap="outerHTML" hx-push-url="true" class="rail-btn {% if page == 'admin_users' %}active{% endif %}" data-tip="Users">
                 <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
                 </svg>
             </a>
-            <a href="/admin/analytics" class="rail-btn {% if page == 'admin_analytics' %}active{% endif %}" data-tip="Analytics">
+            <a href="/admin/analytics" hx-get="/admin/analytics" hx-target="#page-content" hx-select="#page-content" hx-swap="outerHTML" hx-push-url="true" class="rail-btn {% if page == 'admin_analytics' %}active{% endif %}" data-tip="Analytics">
                 <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M18 20V10M12 20V4M6 20v-6"/>
                 </svg>
             </a>
-            <a href="/admin/logs" class="rail-btn {% if page == 'admin_logs' %}active{% endif %}" data-tip="Logs">
+            <a href="/admin/logs" hx-get="/admin/logs" hx-target="#page-content" hx-select="#page-content" hx-swap="outerHTML" hx-push-url="true" class="rail-btn {% if page == 'admin_logs' %}active{% endif %}" data-tip="Logs">
                 <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
                 </svg>
@@ -58,38 +62,38 @@
         <!-- ===== Trading Navigation ===== -->
         <div class="rail-group">
             <!-- Dashboard -->
-            <a href="/dashboard" class="rail-btn {% if page == 'dashboard' %}active{% endif %}" data-tip="Dashboard">
+            <a href="/dashboard" hx-get="/dashboard" hx-target="#page-content" hx-select="#page-content" hx-swap="outerHTML" hx-push-url="true" class="rail-btn {% if page == 'dashboard' %}active{% endif %}" data-tip="Dashboard">
                 <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/>
                 </svg>
             </a>
             <!-- Live Position -->
-            <a href="/position" class="rail-btn {% if page == 'position' %}active{% endif %}" data-tip="Live Position">
+            <a href="/position" hx-get="/position" hx-target="#page-content" hx-select="#page-content" hx-swap="outerHTML" hx-push-url="true" class="rail-btn {% if page == 'position' %}active{% endif %}" data-tip="Live Position">
                 <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
                     <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/>
                 </svg>
             </a>
             <!-- Trade History -->
-            <a href="/trades" class="rail-btn {% if page == 'trades' or page == 'history' %}active{% endif %}" data-tip="Trade History">
+            <a href="/trades" hx-get="/trades" hx-target="#page-content" hx-select="#page-content" hx-swap="outerHTML" hx-push-url="true" class="rail-btn {% if page == 'trades' or page == 'history' %}active{% endif %}" data-tip="Trade History">
                 <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
                 </svg>
             </a>
             <!-- Analytics -->
-            <a href="/analytics" class="rail-btn {% if page == 'analytics' %}active{% endif %}" data-tip="Analytics">
+            <a href="/analytics" hx-get="/analytics" hx-target="#page-content" hx-select="#page-content" hx-swap="outerHTML" hx-push-url="true" class="rail-btn {% if page == 'analytics' %}active{% endif %}" data-tip="Analytics">
                 <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M18 20V10M12 20V4M6 20v-6"/>
                 </svg>
             </a>
             <!-- Backtester -->
-            <a href="/backtester" class="rail-btn {% if page == 'backtester' %}active{% endif %}" data-tip="Backtester">
+            <a href="/backtester" hx-get="/backtester" hx-target="#page-content" hx-select="#page-content" hx-swap="outerHTML" hx-push-url="true" class="rail-btn {% if page == 'backtester' %}active{% endif %}" data-tip="Backtester">
                 <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M3 3v5h5M3.05 13a9 9 0 1 0 2.6-6.4L3 8M12 7v5l3 2"/>
                 </svg>
             </a>
             <!-- Alerts -->
-            <a href="/alerts" class="rail-btn {% if page == 'alerts' %}active{% endif %}" data-tip="Alerts">
+            <a href="/alerts" hx-get="/alerts" hx-target="#page-content" hx-select="#page-content" hx-swap="outerHTML" hx-push-url="true" class="rail-btn {% if page == 'alerts' %}active{% endif %}" data-tip="Alerts">
                 <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/>
                 </svg>
@@ -110,7 +114,7 @@
 
         <div class="rail-group">
             <!-- Settings -->
-            <a href="/settings" class="rail-btn {% if page == 'settings' %}active{% endif %}" data-tip="Settings">
+            <a href="/settings" hx-get="/settings" hx-target="#page-content" hx-select="#page-content" hx-swap="outerHTML" hx-push-url="true" class="rail-btn {% if page == 'settings' %}active{% endif %}" data-tip="Settings">
                 <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="3"/>
                     <path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/>
@@ -235,7 +239,7 @@
         </header>
 
         <!-- Content Area -->
-        <div class="content {% block content_class %}{% endblock %}">
+        <div id="page-content" class="content {% block content_class %}{% endblock %}">
             {% block content %}{% endblock %}
         </div>
 
@@ -246,19 +250,19 @@
 <nav class="btm-nav">
     {% if admin_mode|default(false) %}
     <!-- ===== Admin Bottom Nav ===== -->
-    <a href="/admin" class="btm-tab {% if page == 'admin_dashboard' %}active{% endif %}">
+    <a href="/admin" hx-get="/admin" hx-target="#page-content" hx-select="#page-content" hx-swap="outerHTML" hx-push-url="true" class="btm-tab {% if page == 'admin_dashboard' %}active{% endif %}">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></svg>
         <span>Overview</span>
     </a>
-    <a href="/admin/bots" class="btm-tab {% if page == 'admin_bots' %}active{% endif %}">
+    <a href="/admin/bots" hx-get="/admin/bots" hx-target="#page-content" hx-select="#page-content" hx-swap="outerHTML" hx-push-url="true" class="btm-tab {% if page == 'admin_bots' %}active{% endif %}">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
         <span>Bots</span>
     </a>
-    <a href="/admin/users" class="btm-tab {% if page == 'admin_users' %}active{% endif %}">
+    <a href="/admin/users" hx-get="/admin/users" hx-target="#page-content" hx-select="#page-content" hx-swap="outerHTML" hx-push-url="true" class="btm-tab {% if page == 'admin_users' %}active{% endif %}">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         <span>Users</span>
     </a>
-    <a href="/admin/logs" class="btm-tab {% if page == 'admin_logs' %}active{% endif %}">
+    <a href="/admin/logs" hx-get="/admin/logs" hx-target="#page-content" hx-select="#page-content" hx-swap="outerHTML" hx-push-url="true" class="btm-tab {% if page == 'admin_logs' %}active{% endif %}">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
         <span>Logs</span>
     </a>
@@ -269,19 +273,19 @@
 
     {% else %}
     <!-- ===== Trading Bottom Nav ===== -->
-    <a href="/dashboard" class="btm-tab {% if page == 'dashboard' %}active{% endif %}">
+    <a href="/dashboard" hx-get="/dashboard" hx-target="#page-content" hx-select="#page-content" hx-swap="outerHTML" hx-push-url="true" class="btm-tab {% if page == 'dashboard' %}active{% endif %}">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></svg>
         <span>Home</span>
     </a>
-    <a href="/position" class="btm-tab {% if page == 'position' %}active{% endif %}">
+    <a href="/position" hx-get="/position" hx-target="#page-content" hx-select="#page-content" hx-swap="outerHTML" hx-push-url="true" class="btm-tab {% if page == 'position' %}active{% endif %}">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>
         <span>Position</span>
     </a>
-    <a href="/backtester" class="btm-tab {% if page == 'backtester' %}active{% endif %}">
+    <a href="/backtester" hx-get="/backtester" hx-target="#page-content" hx-select="#page-content" hx-swap="outerHTML" hx-push-url="true" class="btm-tab {% if page == 'backtester' %}active{% endif %}">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5M3.05 13a9 9 0 1 0 2.6-6.4L3 8M12 7v5l3 2"/></svg>
         <span>Backtest</span>
     </a>
-    <a href="/trades" class="btm-tab {% if page == 'trades' or page == 'history' %}active{% endif %}">
+    <a href="/trades" hx-get="/trades" hx-target="#page-content" hx-select="#page-content" hx-swap="outerHTML" hx-push-url="true" class="btm-tab {% if page == 'trades' or page == 'history' %}active{% endif %}">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
         <span>History</span>
     </a>
@@ -290,11 +294,11 @@
         <span>More</span>
     </button>
     <div class="btm-more-panel" id="btm-more-panel" style="display:none">
-        <a href="/analytics" class="btm-more-item {% if page == 'analytics' %}active{% endif %}">
+        <a href="/analytics" hx-get="/analytics" hx-target="#page-content" hx-select="#page-content" hx-swap="outerHTML" hx-push-url="true" class="btm-more-item {% if page == 'analytics' %}active{% endif %}">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
             Analytics
         </a>
-        <a href="/alerts" class="btm-more-item {% if page == 'alerts' %}active{% endif %}">
+        <a href="/alerts" hx-get="/alerts" hx-target="#page-content" hx-select="#page-content" hx-swap="outerHTML" hx-push-url="true" class="btm-more-item {% if page == 'alerts' %}active{% endif %}">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>
             Alerts
         </a>
@@ -302,7 +306,7 @@
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z"/></svg>
             Track Record
         </a>
-        <a href="/settings" class="btm-more-item {% if page == 'settings' %}active{% endif %}">
+        <a href="/settings" hx-get="/settings" hx-target="#page-content" hx-select="#page-content" hx-swap="outerHTML" hx-push-url="true" class="btm-more-item {% if page == 'settings' %}active{% endif %}">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.8 1V21a2 2 0 0 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.2-2.8H3a2 2 0 0 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
             Settings
         </a>
@@ -387,10 +391,7 @@ document.addEventListener('click', function(e) {
     if (p && btn && !btn.contains(e.target) && !p.contains(e.target)) p.style.display = 'none';
 });
 </script>
-<script src="/static/js/websocket.js?v=2"></script>
 <script>
-var botWS = new BotWebSocket({{ user.id if user else 1 }});
-
 // Restore cached prices immediately so header never shows "—"
 (function() {
     try {
@@ -576,21 +577,42 @@ botWS.on('_disconnected', function() {
 });
 </script>
 <script>
-document.querySelectorAll('.local-time').forEach(function(el) {
-    var utc = el.dataset.utc;
-    if (!utc) return;
-    var d = new Date(utc);
-    var mm = String(d.getMonth() + 1).padStart(2, '0');
-    var dd = String(d.getDate()).padStart(2, '0');
-    var hh = String(d.getHours()).padStart(2, '0');
-    var mi = String(d.getMinutes()).padStart(2, '0');
-    var fmt = el.dataset.fmt;
-    if (fmt === 'date') {
-        el.textContent = d.getFullYear() + '-' + mm + '-' + dd;
-    } else if (fmt === 'full') {
-        el.textContent = d.getFullYear() + '-' + mm + '-' + dd + ' ' + hh + ':' + mi;
-    } else {
-        el.textContent = mm + '/' + dd + ' ' + hh + ':' + mi;
+function formatLocalTimes() {
+    document.querySelectorAll('.local-time').forEach(function(el) {
+        var utc = el.dataset.utc;
+        if (!utc) return;
+        var d = new Date(utc);
+        var mm = String(d.getMonth() + 1).padStart(2, '0');
+        var dd = String(d.getDate()).padStart(2, '0');
+        var hh = String(d.getHours()).padStart(2, '0');
+        var mi = String(d.getMinutes()).padStart(2, '0');
+        var fmt = el.dataset.fmt;
+        if (fmt === 'date') {
+            el.textContent = d.getFullYear() + '-' + mm + '-' + dd;
+        } else if (fmt === 'full') {
+            el.textContent = d.getFullYear() + '-' + mm + '-' + dd + ' ' + hh + ':' + mi;
+        } else {
+            el.textContent = mm + '/' + dd + ' ' + hh + ':' + mi;
+        }
+    });
+}
+formatLocalTimes();
+document.addEventListener('htmx:afterSettle', formatLocalTimes);
+document.addEventListener('htmx:afterSwap', function(e) {
+    var match = e.detail.xhr && e.detail.xhr.responseText && e.detail.xhr.responseText.match(/<title>(.*?)<\/title>/);
+    if (match) document.title = match[1];
+});
+document.addEventListener('htmx:pushedIntoHistory', function() {
+    var path = window.location.pathname;
+    document.querySelectorAll('.rail-btn[href], .btm-tab[href], .btm-more-item[href]').forEach(function(el) {
+        var href = el.getAttribute('href');
+        if (href) el.classList.toggle('active', href === path || (href !== '/dashboard' && path.startsWith(href + '/')));
+    });
+});
+document.addEventListener('htmx:confirm', function(e) {
+    var el = e.detail.elt;
+    if (el.classList.contains('active') && (el.classList.contains('rail-btn') || el.classList.contains('btm-tab') || el.classList.contains('btm-more-item'))) {
+        e.preventDefault();
     }
 });
 </script>

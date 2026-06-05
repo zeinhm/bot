@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 {% block title_suffix %} — Backtester{% endblock %}
 
-{% block head %}
-<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+{% block head %}{% endblock %}
+
+{% block content %}
 <style>
 .chart-wrap { position:relative; border-radius:var(--radius); border:1px solid var(--border); background:#131720; overflow:hidden; }
 .chart-hdr { display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid rgba(139,148,158,.08); }
@@ -26,9 +27,6 @@
 .param-row .lbl { color:var(--text-3); }
 .param-row .val { color:var(--text-1); font-size:12px; }
 </style>
-{% endblock %}
-
-{% block content %}
 <div class="page-head">
     <div>
         <h1 class="page-title">Backtester</h1>
@@ -254,9 +252,6 @@
 })();
 </script>
 {% endif %}
-{% endblock %}
-
-{% block scripts %}
 <script>
 (function() {
     var chartEl = document.getElementById('chart-el');

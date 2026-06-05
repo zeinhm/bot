@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% block title_suffix %} — Logs{% endblock %}
 
-{% block head %}
+{% block head %}{% endblock %}
+
+{% block content %}
 <style>
 .log-filters {
     display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; align-items: center;
@@ -24,9 +26,6 @@
     .msg-cell { max-width: 200px; }
 }
 </style>
-{% endblock %}
-
-{% block content %}
 <div class="content-narrow">
     <div class="page-head">
         <div>

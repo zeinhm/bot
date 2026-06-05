@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 {% block title_suffix %} — {{ target.name or target.email }}{% endblock %}
 
-{% block head %}
-<script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+{% block head %}{% endblock %}
+
+{% block content %}
 <style>
 .user-header {
     display: flex; align-items: center; gap: 16px; margin-bottom: 20px;
@@ -21,9 +22,6 @@
     .adm-hide-sm { display: none !important; }
 }
 </style>
-{% endblock %}
-
-{% block content %}
 <div class="content-narrow">
     <div style="margin-bottom:12px">
         <a href="/admin" class="link muted" style="font-size:12px;display:inline-flex;align-items:center;gap:4px">
@@ -209,9 +207,6 @@
         </div>
     </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
 {% if live_stats.total > 0 %}
 <script>
 (function() {

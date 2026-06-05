@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% block title_suffix %} — Admin{% endblock %}
 
-{% block head %}
+{% block head %}{% endblock %}
+
+{% block content %}
 <style>
 .user-row { cursor: pointer; transition: background .1s; }
 .user-row:hover { background: #131820 !important; }
@@ -13,9 +15,6 @@
     .adm-hide-sm { display: none !important; }
 }
 </style>
-{% endblock %}
-
-{% block content %}
 <div class="content-narrow">
     <div class="page-head">
         <div>

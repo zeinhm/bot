@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% block title_suffix %} — Users{% endblock %}
 
-{% block head %}
+{% block head %}{% endblock %}
+
+{% block content %}
 <style>
 .admin-tabs { display: flex; gap: 4px; margin-bottom: 14px; }
 .admin-tabs button {
@@ -51,9 +53,6 @@ tr.resolving { opacity: .45; transition: opacity .3s; pointer-events: none; }
     .admin-hide-sm { display: none !important; }
 }
 </style>
-{% endblock %}
-
-{% block content %}
 <div class="content-narrow">
     <div class="page-head">
         <div>
@@ -287,9 +286,6 @@ tr.resolving { opacity: .45; transition: opacity .3s; pointer-events: none; }
         {% endif %}
     </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
 <script>
 function switchTab(tab) {
     document.getElementById('tab-pending').className = tab === 'pending' ? 'active' : '';

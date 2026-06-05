@@ -85,9 +85,6 @@
         <button type="button" class="btn btn-ghost btn-block" disabled>Reset paper trading wallet</button>
     </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
 <script>
 function emergencyClose() {
     if (!confirm('EMERGENCY CLOSE\n\nThis will immediately close ALL open positions at market price.\n\nAre you sure?')) return;

@@ -12,159 +12,257 @@
     </div>
 </div>
 
+<!-- 1 · STATS ROW -->
 <div class="stat-row" style="margin-bottom:12px">
     <div class="stat">
         <div class="lbl">Win Rate</div>
         <div class="val mono">{{ "%.1f"|format(win_rate) }}%</div>
-        <div class="sub">{{ wins }}W / {{ losses }}L</div>
+        <div class="sub mono">{{ wins }}W / {{ losses }}L</div>
     </div>
-    <div class="stat">
+    <div class="stat accent-green">
         <div class="lbl">Profit Factor</div>
         <div class="val mono {{ 'pos' if profit_factor > 1 else 'neg' }}">{{ "%.2f"|format(profit_factor) }}</div>
         <div class="sub">gross win ÷ gross loss</div>
     </div>
-    <div class="stat">
+    <div class="stat accent-green">
         <div class="lbl">Total R</div>
         <div class="val mono {{ 'pos' if total_r >= 0 else 'neg' }}">{{ "+" if total_r > 0 else "" }}{{ "%.1f"|format(total_r) }}R</div>
         <div class="sub">all-time</div>
     </div>
-    <div class="stat">
+    <div class="stat accent-blue">
         <div class="lbl">Avg Hold Time</div>
         <div class="val mono">{{ avg_hold }}</div>
         <div class="sub">entry → exit</div>
     </div>
 </div>
 
-<div class="grid analytics-grid" style="grid-template-columns:1fr 1fr;align-items:start">
-    <div class="grid" style="gap:12px">
-        <div class="card">
-            <div class="card-title">Drawdown · all-time</div>
-            <div id="drawdown-chart" style="height:150px;display:grid;place-items:center">
-                <span class="muted" style="font-size:12px">Chart available after trades are recorded</span>
-            </div>
-        </div>
-        <div class="card">
-            <div class="card-title">Hold Time Analysis</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-                <div>
-                    <div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Winners avg</div>
-                    <div class="mono pos" style="font-size:18px;font-weight:600">{{ avg_win_hold }}</div>
-                </div>
-                <div>
-                    <div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Losers avg</div>
-                    <div class="mono neg" style="font-size:18px;font-weight:600">{{ avg_loss_hold }}</div>
-                </div>
-            </div>
-            {% if total_trades == 0 %}
-            <div class="callout blue" style="margin-top:12px">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
-                <span>Need more trade data for hold time analysis.</span>
-            </div>
+<!-- 2+3 · DRAWDOWN + MONTHLY P&L (side by side on desktop) -->
+<div class="grid grid-2" style="margin-bottom:12px;align-items:start">
+    <!-- Drawdown -->
+    <div class="card hero">
+        <div class="card-title row">
+            <span>Drawdown</span>
+            {% if max_drawdown > 0 %}
+            <span class="meta neg">Max −{{ "%.1f"|format(max_drawdown) }}%</span>
             {% endif %}
         </div>
+        {% if total_trades > 0 %}
+        <div id="drawdown-chart" style="height:220px"></div>
+        {% else %}
+        <div style="display:grid;place-items:center;height:220px">
+            <span class="muted" style="font-size:12px">Chart available after trades are recorded</span>
+        </div>
+        {% endif %}
     </div>
 
-    <div class="grid" style="gap:12px">
-        <div class="card">
-            <div class="card-title">Monthly P&L</div>
-            <div id="monthly-chart" style="min-height:100px">
-                {% if monthly_data == '[]' %}
-                <div style="display:grid;place-items:center;height:100px">
-                    <span class="muted" style="font-size:12px">Monthly data available after trades are recorded</span>
-                </div>
+    <!-- Monthly P&L -->
+    <div class="card">
+        <div class="card-title row">
+            <div style="display:flex;align-items:center;gap:10px">
+                <span>Monthly P&amp;L</span>
+                {% if available_years|length > 1 %}
+                <select id="monthly-year" style="background:var(--card-2);border:1px solid var(--border);border-radius:4px;color:var(--text-2);font-size:11px;font-family:var(--mono);padding:2px 6px;cursor:pointer">
+                    {% for y in available_years %}
+                    <option value="{{ y }}" {{ 'selected' if y|string == monthly_year|string else '' }}>{{ y }}</option>
+                    {% endfor %}
+                </select>
+                {% else %}
+                <span class="muted" style="font-size:11px;text-transform:none;letter-spacing:0">{{ monthly_year }}</span>
                 {% endif %}
             </div>
-        </div>
-        <div class="card">
-            <div class="card-title">Win Rate by Session</div>
-            {% if session_wr %}
-            <div style="display:flex;flex-direction:column;gap:8px">
-                {% for sess, data in session_wr.items() %}
-                <div>
-                    <div class="between" style="margin-bottom:4px">
-                        <span class="muted capitalize" style="font-size:12px">{{ sess }}</span>
-                        <span class="mono" style="font-size:12px;font-weight:600">{{ data.wr }}% <span class="muted" style="font-weight:400">({{ data.total }})</span></span>
-                    </div>
-                    <div style="height:6px;background:var(--card-3);border-radius:3px;overflow:hidden">
-                        <div style="height:100%;width:{{ data.wr }}%;background:{{ 'var(--green)' if data.wr >= 50 else 'var(--red)' }};border-radius:3px;transition:width .3s"></div>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-            {% else %}
-            <div style="display:grid;place-items:center;min-height:80px">
-                <span class="muted" style="font-size:12px">Session data available after trades</span>
-            </div>
+            {% if monthly_net != 0 %}
+            <span class="meta {{ 'pos' if monthly_net >= 0 else 'neg' }}">{{ '%+.0f'|format(monthly_net) }} USDT</span>
             {% endif %}
         </div>
-        <div class="card">
-            <div class="card-title">Win Rate by Day</div>
-            {% if day_wr %}
-            <div style="display:flex;flex-direction:column;gap:8px">
-                {% for day, data in day_wr.items() %}
-                <div>
-                    <div class="between" style="margin-bottom:4px">
-                        <span class="muted" style="font-size:12px">{{ day }}</span>
-                        <span class="mono" style="font-size:12px;font-weight:600">{{ data.wr }}% <span class="muted" style="font-weight:400">({{ data.total }})</span></span>
-                    </div>
-                    <div style="height:6px;background:var(--card-3);border-radius:3px;overflow:hidden">
-                        <div style="height:100%;width:{{ data.wr }}%;background:{{ 'var(--green)' if data.wr >= 50 else 'var(--red)' }};border-radius:3px;transition:width .3s"></div>
-                    </div>
+        <div id="monthly-chart" style="height:220px"></div>
+    </div>
+</div>
+
+<!-- 4+5 · P&L BY SESSION | P&L BY DAY (side by side) -->
+<div class="grid grid-2" style="margin-bottom:12px">
+    <div class="card">
+        <div class="card-title">P&amp;L by Session</div>
+        {% if session_pnl %}
+        <div class="wr-list">
+            {% for sess, data in session_pnl.items() %}
+            <div class="wr-row">
+                <div class="wr-head">
+                    <span class="wr-name">{{ sess }}</span>
+                    <span class="wr-val {{ 'pos' if data.pnl >= 0 else 'neg' }}">{{ '%+.0f'|format(data.pnl) }}<span class="ct">{{ data.total }} trades</span></span>
                 </div>
-                {% endfor %}
+                <div class="pbar {{ 'green' if data.pnl >= 0 else 'red' }}"><span></span></div>
             </div>
-            {% else %}
-            <div style="display:grid;place-items:center;min-height:80px">
-                <span class="muted" style="font-size:12px">Day data available after trades</span>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div style="display:grid;place-items:center;min-height:80px">
+            <span class="muted" style="font-size:12px">Session data available after trades</span>
+        </div>
+        {% endif %}
+    </div>
+    <div class="card">
+        <div class="card-title">P&amp;L by Day</div>
+        {% if day_pnl %}
+        <div class="wr-list">
+            {% for day, data in day_pnl.items() %}
+            <div class="wr-row">
+                <div class="wr-head">
+                    <span class="wr-name">{{ day }}</span>
+                    <span class="wr-val {{ 'pos' if data.pnl >= 0 else 'neg' }}">{{ '%+.0f'|format(data.pnl) }}<span class="ct">{{ data.total }} trades</span></span>
+                </div>
+                <div class="pbar {{ 'green' if data.pnl >= 0 else 'red' }}"><span></span></div>
             </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div style="display:grid;place-items:center;min-height:80px">
+            <span class="muted" style="font-size:12px">Day data available after trades</span>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 6 · HOLD TIME ANALYSIS (full width strip) -->
+<div class="card">
+    <div class="card-title">Hold Time Analysis</div>
+    {% if total_trades > 0 %}
+    <div class="hold">
+        <div class="hold-col">
+            <div class="hl">Winners avg</div>
+            <div class="hv pos">{{ avg_win_hold }}</div>
+        </div>
+        <div class="hold-col">
+            <div class="hl">Losers avg</div>
+            <div class="hv neg">{{ avg_loss_hold }}</div>
+        </div>
+        <div class="hold-sep"></div>
+        <div class="hold-bars">
+            <div class="hold-bar-row">
+                <span class="k">Winners</span>
+                <div class="hold-track"><span id="holdWinBar" style="background:var(--green)"></span></div>
+            </div>
+            <div class="hold-bar-row">
+                <span class="k">Losers</span>
+                <div class="hold-track"><span id="holdLoseBar" style="background:var(--red)"></span></div>
+            </div>
+            {% if hold_ratio > 0 %}
+            <div class="hold-insight">Losing trades are held <b>{{ hold_ratio }}×</b> longer on average.</div>
             {% endif %}
         </div>
     </div>
+    {% else %}
+    <div class="callout blue" style="margin-top:4px">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+        <span>Need more trade data for hold time analysis.</span>
+    </div>
+    {% endif %}
 </div>
+
 <script>
 (function() {
-    // Drawdown chart
+    var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+    // Drawdown area chart — same init pattern as backtester equity curve
     var ddEl = document.getElementById('drawdown-chart');
-    var ddData = {{ drawdown_data|safe }};
-    if (ddEl && ddData.length && typeof LightweightCharts !== 'undefined') {
-        ddEl.innerHTML = '';
-        var chart = LightweightCharts.createChart(ddEl, {
-            layout: { background: { color: 'transparent' }, textColor: '#5C636E', fontSize: 10, fontFamily: "'Inter', sans-serif" },
-            grid: { vertLines: { visible: false }, horzLines: { color: 'rgba(139,148,158,.06)' } },
-            rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.05, bottom: 0.1 } },
-            timeScale: { borderVisible: false, timeVisible: true },
-            handleScroll: false, handleScale: false,
-            crosshair: { horzLine: { visible: false, labelVisible: false }, vertLine: { visible: false, labelVisible: false } }
+    var ddRaw = {{ drawdown_data|safe }};
+    if (ddEl && ddRaw.length && typeof LightweightCharts !== 'undefined') {
+        // dedup timestamps + sort ascending (backtest trades can share the same second)
+        var seen = {};
+        var ddData = [];
+        ddRaw.forEach(function(p) {
+            if (!seen[p.time]) {
+                seen[p.time] = true;
+                ddData.push({ time: p.time, value: p.value });
+            } else {
+                ddData[ddData.length - 1].value = p.value;
+            }
         });
-        var series = chart.addAreaSeries({
+        ddData.sort(function(a, b) { return a.time - b.time; });
+
+        var ddChart = LightweightCharts.createChart(ddEl, {
+            layout: { background: { type: LightweightCharts.ColorType.Solid, color: 'transparent' }, textColor: '#5C636E', fontSize: 10, fontFamily: "'Inter', sans-serif" },
+            grid: { vertLines: { color: 'rgba(139,148,158,.05)' }, horzLines: { color: 'rgba(139,148,158,.05)' } },
+            rightPriceScale: { borderColor: 'rgba(139,148,158,.08)' },
+            timeScale: { borderColor: 'rgba(139,148,158,.08)', timeVisible: true, secondsVisible: false, fixLeftEdge: true, fixRightEdge: true },
+            crosshair: { horzLine: { labelBackgroundColor: '#1C2128' }, vertLine: { labelBackgroundColor: '#1C2128' } },
+            handleScroll: true, handleScale: true,
+            height: 220
+        });
+        var ddSeries = ddChart.addAreaSeries({
             lineColor: '#FF4D4D',
-            topColor: 'transparent',
-            bottomColor: 'rgba(255,77,77,.2)',
-            lineWidth: 2,
+            topColor: 'rgba(255,77,77,.02)',
+            bottomColor: 'rgba(255,77,77,.25)',
+            lineWidth: 1.5,
             priceFormat: { type: 'custom', formatter: function(p) { return p.toFixed(1) + '%'; } }
         });
-        series.setData(ddData);
-        chart.timeScale().fitContent();
-        new ResizeObserver(function() { chart.applyOptions({ width: ddEl.clientWidth }); }).observe(ddEl);
+        ddSeries.setData(ddData);
+        ddChart.timeScale().fitContent();
+        new ResizeObserver(function() { ddChart.applyOptions({ width: ddEl.clientWidth }); }).observe(ddEl);
     }
 
-    // Monthly P&L bars
+    // Monthly P&L bars (always 12 months)
     var mEl = document.getElementById('monthly-chart');
     var mData = {{ monthly_data|safe }};
     if (mEl && mData.length) {
-        var html = '<div style="display:flex;gap:6px;align-items:flex-end;height:100px;padding-top:8px">';
         var maxAbs = Math.max.apply(null, mData.map(function(d) { return Math.abs(d.pnl); })) || 1;
+        var html = '<div style="display:flex;gap:8px;align-items:flex-end;height:200px;padding:12px 4px 0">';
         mData.forEach(function(d) {
-            var h = Math.max(Math.abs(d.pnl) / maxAbs * 70, 4);
-            var color = d.pnl >= 0 ? 'var(--green)' : 'var(--red)';
-            html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px">';
-            html += '<span class="mono ' + (d.pnl >= 0 ? 'pos' : 'neg') + '" style="font-size:10px;font-weight:600">$' + Math.abs(d.pnl).toFixed(0) + '</span>';
-            html += '<div style="width:100%;height:' + h + 'px;background:' + color + ';border-radius:3px 3px 0 0;opacity:.7"></div>';
-            html += '<span class="muted" style="font-size:9.5px">' + d.month.slice(5) + '/' + d.month.slice(2,4) + '</span>';
+            var mIdx = parseInt(d.month.slice(5)) - 1;
+            var label = MONTHS[mIdx];
+            var isEmpty = d.pnl === 0;
+            var h = isEmpty ? 2 : Math.max(Math.abs(d.pnl) / maxAbs * 130, 4);
+            var color = isEmpty ? 'var(--border)' : (d.pnl >= 0 ? 'var(--green)' : 'var(--red)');
+            var opacity = isEmpty ? '0.4' : '0.8';
+            html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;max-width:48px;margin:0 auto">';
+            if (!isEmpty) {
+                html += '<span class="mono ' + (d.pnl >= 0 ? 'pos' : 'neg') + '" style="font-size:8.5px;font-weight:600;white-space:nowrap">' + (d.pnl >= 0 ? '+' : '-') + '$' + Math.abs(d.pnl).toFixed(0) + '</span>';
+            }
+            html += '<div style="width:60%;height:' + h + 'px;background:' + color + ';border-radius:3px 3px 0 0;opacity:' + opacity + '"></div>';
+            html += '<span class="muted" style="font-size:9px">' + label + '</span>';
             html += '</div>';
         });
         html += '</div>';
         mEl.innerHTML = html;
+    }
+
+    // P&L by session/day — scale progress bars relative to max
+    document.querySelectorAll('.wr-list').forEach(function(list) {
+        var vals = [];
+        list.querySelectorAll('.wr-val').forEach(function(el) {
+            var num = parseFloat(el.textContent.replace(/[^0-9.\-+]/g, ''));
+            if (!isNaN(num)) vals.push(Math.abs(num));
+        });
+        var maxVal = Math.max.apply(null, vals) || 1;
+        list.querySelectorAll('.pbar > span').forEach(function(bar, i) {
+            bar.style.width = (vals[i] / maxVal * 100).toFixed(1) + '%';
+        });
+    });
+
+    // Hold time visual bars
+    var winBar = document.getElementById('holdWinBar');
+    var loseBar = document.getElementById('holdLoseBar');
+    if (winBar && loseBar) {
+        var ratio = {{ hold_ratio }};
+        if (ratio > 1) {
+            winBar.style.width = (100 / ratio).toFixed(1) + '%';
+            loseBar.style.width = '100%';
+        } else if (ratio > 0) {
+            winBar.style.width = '100%';
+            loseBar.style.width = (ratio * 100).toFixed(1) + '%';
+        } else {
+            winBar.style.width = '50%';
+            loseBar.style.width = '50%';
+        }
+    }
+
+    // Year selector for monthly P&L
+    var yearSel = document.getElementById('monthly-year');
+    if (yearSel) {
+        yearSel.addEventListener('change', function() {
+            var url = new URL(window.location);
+            url.searchParams.set('my', this.value);
+            window.location.href = url.toString();
+        });
     }
 })();
 </script>

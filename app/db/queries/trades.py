@@ -30,6 +30,11 @@ async def update_trade(trade_id: int, updates: dict):
             await session.commit()
 
 
+async def get_trade(trade_id: int) -> Trade | None:
+    async with get_session() as session:
+        return await session.get(Trade, trade_id)
+
+
 async def get_open_trade(user_id: int, is_paper: bool = False) -> Trade | None:
     async with get_session() as session:
         result = await session.execute(

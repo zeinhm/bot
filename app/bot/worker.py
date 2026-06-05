@@ -531,6 +531,7 @@ class BotWorker:
         balance = await self.exchange.get_balance()
         if not self.is_paper:
             await alert_exit(symbol, trade.direction, result, trade.entry_price, fill_price, pnl, r_value, balance)
+            await self._self_heal_trade(trade.id)
 
     # --- Fallback Position Poll ---
 
@@ -643,6 +644,7 @@ class BotWorker:
                     balance = await self.exchange.get_balance()
                     if not self.is_paper:
                         await alert_exit(trade.symbol, trade.direction, result, trade.entry_price, exit_price, pnl, r_value, balance)
+                        await self._self_heal_trade(trade.id)
 
                     self._sltp_missing_since = None
                 else:
@@ -703,3 +705,71 @@ class BotWorker:
 
             except Exception as e:
                 log.error("Position poll error: %s", e)
+
+    async def _self_heal_trade(self, trade_id: int):
+        if self.is_paper:
+            return
+        try:
+            trade = await db.get_trade(trade_id)
+            if not trade or trade.result not in ("win", "loss"):
+                return
+            needs_fix = (
+                not trade.entry_price or trade.entry_price == 0
+                or not trade.exit_price or trade.exit_price == 0
+                or not trade.quantity or trade.quantity == 0
+            )
+            if not needs_fix:
+                return
+
+            log.warning("Self-heal: trade #%d has broken data, querying Binance", trade_id)
+            update = {}
+
+            if trade.entry_order_id:
+                entry_fills = await self.exchange.get_trades_for_order(trade.symbol, int(trade.entry_order_id))
+                if entry_fills:
+                    total_qty = sum(float(f["qty"]) for f in entry_fills)
+                    avg_price = sum(float(f["price"]) * float(f["qty"]) for f in entry_fills) / total_qty if total_qty else 0
+                    entry_comm = sum(float(f.get("commission", 0)) for f in entry_fills)
+                    if avg_price > 0:
+                        update["entry_price"] = avg_price
+                    if total_qty > 0:
+                        update["quantity"] = total_qty
+                    if entry_comm > 0:
+                        update["commission"] = entry_comm
+
+            for oid_str, is_sl in [(trade.sl_order_id, True), (trade.tp_order_id, False)]:
+                if not oid_str:
+                    continue
+                order_info = await self.exchange.get_order(trade.symbol, int(oid_str))
+                if order_info and order_info.get("status") == "FILLED":
+                    exit_fills = await self.exchange.get_trades_for_order(trade.symbol, int(oid_str))
+                    if exit_fills:
+                        total_qty = sum(float(f["qty"]) for f in exit_fills)
+                        avg_exit = sum(float(f["price"]) * float(f["qty"]) for f in exit_fills) / total_qty if total_qty else 0
+                        exit_comm = sum(float(f.get("commission", 0)) for f in exit_fills)
+                        if avg_exit > 0:
+                            update["exit_price"] = avg_exit
+                        update["result"] = "loss" if is_sl else "win"
+                        update["r_value"] = -1.0 if is_sl else (trade.r_value or 2.0)
+                        entry_p = update.get("entry_price", trade.entry_price) or 0
+                        qty = update.get("quantity", trade.quantity) or 0
+                        if entry_p > 0 and qty > 0:
+                            if trade.direction == "long":
+                                raw_pnl = (avg_exit - entry_p) * qty
+                            else:
+                                raw_pnl = (entry_p - avg_exit) * qty
+                            entry_c = update.get("commission", trade.commission) or 0
+                            update["pnl_usdt"] = raw_pnl - (entry_c + exit_comm)
+                            update["commission"] = entry_c + exit_comm
+                    break
+
+            if update:
+                await db.update_trade(trade_id, update)
+                log.info("Self-heal: fixed trade #%d — %s", trade_id, update)
+                await db.log_event(
+                    f"Self-healed trade #{trade_id}: {', '.join(update.keys())}",
+                    level="warn", category="system",
+                    user_id=self.user_id, is_paper=False,
+                )
+        except Exception as e:
+            log.error("Self-heal failed for trade #%d: %s", trade_id, e)

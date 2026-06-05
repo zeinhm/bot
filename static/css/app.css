@@ -515,9 +515,9 @@ input[type=range]::-moz-range-thumb { width: 15px; height: 15px; border: none; b
    ============================================================ */
 .btm-nav {
   display: none; position: fixed; bottom: 0; left: 0; right: 0;
-  height: 56px; background: #0C0E13; border-top: 1px solid var(--border);
+  background: #0C0E13; border-top: 1px solid var(--border);
   z-index: 100; align-items: center; justify-content: space-around;
-  padding-bottom: env(safe-area-inset-bottom);
+  padding: 8px 0 env(safe-area-inset-bottom);
 }
 .btm-tab {
   display: flex; flex-direction: column; align-items: center; justify-content: center;

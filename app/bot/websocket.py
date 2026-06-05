@@ -443,104 +443,93 @@ async def _trade_anomaly_scanner(bot_manager):
 
             for user in all_users:
                 trades = await db.get_all_trades(user.id, is_paper=False)
-                anomalies = [
+                recent_closed = [
                     t for t in trades
                     if t.result in ("win", "loss")
                     and t.exit_time and t.exit_time >= cutoff
-                    and (
-                        not t.entry_price or t.entry_price == 0
-                        or not t.exit_price or t.exit_price == 0
-                        or not t.quantity or t.quantity == 0
-                        or t.pnl_usdt is None
-                    )
                 ]
-                if not anomalies:
+                if not recent_closed:
                     continue
 
                 cfg = await db.get_user_config(user.id)
                 if not cfg or not cfg.binance_api_key_enc:
                     continue
 
-                log.warning("Anomaly scanner: %d broken trades for user %d", len(anomalies), user.id)
-
                 client = await AsyncClient.create(
                     api_key=decrypt(cfg.binance_api_key_enc),
                     api_secret=decrypt(cfg.binance_api_secret_enc),
                 )
                 try:
-                    for trade in anomalies:
-                        update = {}
+                    for trade in recent_closed:
+                        try:
+                            update = {}
+                            binance_entry_price = None
+                            binance_qty = None
+                            binance_entry_comm = 0.0
 
-                        if trade.entry_order_id and (not trade.entry_price or trade.entry_price == 0 or not trade.quantity or trade.quantity == 0):
-                            try:
+                            if trade.entry_order_id:
                                 fills = await client.futures_account_trades(symbol=trade.symbol)
                                 entry_fills = [f for f in fills if int(f.get("orderId", 0)) == int(trade.entry_order_id)]
                                 if entry_fills:
-                                    total_qty = sum(float(f["qty"]) for f in entry_fills)
-                                    avg_price = sum(float(f["price"]) * float(f["qty"]) for f in entry_fills) / total_qty if total_qty else 0
-                                    entry_comm = sum(float(f.get("commission", 0)) for f in entry_fills)
-                                    if avg_price > 0:
-                                        update["entry_price"] = avg_price
-                                    if total_qty > 0:
-                                        update["quantity"] = total_qty
-                                    if entry_comm > 0:
-                                        update["commission"] = entry_comm
-                            except Exception as e:
-                                log.error("Anomaly scanner: entry fill lookup failed for trade #%d: %s", trade.id, e)
+                                    binance_qty = sum(float(f["qty"]) for f in entry_fills)
+                                    binance_entry_price = sum(float(f["price"]) * float(f["qty"]) for f in entry_fills) / binance_qty if binance_qty else 0
+                                    binance_entry_comm = sum(float(f.get("commission", 0)) for f in entry_fills)
 
-                        if not trade.exit_price or trade.exit_price == 0:
+                                    if binance_entry_price > 0 and abs((trade.entry_price or 0) - binance_entry_price) > 0.01:
+                                        update["entry_price"] = binance_entry_price
+                                    if binance_qty > 0 and abs((trade.quantity or 0) - binance_qty) > 0.0001:
+                                        update["quantity"] = binance_qty
+
+                            binance_exit_price = None
+                            binance_exit_comm = 0.0
+                            binance_is_sl = None
+
                             for oid_str, is_sl in [(trade.sl_order_id, True), (trade.tp_order_id, False)]:
                                 if not oid_str:
                                     continue
-                                try:
-                                    order_info = await client.futures_get_order(symbol=trade.symbol, orderId=int(oid_str))
-                                    if order_info and order_info.get("status") == "FILLED":
-                                        exit_fills = await client.futures_account_trades(symbol=trade.symbol)
-                                        exit_fills = [f for f in exit_fills if int(f.get("orderId", 0)) == int(oid_str)]
-                                        if exit_fills:
-                                            total_qty = sum(float(f["qty"]) for f in exit_fills)
-                                            avg_exit = sum(float(f["price"]) * float(f["qty"]) for f in exit_fills) / total_qty if total_qty else 0
-                                            exit_comm = sum(float(f.get("commission", 0)) for f in exit_fills)
-                                            if avg_exit > 0:
-                                                update["exit_price"] = avg_exit
-                                            update["result"] = "loss" if is_sl else "win"
-                                            update["r_value"] = -1.0 if is_sl else (trade.r_value or 2.0)
-                                            entry_p = update.get("entry_price", trade.entry_price) or 0
-                                            qty = update.get("quantity", trade.quantity) or 0
-                                            if entry_p > 0 and qty > 0:
-                                                if trade.direction == "long":
-                                                    raw_pnl = (avg_exit - entry_p) * qty
-                                                else:
-                                                    raw_pnl = (entry_p - avg_exit) * qty
-                                                entry_c = update.get("commission", trade.commission) or 0
-                                                update["pnl_usdt"] = raw_pnl - (entry_c + exit_comm)
-                                                update["commission"] = entry_c + exit_comm
-                                        break
-                                except Exception as e:
-                                    log.error("Anomaly scanner: exit order lookup failed for trade #%d: %s", trade.id, e)
+                                order_info = await client.futures_get_order(symbol=trade.symbol, orderId=int(oid_str))
+                                if order_info and order_info.get("status") == "FILLED":
+                                    exit_fills = await client.futures_account_trades(symbol=trade.symbol)
+                                    exit_fills = [f for f in exit_fills if int(f.get("orderId", 0)) == int(oid_str)]
+                                    if exit_fills:
+                                        total_qty = sum(float(f["qty"]) for f in exit_fills)
+                                        binance_exit_price = sum(float(f["price"]) * float(f["qty"]) for f in exit_fills) / total_qty if total_qty else 0
+                                        binance_exit_comm = sum(float(f.get("commission", 0)) for f in exit_fills)
+                                        binance_is_sl = is_sl
+                                    break
 
-                        if not update and trade.pnl_usdt is None:
-                            entry_p = trade.entry_price or 0
-                            exit_p = trade.exit_price or 0
-                            qty = trade.quantity or 0
+                            if binance_exit_price and binance_exit_price > 0:
+                                if abs((trade.exit_price or 0) - binance_exit_price) > 0.01:
+                                    update["exit_price"] = binance_exit_price
+                                correct_result = "loss" if binance_is_sl else "win"
+                                if trade.result != correct_result:
+                                    update["result"] = correct_result
+                                    update["r_value"] = -1.0 if binance_is_sl else (trade.r_value or 2.0)
+
+                            entry_p = update.get("entry_price", trade.entry_price) or (binance_entry_price or 0)
+                            exit_p = update.get("exit_price", trade.exit_price) or (binance_exit_price or 0)
+                            qty = update.get("quantity", trade.quantity) or (binance_qty or 0)
                             if entry_p > 0 and exit_p > 0 and qty > 0:
                                 if trade.direction == "long":
                                     raw_pnl = (exit_p - entry_p) * qty
                                 else:
                                     raw_pnl = (entry_p - exit_p) * qty
-                                comm = trade.commission or (entry_p * qty * COMMISSION_PCT + exit_p * qty * COMMISSION_PCT)
-                                update["pnl_usdt"] = raw_pnl - comm
-                                if not trade.commission:
-                                    update["commission"] = comm
+                                total_comm = (binance_entry_comm or trade.commission or 0) + binance_exit_comm
+                                correct_pnl = raw_pnl - total_comm
+                                if trade.pnl_usdt is None or abs((trade.pnl_usdt or 0) - correct_pnl) > 0.01:
+                                    update["pnl_usdt"] = correct_pnl
+                                    update["commission"] = total_comm
 
-                        if update:
-                            await db.update_trade(trade.id, update)
-                            log.info("Anomaly scanner: fixed trade #%d — %s", trade.id, update)
-                            await db.log_event(
-                                f"Anomaly scanner fixed trade #{trade.id}: {', '.join(update.keys())}",
-                                level="warn", category="system",
-                                user_id=user.id, is_paper=False,
-                            )
+                            if update:
+                                await db.update_trade(trade.id, update)
+                                log.warning("Anomaly scanner: fixed trade #%d — %s", trade.id, update)
+                                await db.log_event(
+                                    f"Anomaly scanner fixed trade #{trade.id}: {', '.join(update.keys())}",
+                                    level="warn", category="system",
+                                    user_id=user.id, is_paper=False,
+                                )
+                        except Exception as e:
+                            log.error("Anomaly scanner: failed on trade #%d: %s", trade.id, e)
                 finally:
                     await client.close_connection()
 

@@ -713,29 +713,27 @@ class BotWorker:
             trade = await db.get_trade(trade_id)
             if not trade or trade.result not in ("win", "loss"):
                 return
-            needs_fix = (
-                not trade.entry_price or trade.entry_price == 0
-                or not trade.exit_price or trade.exit_price == 0
-                or not trade.quantity or trade.quantity == 0
-            )
-            if not needs_fix:
-                return
 
-            log.warning("Self-heal: trade #%d has broken data, querying Binance", trade_id)
             update = {}
+            binance_entry_price = None
+            binance_qty = None
+            binance_entry_comm = 0.0
 
             if trade.entry_order_id:
                 entry_fills = await self.exchange.get_trades_for_order(trade.symbol, int(trade.entry_order_id))
                 if entry_fills:
-                    total_qty = sum(float(f["qty"]) for f in entry_fills)
-                    avg_price = sum(float(f["price"]) * float(f["qty"]) for f in entry_fills) / total_qty if total_qty else 0
-                    entry_comm = sum(float(f.get("commission", 0)) for f in entry_fills)
-                    if avg_price > 0:
-                        update["entry_price"] = avg_price
-                    if total_qty > 0:
-                        update["quantity"] = total_qty
-                    if entry_comm > 0:
-                        update["commission"] = entry_comm
+                    binance_qty = sum(float(f["qty"]) for f in entry_fills)
+                    binance_entry_price = sum(float(f["price"]) * float(f["qty"]) for f in entry_fills) / binance_qty if binance_qty else 0
+                    binance_entry_comm = sum(float(f.get("commission", 0)) for f in entry_fills)
+
+                    if binance_entry_price > 0 and abs((trade.entry_price or 0) - binance_entry_price) > 0.01:
+                        update["entry_price"] = binance_entry_price
+                    if binance_qty > 0 and abs((trade.quantity or 0) - binance_qty) > 0.0001:
+                        update["quantity"] = binance_qty
+
+            binance_exit_price = None
+            binance_exit_comm = 0.0
+            binance_is_sl = None
 
             for oid_str, is_sl in [(trade.sl_order_id, True), (trade.tp_order_id, False)]:
                 if not oid_str:
@@ -745,27 +743,38 @@ class BotWorker:
                     exit_fills = await self.exchange.get_trades_for_order(trade.symbol, int(oid_str))
                     if exit_fills:
                         total_qty = sum(float(f["qty"]) for f in exit_fills)
-                        avg_exit = sum(float(f["price"]) * float(f["qty"]) for f in exit_fills) / total_qty if total_qty else 0
-                        exit_comm = sum(float(f.get("commission", 0)) for f in exit_fills)
-                        if avg_exit > 0:
-                            update["exit_price"] = avg_exit
-                        update["result"] = "loss" if is_sl else "win"
-                        update["r_value"] = -1.0 if is_sl else (trade.r_value or 2.0)
-                        entry_p = update.get("entry_price", trade.entry_price) or 0
-                        qty = update.get("quantity", trade.quantity) or 0
-                        if entry_p > 0 and qty > 0:
-                            if trade.direction == "long":
-                                raw_pnl = (avg_exit - entry_p) * qty
-                            else:
-                                raw_pnl = (entry_p - avg_exit) * qty
-                            entry_c = update.get("commission", trade.commission) or 0
-                            update["pnl_usdt"] = raw_pnl - (entry_c + exit_comm)
-                            update["commission"] = entry_c + exit_comm
+                        binance_exit_price = sum(float(f["price"]) * float(f["qty"]) for f in exit_fills) / total_qty if total_qty else 0
+                        binance_exit_comm = sum(float(f.get("commission", 0)) for f in exit_fills)
+                        binance_is_sl = is_sl
                     break
+
+            if binance_exit_price and binance_exit_price > 0:
+                if abs((trade.exit_price or 0) - binance_exit_price) > 0.01:
+                    update["exit_price"] = binance_exit_price
+                correct_result = "loss" if binance_is_sl else "win"
+                if trade.result != correct_result:
+                    update["result"] = correct_result
+                    rr = await db.get_state("rr_ratio", self.config.strategy_params["rrr"],
+                                            user_id=self.user_id, is_paper=self.is_paper)
+                    update["r_value"] = -1.0 if binance_is_sl else rr
+
+            entry_p = update.get("entry_price", trade.entry_price) or (binance_entry_price or 0)
+            exit_p = update.get("exit_price", trade.exit_price) or (binance_exit_price or 0)
+            qty = update.get("quantity", trade.quantity) or (binance_qty or 0)
+            if entry_p > 0 and exit_p > 0 and qty > 0:
+                if trade.direction == "long":
+                    raw_pnl = (exit_p - entry_p) * qty
+                else:
+                    raw_pnl = (entry_p - exit_p) * qty
+                total_comm = (binance_entry_comm or trade.commission or 0) + binance_exit_comm
+                correct_pnl = raw_pnl - total_comm
+                if trade.pnl_usdt is None or abs((trade.pnl_usdt or 0) - correct_pnl) > 0.01:
+                    update["pnl_usdt"] = correct_pnl
+                    update["commission"] = total_comm
 
             if update:
                 await db.update_trade(trade_id, update)
-                log.info("Self-heal: fixed trade #%d — %s", trade_id, update)
+                log.warning("Self-heal: fixed trade #%d — %s", trade_id, update)
                 await db.log_event(
                     f"Self-healed trade #{trade_id}: {', '.join(update.keys())}",
                     level="warn", category="system",

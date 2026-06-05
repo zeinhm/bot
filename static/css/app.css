@@ -513,6 +513,22 @@ input[type=range]::-moz-range-thumb { width: 15px; height: 15px; border: none; b
 /* ============================================================
    BOTTOM TAB BAR (mobile nav)
    ============================================================ */
+
+/* navigation progress bar */
+#nav-progress {
+  position: fixed; top: 0; left: 0; height: 2px; z-index: 999;
+  background: var(--green); width: 0; opacity: 0;
+  transition: none;
+}
+#nav-progress.loading {
+  width: 70%; opacity: 1;
+  transition: width 12s cubic-bezier(.08,.05,0,1), opacity .15s;
+}
+#nav-progress.done {
+  width: 100%; opacity: 0;
+  transition: width .15s ease, opacity .25s ease .15s;
+}
+
 .btm-nav {
   display: none; position: fixed; bottom: 0; left: 0; right: 0;
   background: #0C0E13; border-top: 1px solid var(--border);

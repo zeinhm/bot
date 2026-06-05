@@ -12,6 +12,7 @@
     {% block head %}{% endblock %}
 </head>
 <body>
+<div id="nav-progress"></div>
 <div class="app">
 
     <!-- ======== Sidebar Rail ======== -->
@@ -613,18 +614,37 @@ function updateNavActive(path) {
         moreBtn.classList.toggle('active', morePaths.indexOf(path) !== -1);
     }
 }
+var _navXhr = null;
+var _navBar = document.getElementById('nav-progress');
 document.addEventListener('htmx:beforeRequest', function(e) {
     var el = e.detail.elt;
+    if (el.closest('.btm-nav') || el.closest('.rail')) {
+        if (_navXhr && _navXhr.readyState < 4) _navXhr.abort();
+        _navXhr = e.detail.xhr;
+        _navBar.className = '';
+        void _navBar.offsetWidth;
+        _navBar.className = 'loading';
+    }
     if (el.classList.contains('btm-more-item')) {
         var p = document.getElementById('btm-more-panel');
         if (p) p.style.display = 'none';
     }
 });
+document.addEventListener('htmx:afterSettle', function() {
+    if (_navBar.classList.contains('loading')) {
+        _navBar.className = 'done';
+        setTimeout(function() { _navBar.className = ''; }, 400);
+    }
+});
+document.querySelectorAll('.btm-tab[href], .btm-more-item[href], .rail-btn[href]').forEach(function(el) {
+    el.addEventListener('click', function() { updateNavActive(el.getAttribute('href')); });
+});
 document.addEventListener('htmx:pushedIntoHistory', function() { updateNavActive(window.location.pathname); });
 window.addEventListener('popstate', function() { updateNavActive(window.location.pathname); });
 document.addEventListener('htmx:confirm', function(e) {
     var el = e.detail.elt;
-    if (el.classList.contains('active') && (el.classList.contains('rail-btn') || el.classList.contains('btm-tab') || el.classList.contains('btm-more-item'))) {
+    var href = el.getAttribute('href');
+    if (href && href === window.location.pathname && (el.classList.contains('rail-btn') || el.classList.contains('btm-tab') || el.classList.contains('btm-more-item'))) {
         e.preventDefault();
     }
 });

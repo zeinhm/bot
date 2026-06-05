@@ -355,10 +355,10 @@ function switchMode(mode) {
         }
         if (mode === 'paper' && data.paper_bot_started && !data.paper_bot_running) {
             fetch('/bot/start-paper', { method: 'POST' })
-                .then(function() { window.location.reload(); });
+                .then(function() { window.location.href = '/dashboard'; });
             return;
         }
-        window.location.reload();
+        window.location.href = '/dashboard';
     });
 }
 function closePaperModal(start) {
@@ -366,9 +366,9 @@ function closePaperModal(start) {
     if (m) m.style.display = 'none';
     if (start) {
         fetch('/bot/start-paper', { method: 'POST' })
-            .then(function() { window.location.reload(); });
+            .then(function() { window.location.href = '/dashboard'; });
     } else {
-        window.location.reload();
+        window.location.href = '/dashboard';
     }
 }
 function toggleProfileMenu(e) {

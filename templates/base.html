@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>ZENITH{% block title_suffix %}{% endblock %}</title>
-    <link rel="stylesheet" href="/static/css/app.css?v=9">
+    <link rel="stylesheet" href="/static/css/app.css?v=10">
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
     <script src="/static/js/websocket.js?v=2"></script>
@@ -289,7 +289,7 @@
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
         <span>History</span>
     </a>
-    <button class="btm-tab" id="btm-more-btn" onclick="toggleMorePanel()">
+    <button class="btm-tab {% if page in ('analytics', 'alerts', 'public', 'settings') %}active{% endif %}" id="btm-more-btn" onclick="toggleMorePanel()">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
         <span>More</span>
     </button>
@@ -608,6 +608,11 @@ document.addEventListener('htmx:pushedIntoHistory', function() {
         var href = el.getAttribute('href');
         if (href) el.classList.toggle('active', href === path || (href !== '/dashboard' && href !== '/admin' && path.startsWith(href + '/')));
     });
+    var moreBtn = document.getElementById('btm-more-btn');
+    if (moreBtn) {
+        var morePaths = ['/analytics', '/alerts', '/track-record', '/settings'];
+        moreBtn.classList.toggle('active', morePaths.indexOf(path) !== -1);
+    }
 });
 document.addEventListener('htmx:confirm', function(e) {
     var el = e.detail.elt;

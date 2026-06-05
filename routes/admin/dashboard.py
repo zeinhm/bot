@@ -17,10 +17,26 @@ async def admin_dashboard(request: Request):
 
     approved_users = await db.get_all_approved_users()
     pending_users = await db.get_pending_users()
-    today_pnl = await db.get_platform_today_pnl()
+    year_pnl = await db.get_platform_year_pnl()
     total_trades = await db.get_platform_trade_count()
 
     active_bots = sum(1 for running in all_statuses.values() if running)
+
+    # Platform equity: sum of live balances + paper balances
+    total_equity = 0.0
+    for u in approved_users:
+        live_worker = manager.get_worker(u.id, "live")
+        if live_worker and live_worker.exchange.client:
+            try:
+                total_equity += await live_worker.exchange.get_balance()
+            except Exception:
+                bal = await db.get_state("last_balance", 0, user_id=u.id, is_paper=False)
+                total_equity += bal or 0
+        else:
+            bal = await db.get_state("last_balance", 0, user_id=u.id, is_paper=False)
+            total_equity += bal or 0
+        paper_bal = await db.get_paper_balance(u.id)
+        total_equity += paper_bal
 
     user_rows = []
     for u in approved_users:
@@ -28,20 +44,17 @@ async def admin_dashboard(request: Request):
         live_running = all_statuses.get((u.id, "live"), False)
         paper_running = all_statuses.get((u.id, "paper"), False)
 
+        bots = []
         if live_running:
-            bot_label = "Live"
-            bot_color = "green"
-        elif paper_running:
-            bot_label = "Paper"
-            bot_color = "amber"
-        else:
-            bot_label = "Off"
-            bot_color = "gray"
+            bots.append({"label": "Live", "color": "green"})
+        if paper_running:
+            bots.append({"label": "Paper", "color": "amber"})
+        if not bots:
+            bots.append({"label": "Off", "color": "gray"})
 
         user_rows.append({
             "user": u,
-            "bot_label": bot_label,
-            "bot_color": bot_color,
+            "bots": bots,
             "trades": summary["trades"],
             "win_rate": summary["win_rate"],
             "today_pnl": summary["today_pnl"],
@@ -54,7 +67,8 @@ async def admin_dashboard(request: Request):
         "total_users": len(approved_users),
         "pending_count": len(pending_users),
         "active_bots": active_bots,
-        "today_pnl": today_pnl,
+        "year_pnl": year_pnl,
         "total_trades": total_trades,
+        "total_equity": total_equity,
         "user_rows": user_rows,
     })

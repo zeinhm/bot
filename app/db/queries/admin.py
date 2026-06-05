@@ -35,6 +35,16 @@ async def get_platform_today_pnl() -> float:
         return float(result.scalar())
 
 
+async def get_platform_year_pnl() -> float:
+    async with get_session() as session:
+        year_start = datetime.now(timezone.utc).replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        result = await session.execute(
+            select(func.coalesce(func.sum(Trade.pnl_usdt), 0.0))
+            .where(Trade.is_paper == False, Trade.exit_time >= year_start, Trade.result != "open")
+        )
+        return float(result.scalar())
+
+
 async def get_platform_trade_count() -> int:
     async with get_session() as session:
         result = await session.execute(

@@ -31,11 +31,11 @@
     </div>
     {% endif %}
 
-    <div class="stat-row" style="margin-bottom:16px">
+    <div class="stat-row" style="margin-bottom:12px">
         <div class="stat">
-            <div class="lbl">Total Users</div>
-            <div class="val">{{ total_users }}</div>
-            <div class="sub">approved accounts</div>
+            <div class="lbl">Platform Equity</div>
+            <div class="val mono">${{ '%,.2f'|format(total_equity) }}</div>
+            <div class="sub">live + paper combined</div>
         </div>
         <div class="stat">
             <div class="lbl">Active Bots</div>
@@ -43,9 +43,9 @@
             <div class="sub">running now</div>
         </div>
         <div class="stat">
-            <div class="lbl">Today's P&L</div>
-            <div class="val mono {% if today_pnl >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.2f'|format(today_pnl) }}</div>
-            <div class="sub">platform-wide (live)</div>
+            <div class="lbl">Year P&L</div>
+            <div class="val mono {% if year_pnl >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.2f'|format(year_pnl) }}</div>
+            <div class="sub">YTD · platform-wide (live)</div>
         </div>
         <div class="stat">
             <div class="lbl">Total Trades</div>
@@ -83,10 +83,14 @@
                         </div>
                     </td>
                     <td class="adm-hide-sm">
-                        <span class="pill {{ row.bot_color }}" style="gap:4px">
-                            <span class="led {{ row.bot_color }}{% if row.bot_color == 'green' %} pulse{% endif %}"></span>
-                            {{ row.bot_label }}
-                        </span>
+                        <div style="display:flex;gap:4px;flex-wrap:wrap">
+                        {% for bot in row.bots %}
+                            <span class="pill {{ bot.color }}" style="gap:4px">
+                                <span class="led {{ bot.color }}{% if bot.color == 'green' %} pulse{% endif %}"></span>
+                                {{ bot.label }}
+                            </span>
+                        {% endfor %}
+                        </div>
                     </td>
                     <td class="num mono adm-hide-sm">{{ row.trades }}</td>
                     <td class="num mono adm-hide-sm">{% if row.trades > 0 %}{{ '%.0f'|format(row.win_rate) }}%{% else %}&mdash;{% endif %}</td>

@@ -80,10 +80,12 @@ async def analytics_page(request: Request):
         if t.exit_time:
             drawdown_data.append({"time": int(t.exit_time.timestamp()), "value": round(-dd_pct, 2)})
 
+    from zoneinfo import ZoneInfo
+    ny_tz = ZoneInfo("America/New_York")
     session_stats = defaultdict(lambda: {"wins": 0, "total": 0})
     for t in closed:
         if t.entry_time:
-            hour = t.entry_time.hour
+            hour = t.entry_time.astimezone(ny_tz).hour
             sess = _session_for_hour(hour)
             session_stats[sess]["total"] += 1
             if t.result == "win":

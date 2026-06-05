@@ -6,8 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import require_auth, get_trading_mode
-from app.bot import get_bot_for_user
-from config import SYMBOLS, BINANCE_TESTNET, LEVERAGE
+from config import SYMBOLS, LEVERAGE
 import app.db as db
 from app.core.context import get_global_context
 
@@ -62,9 +61,6 @@ async def dashboard(request: Request):
     risk_mode = await db.get_state("risk_mode", "static", user_id=user.id, is_paper=is_paper)
     risk_value = await db.get_state("risk_value", 10.0, user_id=user.id, is_paper=is_paper)
 
-    cfg = await db.get_user_config(user.id)
-    testnet = cfg.binance_testnet if cfg else BINANCE_TESTNET
-
     ctx.update({
         "user": user,
         "year_pnl": year_pnl,
@@ -77,7 +73,6 @@ async def dashboard(request: Request):
         "win_rate": win_rate,
         "max_dd": max_dd_pct,
         "max_dd_date": max_dd_date,
-        "testnet": testnet,
         "leverage": LEVERAGE,
         "risk_mode": risk_mode,
         "risk_value": risk_value,
@@ -96,16 +91,13 @@ async def live_candles(
     endTime: int = Query(None),
 ):
     user = await require_auth(request)
-    mode = get_trading_mode(request)
-    bot = get_bot_for_user(user.id, mode)
-    if not bot:
-        bot = get_bot_for_user(user.id, "live") or get_bot_for_user(user.id, "paper")
-    if bot and bot.exchange.market_client:
+    shared_market = request.app.state.shared_market
+    if shared_market and shared_market.market_client:
         try:
             kwargs = dict(symbol=symbol, interval=interval, limit=limit)
             if endTime:
                 kwargs["endTime"] = endTime
-            raw = await bot.exchange.market_client.futures_klines(**kwargs)
+            raw = await shared_market.market_client.futures_klines(**kwargs)
             candles = [
                 {"time": int(int(k[0]) / 1000), "open": float(k[1]),
                  "high": float(k[2]), "low": float(k[3]), "close": float(k[4]),

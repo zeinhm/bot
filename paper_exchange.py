@@ -82,7 +82,7 @@ class PaperExchange:
             for o in orders
         ]
 
-    async def place_market_order(self, symbol: str, side: str, quantity: float) -> dict:
+    async def place_market_order(self, symbol: str, side: str, quantity: float, position_side: str | None = None) -> dict:
         price = self._shared.get_latest_price(symbol)
         if price <= 0:
             try:

@@ -34,7 +34,6 @@ async def settings_page(request: Request):
 
     cfg = await db.get_user_config(user.id)
     api_key_set = cfg is not None and cfg.binance_api_key_enc is not None
-    testnet = cfg.binance_testnet if cfg else True
 
     saved = request.query_params.get("saved")
     keys_saved = request.query_params.get("keys_saved")
@@ -48,7 +47,6 @@ async def settings_page(request: Request):
         "risk_value": risk_value,
         "rr_ratio": rr_ratio,
         "max_trades": max_trades,
-        "testnet": testnet,
         "api_key_set": api_key_set,
         "leverage": LEVERAGE,
         "all_symbols": SYMBOLS,
@@ -122,7 +120,6 @@ async def save_api_keys(
     request: Request,
     api_key: str = Form(...),
     api_secret: str = Form(...),
-    testnet: str = Form("on"),
 ):
     user = await require_auth(request)
 
@@ -133,7 +130,6 @@ async def save_api_keys(
         user_id=user.id,
         api_key_enc=api_key_enc,
         api_secret_enc=api_secret_enc,
-        testnet=(testnet == "on"),
     )
 
     manager = request.app.state.bot_manager
@@ -144,8 +140,10 @@ async def save_api_keys(
         except Exception:
             pass
 
-    config = build_user_config(api_key.strip(), api_secret.strip(), testnet == "on")
-    await manager.start_bot(user.id, "live", config, broadcast_fn=make_broadcast_fn(user.id, "live"))
+    config = build_user_config(api_key.strip(), api_secret.strip())
+    shared_market = request.app.state.shared_market
+    await manager.start_bot(user.id, "live", config, broadcast_fn=make_broadcast_fn(user.id, "live"),
+                            shared_market=shared_market)
 
     log.info("User %d updated API keys", user.id)
     return RedirectResponse("/settings?keys_saved=1", status_code=303)
@@ -161,6 +159,7 @@ async def emergency_close(request: Request):
         return JSONResponse({"ok": False, "error": "Bot not connected to exchange"}, status_code=503)
 
     closed = []
+    closed_fills = {}
     errors = []
 
     try:
@@ -168,18 +167,38 @@ async def emergency_close(request: Request):
         for pos in positions:
             try:
                 close_side = "SELL" if pos["side"] == "long" else "BUY"
-                await bot.exchange.place_market_order(pos["symbol"], close_side, pos["quantity"])
+                pos_side = "LONG" if pos["side"] == "long" else "SHORT"
+                order = await bot.exchange.place_market_order(pos["symbol"], close_side, pos["quantity"], position_side=pos_side)
                 await bot.exchange.cancel_all_orders(pos["symbol"])
                 closed.append(pos["symbol"])
+                closed_fills[pos["symbol"]] = float(order.get("avgPrice") or 0)
             except Exception as e:
                 errors.append(f"{pos['symbol']}: {e}")
 
         open_trade = await db.get_open_trade(user.id, is_paper)
         if open_trade:
+            from config import COMMISSION_PCT
+            exit_price = closed_fills.get(open_trade.symbol, 0) or None
+
+            if exit_price and exit_price > 0:
+                if open_trade.direction == "long":
+                    raw_pnl = (exit_price - open_trade.entry_price) * open_trade.quantity
+                else:
+                    raw_pnl = (open_trade.entry_price - exit_price) * open_trade.quantity
+                exit_comm = exit_price * open_trade.quantity * COMMISSION_PCT
+                total_comm = (open_trade.commission or 0) + exit_comm
+                pnl = raw_pnl - total_comm
+            else:
+                pnl = 0.0
+                total_comm = open_trade.commission or 0
+
             await db.update_trade(open_trade.id, {
                 "result": "loss",
                 "r_value": -1.0,
                 "exit_time": datetime.now(timezone.utc),
+                "exit_price": exit_price,
+                "pnl_usdt": pnl,
+                "commission": total_comm,
             })
 
         await db.log_event(

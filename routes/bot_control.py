@@ -33,9 +33,10 @@ async def start_bot(request: Request):
     config = build_user_config(
         decrypt(cfg.binance_api_key_enc),
         decrypt(cfg.binance_api_secret_enc),
-        cfg.binance_testnet,
     )
-    await manager.start_bot(user.id, "live", config, broadcast_fn=make_broadcast_fn(user.id, "live"))
+    shared_market = request.app.state.shared_market
+    await manager.start_bot(user.id, "live", config, broadcast_fn=make_broadcast_fn(user.id, "live"),
+                            shared_market=shared_market)
     log.info("User %d started live bot via API", user.id)
     return JSONResponse({"ok": True})
 

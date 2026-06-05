@@ -5,7 +5,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.auth import require_auth, get_trading_mode
 from app.bot import get_bot_for_user
-from config import BINANCE_TESTNET, LEVERAGE
+from config import LEVERAGE
 import app.db as db
 from app.core.context import get_global_context
 
@@ -73,14 +73,10 @@ async def position_page(request: Request):
     if recent and recent[0].exit_time:
         last_trade_ts = int(recent[0].exit_time.timestamp())
 
-    cfg = await db.get_user_config(user.id)
-    testnet = cfg.binance_testnet if cfg else BINANCE_TESTNET
-
     ctx = await get_global_context(user.id, mode)
     ctx.update({
         "user": user,
         "positions": positions,
-        "testnet": testnet,
         "leverage": LEVERAGE,
         "risk_mode": risk_mode,
         "risk_value": risk_value,

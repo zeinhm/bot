@@ -117,7 +117,6 @@ async def setup_page(request: Request):
     return templates.TemplateResponse(request, "setup.html", {
         "user": user,
         "has_keys": cfg is not None and cfg.binance_api_key_enc is not None,
-        "testnet": cfg.binance_testnet if cfg else True,
     })
 
 
@@ -126,7 +125,6 @@ async def save_setup(
     request: Request,
     api_key: str = Form(...),
     api_secret: str = Form(...),
-    testnet: str = Form("on"),
 ):
     user = await require_auth(request)
 
@@ -137,14 +135,15 @@ async def save_setup(
         user_id=user.id,
         api_key_enc=api_key_enc,
         api_secret_enc=api_secret_enc,
-        testnet=(testnet == "on"),
     )
 
     manager = request.app.state.bot_manager
-    config = build_user_config(api_key.strip(), api_secret.strip(), testnet == "on")
+    config = build_user_config(api_key.strip(), api_secret.strip())
 
     if manager.get_worker(user.id) is None:
-        await manager.start_bot(user.id, config, broadcast_fn=make_broadcast_fn(user.id))
+        shared_market = request.app.state.shared_market
+        await manager.start_bot(user.id, "live", config, broadcast_fn=make_broadcast_fn(user.id),
+                                shared_market=shared_market)
 
     log.info("User %d configured API keys", user.id)
     return RedirectResponse("/dashboard?setup=ok", status_code=303)

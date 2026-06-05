@@ -22,7 +22,6 @@ log = logging.getLogger(__name__)
 class BotConfig:
     api_key: str
     api_secret: str
-    testnet: bool
     symbols: list[str]
     strategy_params: dict
     leverage: int
@@ -52,6 +51,8 @@ class BotWorker:
         self.config = config
         self.is_paper = config.is_paper
 
+        self._shared_market = shared_market
+
         if config.is_paper:
             from paper_exchange import PaperExchange
             self.exchange = PaperExchange(user_id, shared_market)
@@ -60,10 +61,7 @@ class BotWorker:
             self.exchange = BinanceExchange(
                 api_key=config.api_key,
                 api_secret=config.api_secret,
-                testnet=config.testnet,
             )
-
-        self.candle_buffers: dict[str, list[dict]] = {}
         self.running = False
         self.status: str = "stopped"
         self.started_at: float | None = None
@@ -90,7 +88,6 @@ class BotWorker:
         if not enabled:
             log.info("BotWorker[user=%d/%s] disabled in settings, monitor-only mode", self.user_id, self._mode_label())
 
-        await self._load_history()
         await self._crash_recovery()
 
         self.running = True
@@ -103,8 +100,10 @@ class BotWorker:
         if not self.is_paper:
             await alert_bot_started()
 
+        if self._shared_market:
+            self._shared_market.on_candle_close(self._on_shared_candle)
+
         self._tasks = [
-            asyncio.create_task(self._run_kline_stream()),
             asyncio.create_task(self._run_user_stream()),
             asyncio.create_task(self._run_position_poll()),
         ]
@@ -113,6 +112,8 @@ class BotWorker:
     async def stop(self):
         self.running = False
         self.status = "stopped"
+        if self._shared_market:
+            self._shared_market.remove_candle_callback(self._on_shared_candle)
         for t in self._tasks:
             t.cancel()
         self._tasks.clear()
@@ -168,19 +169,6 @@ class BotWorker:
 
     # --- Startup ---
 
-    async def _load_history(self):
-        for symbol in self.config.symbols:
-            log.info("Loading history for %s...", symbol)
-            candles = await self.exchange.get_klines(
-                symbol=symbol,
-                interval="15m",
-                limit=self.config.candle_buffer_size,
-            )
-            self.candle_buffers[symbol] = candles
-            if not self.is_paper:
-                await db.save_candles(symbol, candles)
-            log.info("  %s: loaded %d candles", symbol, len(candles))
-
     async def _crash_recovery(self):
         log.info("Running crash recovery check...")
 
@@ -210,6 +198,14 @@ class BotWorker:
                                 if total_qty > 0:
                                     exit_price = sum(float(t["price"]) * float(t["qty"]) for t in exit_trades) / total_qty
                                 exit_comm = sum(float(t.get("commission", 0)) for t in exit_trades)
+                            break
+                else:
+                    paper_orders = await db.get_paper_orders_for_trade(open_trade.id)
+                    for po in paper_orders:
+                        if po.status == "FILLED":
+                            exit_price = po.stop_price
+                            is_sl = po.order_type == "STOP_MARKET"
+                            exit_comm = exit_price * open_trade.quantity * self.config.commission_pct
                             break
 
                 result = "loss" if is_sl else "win"
@@ -263,53 +259,19 @@ class BotWorker:
                         pos["symbol"], pos["side"], pos["quantity"],
                     )
                     close_side = "SELL" if pos["side"] == "long" else "BUY"
-                    await self.exchange.place_market_order(pos["symbol"], close_side, pos["quantity"])
+                    pos_side = "LONG" if pos["side"] == "long" else "SHORT"
+                    await self.exchange.place_market_order(pos["symbol"], close_side, pos["quantity"], position_side=pos_side)
                     await self.exchange.cancel_all_orders(pos["symbol"])
 
         log.info("Crash recovery complete — no open trades")
 
-    # --- WebSocket Streams ---
+    # --- Candle handling (shared) ---
 
-    async def _run_kline_stream(self):
-        while self.running:
-            try:
-                await self.exchange.start_kline_socket(
-                    symbols=self.config.symbols,
-                    interval="15m",
-                    callback=self._on_kline,
-                )
-            except Exception as e:
-                log.error("Kline WebSocket error: %s", e)
-                await asyncio.sleep(5)
-
-    async def _on_kline(self, data: dict):
-        k = data.get("k", {})
-        if not k.get("x", False):
+    async def _on_shared_candle(self, symbol: str, candle: dict):
+        if not self.running:
             return
-
-        symbol = k["s"]
-        candle = {
-            "timestamp": int(k["t"]),
-            "open": float(k["o"]),
-            "high": float(k["h"]),
-            "low": float(k["l"]),
-            "close": float(k["c"]),
-            "volume": float(k["v"]),
-        }
-
-        log.info("[%s] 15m candle closed: %s O=%.2f H=%.2f L=%.2f C=%.2f",
-                 self._mode_label(), symbol, candle["open"], candle["high"], candle["low"], candle["close"])
-
-        if symbol not in self.candle_buffers:
-            self.candle_buffers[symbol] = []
-        self.candle_buffers[symbol].append(candle)
-        if len(self.candle_buffers[symbol]) > self.config.candle_buffer_size:
-            self.candle_buffers[symbol] = self.candle_buffers[symbol][-self.config.candle_buffer_size:]
-
-        if not self.is_paper:
-            await db.save_candles(symbol, [candle])
-            await db.trim_candle_buffer(symbol, self.config.candle_buffer_size)
-
+        if symbol not in self.config.symbols:
+            return
         await self._process_candle(symbol)
 
     async def _process_candle(self, symbol: str):
@@ -338,7 +300,7 @@ class BotWorker:
         sessions = await db.get_state("active_sessions", self.config.strategy_params["sessions"], user_id=self.user_id, is_paper=self.is_paper)
         params = {**self.config.strategy_params, "rrr": rr, "sessions": sessions, "acc_range_mode": ACC_RANGE_MODE.get(symbol, "wick")}
 
-        candles = self.candle_buffers.get(symbol, [])
+        candles = self._shared_market.get_candles(symbol) if self._shared_market else []
         signal = check_signal(candles, params)
 
         if signal is None:
@@ -392,8 +354,8 @@ class BotWorker:
             side = "BUY" if signal["direction"] == "long" else "SELL"
             order = await self.exchange.place_market_order(symbol, side, quantity)
 
-            fill_price = float(order.get("avgPrice", signal["entry_price"]))
-            fill_qty = float(order.get("executedQty", quantity))
+            fill_price = float(order.get("avgPrice") or 0) or signal["entry_price"]
+            fill_qty = float(order.get("executedQty") or 0) or quantity
 
             entry_comm = fill_price * fill_qty * self.config.commission_pct
             if not self.is_paper:
@@ -615,15 +577,27 @@ class BotWorker:
                                     exit_comm = sum(float(t.get("commission", 0)) for t in exit_trades)
                                 is_sl = order_info.get("type") == "STOP_MARKET"
                                 break
+                    else:
+                        paper_orders = await db.get_paper_orders_for_trade(trade.id)
+                        for po in paper_orders:
+                            if po.status == "FILLED":
+                                exit_price = po.stop_price
+                                is_sl = po.order_type == "STOP_MARKET"
+                                exit_comm = exit_price * trade.quantity * self.config.commission_pct
+                                break
 
                     if exit_price is None or exit_price == 0:
-                        last_price = self.candle_buffers.get(trade.symbol, [{}])[-1].get("close", 0)
-                        if last_price == 0:
+                        sm_candles = self._shared_market.get_candles(trade.symbol) if self._shared_market else []
+                        recent = sm_candles[-3:] if sm_candles else []
+                        if not recent:
                             continue
                         if trade.direction == "long":
-                            is_sl = last_price <= trade.sl_price
+                            sl_hit = any(c["low"] <= trade.sl_price for c in recent)
+                            tp_hit = any(c["high"] >= trade.tp_price for c in recent)
                         else:
-                            is_sl = last_price >= trade.sl_price
+                            sl_hit = any(c["high"] >= trade.sl_price for c in recent)
+                            tp_hit = any(c["low"] <= trade.tp_price for c in recent)
+                        is_sl = sl_hit or not tp_hit
                         exit_price = trade.sl_price if is_sl else trade.tp_price
                         exit_comm = exit_price * trade.quantity * self.config.commission_pct
 

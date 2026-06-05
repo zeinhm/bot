@@ -62,7 +62,7 @@ def get_bot_for_user(user_id: int, mode: str = "live") -> BotWorker | None:
     return _bot_manager.get_worker(user_id, mode)
 
 
-def build_user_config(api_key: str, api_secret: str, testnet: bool):
+def build_user_config(api_key: str, api_secret: str):
     from app.bot.worker import BotConfig
     from config import (
         SYMBOLS, STRATEGY_PARAMS, LEVERAGE, COMMISSION_PCT,
@@ -71,7 +71,6 @@ def build_user_config(api_key: str, api_secret: str, testnet: bool):
     return BotConfig(
         api_key=api_key,
         api_secret=api_secret,
-        testnet=testnet,
         symbols=SYMBOLS,
         strategy_params=STRATEGY_PARAMS,
         leverage=LEVERAGE,
@@ -93,7 +92,6 @@ def build_paper_config(paper_balance: float = 10000.0):
     return BotConfig(
         api_key="",
         api_secret="",
-        testnet=False,
         symbols=SYMBOLS,
         strategy_params=STRATEGY_PARAMS,
         leverage=LEVERAGE,

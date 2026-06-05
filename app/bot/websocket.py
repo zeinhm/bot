@@ -80,34 +80,27 @@ async def websocket_endpoint(ws: WebSocket, user_id: int):
 
 # --- Background push tasks ---
 
-async def start_ws_tasks(bot_manager) -> list[asyncio.Task]:
+async def start_ws_tasks(bot_manager, shared_market=None) -> list[asyncio.Task]:
     return [
-        asyncio.create_task(_price_stream(bot_manager)),
+        asyncio.create_task(_price_stream(bot_manager, shared_market)),
         asyncio.create_task(_heartbeat_loop(bot_manager)),
         asyncio.create_task(_position_poll(bot_manager)),
         asyncio.create_task(_balance_poll(bot_manager)),
-        asyncio.create_task(_orderbook_stream(bot_manager)),
-        asyncio.create_task(_agg_trade_stream(bot_manager)),
+        asyncio.create_task(_orderbook_stream(bot_manager, shared_market)),
+        asyncio.create_task(_agg_trade_stream(bot_manager, shared_market)),
     ]
 
 
-def _any_worker(bot_manager):
-    for w in bot_manager.workers.values():
-        if hasattr(w.exchange, 'market_bsm') and w.exchange.market_bsm is not None:
-            return w
-    return None
-
-
-async def _price_stream(bot_manager):
+async def _price_stream(bot_manager, shared_market=None):
     while True:
         try:
-            worker = _any_worker(bot_manager)
-            if worker is None:
+            if shared_market is None or shared_market.market_bsm is None:
                 await asyncio.sleep(2)
                 continue
 
-            bsm = worker.exchange.market_bsm
-            streams = [f"{s.lower()}@ticker" for s in worker.config.symbols]
+            from config import SYMBOLS
+            bsm = shared_market.market_bsm
+            streams = [f"{s.lower()}@ticker" for s in SYMBOLS]
             socket = bsm.futures_multiplex_socket(streams=streams)
 
             async with socket as stream:
@@ -133,8 +126,7 @@ async def _price_stream(bot_manager):
                         "change_pct_24h": change_pct,
                     }
 
-                    if hasattr(worker.exchange, '_shared'):
-                        worker.exchange._shared.update_price(symbol, price)
+                    shared_market.update_price(symbol, price)
 
                     if not ws_manager.has_connections():
                         continue
@@ -199,13 +191,14 @@ async def _heartbeat_loop(bot_manager):
                             api_status = "connected"
                         if worker.started_at:
                             uptime_secs = int(time.time() - worker.started_at)
-                        for symbol in worker.config.symbols:
-                            buf = worker.candle_buffers.get(symbol, [])
-                            if buf:
-                                last_ts = buf[-1].get("timestamp", 0) / 1000
-                                age = int(time.time() - last_ts)
-                                if last_candle_age is None or age < last_candle_age:
-                                    last_candle_age = age
+                        if worker._shared_market:
+                            for symbol in worker.config.symbols:
+                                buf = worker._shared_market.get_candles(symbol)
+                                if buf:
+                                    last_ts = buf[-1].get("timestamp", 0) / 1000
+                                    age = int(time.time() - last_ts)
+                                    if last_candle_age is None or age < last_candle_age:
+                                        last_candle_age = age
 
                     await ws_manager.send_to_user(user_id, {
                         "type": "heartbeat",
@@ -329,16 +322,16 @@ async def _balance_poll(bot_manager):
             log.error("Balance poll error: %s", e)
 
 
-async def _orderbook_stream(bot_manager):
+async def _orderbook_stream(bot_manager, shared_market=None):
     while True:
         try:
-            worker = _any_worker(bot_manager)
-            if worker is None:
+            if shared_market is None or shared_market.market_bsm is None:
                 await asyncio.sleep(2)
                 continue
 
-            bsm = worker.exchange.market_bsm
-            symbols = worker.config.symbols
+            from config import SYMBOLS
+            bsm = shared_market.market_bsm
+            symbols = SYMBOLS
             streams = [f"{s.lower()}@depth20" for s in symbols]
             log.info("Orderbook: connecting depth stream for %s", symbols)
             socket = bsm.futures_multiplex_socket(streams=streams, category="public")
@@ -379,16 +372,16 @@ async def _orderbook_stream(bot_manager):
             await asyncio.sleep(5)
 
 
-async def _agg_trade_stream(bot_manager):
+async def _agg_trade_stream(bot_manager, shared_market=None):
     while True:
         try:
-            worker = _any_worker(bot_manager)
-            if worker is None:
+            if shared_market is None or shared_market.market_bsm is None:
                 await asyncio.sleep(2)
                 continue
 
-            bsm = worker.exchange.market_bsm
-            symbols = worker.config.symbols
+            from config import SYMBOLS
+            bsm = shared_market.market_bsm
+            symbols = SYMBOLS
             streams = [f"{s.lower()}@aggTrade" for s in symbols]
             socket = bsm.futures_multiplex_socket(streams=streams)
 
@@ -419,17 +412,17 @@ async def _agg_trade_stream(bot_manager):
 
 
 def _get_current_session() -> str:
-    now = datetime.now(timezone.utc)
-    est_hour = (now.hour - 5) % 24
+    from zoneinfo import ZoneInfo
+    ny_hour = datetime.now(ZoneInfo("America/New_York")).hour
 
     sessions = []
-    if est_hour >= 17 or est_hour < 2:
+    if ny_hour >= 17 or ny_hour < 2:
         sessions.append("sydney")
-    if est_hour >= 19 or est_hour < 4:
+    if ny_hour >= 19 or ny_hour < 4:
         sessions.append("tokyo")
-    if 3 <= est_hour < 12:
+    if 3 <= ny_hour < 12:
         sessions.append("london")
-    if 8 <= est_hour < 17:
+    if 8 <= ny_hour < 17:
         sessions.append("ny")
 
     return ",".join(sessions) if sessions else "off"

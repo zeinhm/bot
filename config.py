@@ -6,7 +6,6 @@ load_dotenv()
 
 BINANCE_API_KEY = os.getenv("BINANCE_API_KEY", "")
 BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET", "")
-BINANCE_TESTNET = os.getenv("BINANCE_TESTNET", "true").lower() == "true"
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")

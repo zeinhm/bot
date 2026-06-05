@@ -15,7 +15,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from config import (
-    DATABASE_URL, BINANCE_API_KEY, BINANCE_API_SECRET, BINANCE_TESTNET,
+    DATABASE_URL, BINANCE_API_KEY, BINANCE_API_SECRET,
     SESSION_SECRET, GOOGLE_CLIENT_ID,
 )
 import app.db as db
@@ -53,6 +53,9 @@ async def lifespan(app: FastAPI):
 
     shared_market = SharedMarketData()
     await shared_market.connect()
+    from config import SYMBOLS as _symbols
+    await shared_market.load_history(_symbols)
+    await shared_market.start_kline_stream(_symbols)
     app.state.shared_market = shared_market
 
     manager = BotManager()
@@ -82,9 +85,10 @@ async def lifespan(app: FastAPI):
                 try:
                     api_key = decrypt(user_cfg.binance_api_key_enc)
                     api_secret = decrypt(user_cfg.binance_api_secret_enc)
-                    config = build_user_config(api_key, api_secret, user_cfg.binance_testnet)
+                    config = build_user_config(api_key, api_secret)
                     await manager.start_bot(user.id, "live", config,
-                                            broadcast_fn=make_broadcast_fn(user.id, "live"))
+                                            broadcast_fn=make_broadcast_fn(user.id, "live"),
+                                            shared_market=shared_market)
                     log.info("Auto-started live bot for user %d (%s)", user.id, user.email)
                 except Exception as e:
                     log.error("Failed to start live bot for user %d: %s", user.id, e)
@@ -94,10 +98,10 @@ async def lifespan(app: FastAPI):
         await manager.start_bot(1, "paper", paper_config,
                                 broadcast_fn=make_broadcast_fn(1, "paper"),
                                 shared_market=shared_market)
-        config = build_user_config(BINANCE_API_KEY, BINANCE_API_SECRET, BINANCE_TESTNET)
-        await manager.start_bot(1, "live", config, broadcast_fn=broadcast)
+        config = build_user_config(BINANCE_API_KEY, BINANCE_API_SECRET)
+        await manager.start_bot(1, "live", config, broadcast_fn=broadcast, shared_market=shared_market)
 
-    ws_tasks = await start_ws_tasks(manager)
+    ws_tasks = await start_ws_tasks(manager, shared_market)
 
     yield
 

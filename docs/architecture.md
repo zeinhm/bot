@@ -142,10 +142,7 @@ On startup, runs `_crash_recovery()` to handle trades left open from a previous 
 
 ### BinanceExchange (`exchange.py`)
 
-Authenticated Binance Futures client. Two connection modes:
-
-- **Testnet mode**: trading client → testnet API, market data client → live API (separate connections)
-- **Live mode**: single client for both trading and market data
+Authenticated Binance Futures client. Single live API connection for both trading and market data. Supports hedge mode (auto-detected via `futures_get_position_mode`). Uses `newOrderRespType="RESULT"` to get real fill prices on market orders.
 
 Key operations: `place_market_order`, `place_stop_loss` (STOP_MARKET), `place_take_profit` (TAKE_PROFIT_MARKET), `get_order`, `get_trades_for_order`, `cancel_all_orders`.
 
@@ -155,7 +152,7 @@ Simulated exchange with the same interface as BinanceExchange. Uses `SharedMarke
 
 ### SharedMarketData (`app/bot/shared_market.py`)
 
-Single unauthenticated Binance connection shared by all paper bots. Provides `market_client` and `market_bsm` (BinanceSocketManager) for kline streams and market data. Also stores latest prices updated by the price stream in `websocket.py`.
+Single unauthenticated Binance connection shared by all bots (paper and live). Provides `market_client` and `market_bsm` (BinanceSocketManager) for kline streams, market data, and WebSocket push tasks. Also stores latest prices updated by the price stream in `websocket.py`.
 
 ---
 
@@ -275,7 +272,6 @@ Strategy parameters are defined in `config.py` → `STRATEGY_PARAMS` and `ACC_RA
 | `ENCRYPTION_KEY` | Yes | Fernet key for encrypting stored API keys |
 | `BINANCE_API_KEY` | No | Fallback for single-user mode (no OAuth) |
 | `BINANCE_API_SECRET` | No | Fallback for single-user mode |
-| `BINANCE_TESTNET` | No | Default `true`. Whether fallback keys use testnet |
 | `TELEGRAM_BOT_TOKEN` | No | Telegram bot for alerts |
 | `TELEGRAM_CHAT_ID` | No | Channel for trade alerts |
 | `TELEGRAM_OWNER_ID` | No | Private chat for status/error alerts |

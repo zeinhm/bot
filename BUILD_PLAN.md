@@ -3,7 +3,7 @@
 ## What to build
 
 A live trading bot for the AMD FVG 15m strategy with a web dashboard. Single Python service that:
-1. Connects to Binance Futures (testnet first, live later)
+1. Connects to Binance Futures (live API, paper trading simulated locally)
 2. Watches 15m candles for BTC, ETH, SOL
 3. Executes trades automatically when the strategy signals
 4. Serves a web dashboard to monitor everything
@@ -192,8 +192,8 @@ Use `python-binance` library. Wrap these operations:
 
 ```python
 class BinanceExchange:
-    def __init__(self, api_key, api_secret, testnet=True):
-        # If testnet=True, use testnet URL
+    def __init__(self, api_key, api_secret):
+        # Connects to live Binance Futures API
     
     async def get_balance(self) -> float:
         # Return USDT balance
@@ -223,15 +223,6 @@ class BinanceExchange:
         # WebSocket for order fills
 ```
 
-### Testnet vs Live
-
-```python
-TESTNET_URL = "https://testnet.binancefuture.com"
-LIVE_URL = "https://fapi.binance.com"
-```
-
-Only difference is the base URL and API keys. Controlled by `BINANCE_TESTNET=true` env var.
-
 ---
 
 ## Dashboard Pages
@@ -259,7 +250,6 @@ Full trade history table:
 - **Bot toggle**: Enable / Disable trading (bot still runs but won't place orders)
 - **Risk mode**: Static (fixed USDT amount) or Dynamic (% of balance)
 - **Risk value**: Dollar amount or percentage
-- **Testnet mode**: Toggle (requires restart)
 - **API key status**: Show if keys are configured (from env vars, not editable in UI)
 - **Active symbols**: Check/uncheck BTC, ETH, SOL
 
@@ -273,7 +263,6 @@ Settings stored in bot_state table. Changes take effect on next candle.
 # From environment variables
 BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
 BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET")
-BINANCE_TESTNET = os.getenv("BINANCE_TESTNET", "true").lower() == "true"
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Strategy params (fixed, from validated config)
@@ -302,7 +291,6 @@ STRATEGY_PARAMS = {
 ```
 BINANCE_API_KEY=your_key_here
 BINANCE_API_SECRET=your_secret_here
-BINANCE_TESTNET=true
 DATABASE_URL=postgresql://user:pass@host:5432/tradingbot
 ```
 
@@ -342,7 +330,7 @@ Build and test each step before moving to the next:
 
 ### Step 2: Exchange layer (exchange.py)
 - Implement BinanceExchange class
-- Test connection to testnet
+- Test connection to Binance
 - Test getting balance, klines, placing test orders
 
 ### Step 3: Strategy port (strategy.py)
@@ -354,7 +342,7 @@ Build and test each step before moving to the next:
 - Implement candle loading, WebSocket connection
 - Implement the main loop (on candle close → run strategy → place orders)
 - Implement position monitoring and crash recovery
-- Test with testnet: verify it detects setups and places correct orders
+- Test with paper trading: verify it detects setups and places correct orders
 
 ### Step 5: Database (database.py)
 - Create tables (trades, bot_state, candle_buffer)
@@ -369,7 +357,7 @@ Build and test each step before moving to the next:
 - WebSocket for real-time updates
 
 ### Step 7: Integration + testing
-- Run full bot with dashboard on testnet
+- Run full bot with dashboard using paper trading
 - Verify trades appear in dashboard
 - Verify settings changes take effect
 - Test crash recovery (kill and restart)
@@ -377,14 +365,14 @@ Build and test each step before moving to the next:
 ### Step 8: Deploy prep
 - Procfile, Railway config
 - Environment variable documentation
-- Final testing on Railway with testnet
+- Final testing on Railway with paper trading
 
 ---
 
 ## Important Rules
 
 1. **Do NOT modify strategy parameters.** They are validated. Copy them exactly.
-2. **Testnet first.** Always default to testnet. Live mode requires explicit env var change.
+2. **Paper trading first.** Validate with paper trading before going live.
 3. **One trade at a time.** The strategy rule — no stacking positions.
 4. **Skip May.** If current month is May, do not open any trades.
 5. **Crash safe.** Bot must recover gracefully — check Binance for open positions on startup.

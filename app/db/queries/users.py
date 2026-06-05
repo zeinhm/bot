@@ -59,7 +59,6 @@ async def save_user_config(
     user_id: int,
     api_key_enc: str,
     api_secret_enc: str,
-    testnet: bool,
 ) -> UserConfig:
     async with get_session() as session:
         result = await session.execute(
@@ -70,14 +69,14 @@ async def save_user_config(
         if cfg:
             cfg.binance_api_key_enc = api_key_enc
             cfg.binance_api_secret_enc = api_secret_enc
-            cfg.binance_testnet = testnet
+            cfg.binance_testnet = False
             cfg.updated_at = now
         else:
             cfg = UserConfig(
                 user_id=user_id,
                 binance_api_key_enc=api_key_enc,
                 binance_api_secret_enc=api_secret_enc,
-                binance_testnet=testnet,
+                binance_testnet=False,
             )
             session.add(cfg)
         await session.commit()

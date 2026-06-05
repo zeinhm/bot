@@ -105,7 +105,7 @@ class UserConfig(Base):
     user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
     binance_api_key_enc = Column(Text)
     binance_api_secret_enc = Column(Text)
-    binance_testnet = Column(Boolean, default=True)
+    binance_testnet = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True))
 

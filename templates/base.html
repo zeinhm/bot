@@ -602,8 +602,7 @@ document.addEventListener('htmx:afterSwap', function(e) {
     var match = e.detail.xhr && e.detail.xhr.responseText && e.detail.xhr.responseText.match(/<title>(.*?)<\/title>/);
     if (match) document.title = match[1];
 });
-document.addEventListener('htmx:pushedIntoHistory', function() {
-    var path = window.location.pathname;
+function updateNavActive(path) {
     document.querySelectorAll('.rail-btn[href], .btm-tab[href], .btm-more-item[href]').forEach(function(el) {
         var href = el.getAttribute('href');
         if (href) el.classList.toggle('active', href === path || (href !== '/dashboard' && href !== '/admin' && path.startsWith(href + '/')));
@@ -613,7 +612,17 @@ document.addEventListener('htmx:pushedIntoHistory', function() {
         var morePaths = ['/analytics', '/alerts', '/track-record', '/settings'];
         moreBtn.classList.toggle('active', morePaths.indexOf(path) !== -1);
     }
+}
+document.querySelectorAll('.btm-tab[href], .btm-more-item[href]').forEach(function(el) {
+    el.addEventListener('click', function() {
+        var href = el.getAttribute('href');
+        if (href) updateNavActive(href);
+        var p = document.getElementById('btm-more-panel');
+        if (p) p.style.display = 'none';
+    });
 });
+document.addEventListener('htmx:pushedIntoHistory', function() { updateNavActive(window.location.pathname); });
+document.addEventListener('htmx:afterSettle', function() { updateNavActive(window.location.pathname); });
 document.addEventListener('htmx:confirm', function(e) {
     var el = e.detail.elt;
     if (el.classList.contains('active') && (el.classList.contains('rail-btn') || el.classList.contains('btm-tab') || el.classList.contains('btm-more-item'))) {

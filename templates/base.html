@@ -606,7 +606,7 @@ document.addEventListener('htmx:pushedIntoHistory', function() {
     var path = window.location.pathname;
     document.querySelectorAll('.rail-btn[href], .btm-tab[href], .btm-more-item[href]').forEach(function(el) {
         var href = el.getAttribute('href');
-        if (href) el.classList.toggle('active', href === path || (href !== '/dashboard' && path.startsWith(href + '/')));
+        if (href) el.classList.toggle('active', href === path || (href !== '/dashboard' && href !== '/admin' && path.startsWith(href + '/')));
     });
 });
 document.addEventListener('htmx:confirm', function(e) {

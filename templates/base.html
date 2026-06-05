@@ -613,16 +613,15 @@ function updateNavActive(path) {
         moreBtn.classList.toggle('active', morePaths.indexOf(path) !== -1);
     }
 }
-document.querySelectorAll('.btm-tab[href], .btm-more-item[href]').forEach(function(el) {
-    el.addEventListener('click', function() {
-        var href = el.getAttribute('href');
-        if (href) updateNavActive(href);
+document.addEventListener('htmx:beforeRequest', function(e) {
+    var el = e.detail.elt;
+    if (el.classList.contains('btm-more-item')) {
         var p = document.getElementById('btm-more-panel');
         if (p) p.style.display = 'none';
-    });
+    }
 });
 document.addEventListener('htmx:pushedIntoHistory', function() { updateNavActive(window.location.pathname); });
-document.addEventListener('htmx:afterSettle', function() { updateNavActive(window.location.pathname); });
+window.addEventListener('popstate', function() { updateNavActive(window.location.pathname); });
 document.addEventListener('htmx:confirm', function(e) {
     var el = e.detail.elt;
     if (el.classList.contains('active') && (el.classList.contains('rail-btn') || el.classList.contains('btm-tab') || el.classList.contains('btm-more-item'))) {

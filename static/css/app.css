@@ -527,7 +527,6 @@ input[type=range]::-moz-range-thumb { width: 15px; height: 15px; border: none; b
 }
 .btm-tab svg { width: 20px; height: 20px; }
 .btm-tab.active { color: var(--green); }
-.btm-tab:hover { color: var(--text-2); }
 .btm-more-panel {
   display: none; flex-direction: column; position: absolute; bottom: 100%;
   left: 0; right: 0; background: #131820; border-top: 1px solid var(--border-bri);

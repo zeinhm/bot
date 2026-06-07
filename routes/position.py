@@ -22,6 +22,7 @@ async def position_page(request: Request):
     bot_trade = await db.get_open_trade(user.id, is_paper)
 
     positions = []
+
     if bot and bot.running:
         try:
             all_pos = await bot.exchange.get_all_positions()

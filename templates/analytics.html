@@ -215,7 +215,7 @@
             var opacity = isEmpty ? '0.4' : '0.8';
             html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;max-width:48px;margin:0 auto">';
             if (!isEmpty) {
-                html += '<span class="mono ' + (d.pnl >= 0 ? 'pos' : 'neg') + '" style="font-size:8.5px;font-weight:600;white-space:nowrap">' + (d.pnl >= 0 ? '+' : '-') + '$' + Math.abs(d.pnl).toFixed(0) + '</span>';
+                html += '<span class="mono ' + (d.pnl >= 0 ? 'pos' : 'neg') + '" style="font-size:8.5px;font-weight:600;white-space:nowrap">' + (d.pnl >= 0 ? '+' : '-') + Math.abs(d.pnl).toFixed(0) + '</span>';
             }
             html += '<div style="width:60%;height:' + h + 'px;background:' + color + ';border-radius:3px 3px 0 0;opacity:' + opacity + '"></div>';
             html += '<span class="muted" style="font-size:9px">' + label + '</span>';

@@ -37,14 +37,14 @@
 <!-- Combined Results -->
 <div class="grid" style="gap:12px;margin-bottom:24px" id="combined-section">
     <div class="stat-row">
-        <div class="stat"><div class="lbl">Starting Equity</div><div class="val mono">$10,000</div></div>
+        <div class="stat"><div class="lbl">Starting Equity</div><div class="val mono">10,000</div></div>
         <div class="stat"><div class="lbl">Total Trades</div><div class="val mono" id="cb-trades">—</div><div class="sub" id="cb-trades-detail"></div></div>
         <div class="stat"><div class="lbl">Max Drawdown</div><div class="val mono" id="cb-dd">—</div></div>
         <div class="stat"><div class="lbl">Final Equity</div><div class="val mono" id="cb-equity">—</div><div class="sub" id="cb-equity-detail"></div></div>
     </div>
     <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between">
-            <div class="card-title" style="margin:0">Equity Curve · $10,000 · 2% risk · adaptive sizing</div>
+            <div class="card-title" style="margin:0">Equity Curve · 10,000 · 2% risk · adaptive sizing</div>
             <span class="mono" style="font-size:12px;color:var(--text-2)" id="eq-hover-val"></span>
         </div>
         <div id="combined-equity-chart" style="height:320px;display:grid;place-items:center">
@@ -209,19 +209,19 @@
             var resCls = t.result === 'win' ? 'pos' : 'neg';
             var rVal = t.r !== null ? (t.r >= 0 ? '+' : '') + t.r.toFixed(1) + 'R' : '—';
             var rCls = t.r !== null && t.r >= 0 ? 'pos' : 'neg';
-            var pnlVal = t.pnl !== null ? '$' + (t.pnl >= 0 ? '+' : '') + t.pnl.toFixed(2) : '—';
+            var pnlVal = t.pnl !== null ? (t.pnl >= 0 ? '+' : '') + t.pnl.toFixed(2) : '—';
             var pnlCls = t.pnl !== null && t.pnl >= 0 ? 'pos' : 'neg';
             html += '<tr class="'+cls+'">'
                 + '<td class="mono">'+t.sym+'</td>'
                 + '<td><span class="dir-badge '+t.dir+'">'+t.dir.toUpperCase()+'</span></td>'
                 + '<td class="mono">'+fmtDate(t.entryUtc)+'</td>'
                 + '<td class="mono">'+fmtDate(t.exitUtc)+'</td>'
-                + '<td class="num mono">$'+t.entryP.toFixed(2)+'</td>'
-                + '<td class="num mono">$'+t.exitP.toFixed(2)+'</td>'
+                + '<td class="num mono">'+t.entryP.toFixed(2)+'</td>'
+                + '<td class="num mono">'+t.exitP.toFixed(2)+'</td>'
                 + '<td class="num"><span class="'+resCls+'">'+t.result.toUpperCase()+'</span></td>'
                 + '<td class="num mono '+rCls+'">'+rVal+'</td>'
                 + '<td class="num mono '+pnlCls+'">'+pnlVal+'</td>'
-                + '<td class="num mono">$'+t.equity.toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0})+'</td>'
+                + '<td class="num mono">'+t.equity.toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0})+'</td>'
                 + '</tr>';
         });
         document.getElementById('tl-body').innerHTML = html;
@@ -439,7 +439,7 @@
         var series = combEqChart.addAreaSeries({
             lineColor: '#00C896', topColor: 'rgba(0,200,150,.25)', bottomColor: 'rgba(0,200,150,.02)',
             lineWidth: 1.5,
-            priceFormat: { type: 'custom', formatter: function(p) { return '$' + p.toLocaleString(undefined, {maximumFractionDigits: 0}); } }
+            priceFormat: { type: 'custom', formatter: function(p) { return p.toLocaleString(undefined, {maximumFractionDigits: 0}); } }
         });
 
         var seen = {};
@@ -466,7 +466,7 @@
             if (val && val.value !== undefined) {
                 var pnl = val.value - 10000;
                 var pct = (pnl / 10000 * 100).toFixed(1);
-                hoverEl.textContent = '$' + val.value.toLocaleString(undefined, {maximumFractionDigits: 0}) + '  (' + (pnl >= 0 ? '+' : '') + pct + '%)';
+                hoverEl.textContent = val.value.toLocaleString(undefined, {maximumFractionDigits: 0}) + '  (' + (pnl >= 0 ? '+' : '') + pct + '%)';
                 hoverEl.style.color = pnl >= 0 ? 'var(--green)' : 'var(--red)';
             }
         });
@@ -485,7 +485,7 @@
 
                 if (st.equity) {
                     var eqEl = document.getElementById('cb-equity');
-                    eqEl.textContent = '$' + st.equity.finalCapital.toLocaleString(undefined, {maximumFractionDigits: 0});
+                    eqEl.textContent = st.equity.finalCapital.toLocaleString(undefined, {maximumFractionDigits: 0});
                     eqEl.className = 'val mono ' + (st.equity.returnPct >= 0 ? 'pos' : 'neg');
                     var sign = st.equity.returnPct >= 0 ? '+' : '';
                     var rSign = st.totalR >= 0 ? '+' : '';

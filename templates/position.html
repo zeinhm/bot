@@ -128,6 +128,7 @@
                             <th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">Entry Price</th>
                             <th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">Mark Price</th>
                             <th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">PnL (USDT)</th>
+                            <th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">ROI</th>
                             <th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">SL / TP</th>
                             <th style="padding:8px 12px;text-align:center;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">Source</th>
                         </tr>
@@ -148,6 +149,13 @@
                             <td class="mono" style="padding:10px 12px;text-align:right">
                                 <span class="{{ 'pos' if (pos.unrealized_pnl or 0) >= 0 else 'neg' }}">
                                     {{ "+" if (pos.unrealized_pnl or 0) >= 0 else "" }}{{ "%.2f"|format(pos.unrealized_pnl or 0) }}
+                                </span>
+                            </td>
+                            {% set pnl_val = pos.unrealized_pnl|default(0) %}
+                            {% set roi_val = (pnl_val / (pos.entry_price * pos.quantity) * leverage * 100) if (pos.entry_price and pos.quantity and pos.entry_price * pos.quantity > 0) else 0 %}
+                            <td class="mono pos-roi" style="padding:10px 12px;text-align:right">
+                                <span class="{{ 'pos' if roi_val >= 0 else 'neg' }}">
+                                    {{ "+" if roi_val >= 0 else "" }}{{ "%.2f"|format(roi_val) }}%
                                 </span>
                             </td>
                             <td class="mono" style="padding:10px 12px;text-align:right">
@@ -176,6 +184,84 @@
             </div>
             {% endif %}
             </div>
+            <!-- Mobile position cards (hidden on desktop) -->
+            <div id="positions-cards" class="pos-cards-mobile">
+            {% if positions %}
+                {% for pos in positions %}
+                <div class="card accent" style="display:flex;flex-direction:column;gap:12px">
+                    <div class="between">
+                        <div class="vcenter gap8">
+                            <span class="mono" style="font-size:13px;font-weight:600">{{ pos.symbol }}</span>
+                            <span style="font-size:10px;color:var(--muted);background:var(--card-3);padding:1px 5px;border-radius:3px">PERP</span>
+                            <span class="dir-badge {{ 'long' if pos.direction == 'long' else 'short' }}" style="font-size:9px;padding:1px 5px">{{ pos.direction|upper }}</span>
+                        </div>
+                        {% if pos.source == 'bot' %}
+                        <span class="pill green" style="font-size:9px;padding:2px 6px">Bot</span>
+                        {% else %}
+                        <span class="pill amber" style="font-size:9px;padding:2px 6px">Manual</span>
+                        {% endif %}
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                        <div>
+                            <div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">Entry Price</div>
+                            <div class="mono" style="font-size:15px;font-weight:600">{{ "%.2f"|format(pos.entry_price) }}</div>
+                        </div>
+                        <div>
+                            <div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">Mark Price</div>
+                            <div class="mono mc-current" style="font-size:15px;font-weight:600">{{ "%.2f"|format(pos.current_price or pos.entry_price) }}</div>
+                        </div>
+                    </div>
+                    <div style="background:var(--card-3);border:1px solid var(--border);border-radius:5px;padding:12px 14px">
+                        {% set pnl = pos.unrealized_pnl|default(0) %}
+                        {% set roi = (pnl / (pos.entry_price * pos.quantity) * leverage * 100) if (pos.entry_price and pos.quantity and pos.entry_price * pos.quantity > 0) else 0 %}
+                        <div class="between">
+                            <div>
+                                <div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">PNL (USDT)</div>
+                                <div class="mono mc-pnl {{ 'pos' if pnl >= 0 else 'neg' }}" style="font-size:22px;font-weight:700;margin-top:2px">{{ "+" if pnl >= 0 else "" }}{{ "%.2f"|format(pnl|abs) }}</div>
+                            </div>
+                            <div style="text-align:right">
+                                <div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">ROI</div>
+                                <div class="mono mc-roi {{ 'pos' if roi >= 0 else 'neg' }}" style="font-size:22px;font-weight:700;margin-top:2px">{{ "+" if roi >= 0 else "" }}{{ "%.2f"|format(roi) }}%</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="vcenter gap6 muted" style="font-size:12px">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        Time in trade <span class="mono mc-time" style="color:var(--text-2)">{{ pos.time_in_trade|default('—') }}</span>
+                    </div>
+                    {% if pos.sl_price is defined and pos.sl_price %}
+                    {% set slp = pos.sl_away_pct|default(0) %}
+                    {% set tpp = pos.tp_away_pct|default(0) %}
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                        <div>
+                            <div class="between" style="margin-bottom:5px">
+                                <span class="neg" style="font-size:11px;font-weight:600">SL · <span class="mc-sl-pct">{{ "%.1f"|format(slp) }}%</span> away</span>
+                            </div>
+                            <div class="pbar" style="background:#231a1d"><span class="mc-sl-bar" style="width:{{ [100 - slp * 14, 0]|max }}%;background:var(--red);margin-left:auto;display:block;height:100%"></span></div>
+                            <div class="mono muted" style="font-size:10.5px;margin-top:4px">{{ "%.2f"|format(pos.sl_price) }}</div>
+                        </div>
+                        <div>
+                            <div class="between" style="margin-bottom:5px">
+                                <span class="pos" style="font-size:11px;font-weight:600">TP · <span class="mc-tp-pct">{{ "%.1f"|format(tpp) }}%</span> away</span>
+                            </div>
+                            <div class="pbar" style="background:#15241f"><span class="mc-tp-bar" style="width:{{ [100 - tpp * 11, 0]|max }}%;background:var(--green);display:block;height:100%"></span></div>
+                            <div class="mono muted" style="font-size:10.5px;margin-top:4px">{{ "%.2f"|format(pos.tp_price) }}</div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    <div class="status-grid" style="margin-top:2px">
+                        <div class="status-cell"><div class="k">Size</div><div class="v">{{ "%.4f"|format(pos.quantity) }} {{ pos.symbol.replace('USDT','') }}</div></div>
+                        <div class="status-cell"><div class="k">Leverage</div><div class="v">{{ leverage }}×</div></div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div style="text-align:center;padding:32px 0">
+                    <div class="muted" style="font-size:12px">No open positions</div>
+                    <div class="faint" style="font-size:11px;margin-top:4px">Waiting for next signal from the strategy</div>
+                </div>
+            {% endif %}
+            </div>
         </div>
     </div>
 
@@ -195,7 +281,7 @@
                 </div>
                 <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px">
                     <span class="muted">Risk</span>
-                    <span class="mono" id="bot-risk">{{ risk_mode|capitalize }} · {{ ("$%.0f"|format(risk_value)) if risk_mode == "static" else ("%.1f%%"|format(risk_value)) }}</span>
+                    <span class="mono" id="bot-risk">{{ risk_mode|capitalize }} · {{ ("%.0f"|format(risk_value)) if risk_mode == "static" else ("%.1f%%"|format(risk_value)) }}</span>
                 </div>
                 <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px">
                     <span class="muted">Last Trade</span>
@@ -661,18 +747,103 @@
         }
     });
 
-    // --- Position table live update ---
+    // --- Position table + mobile card live update ---
     var positionsData = [];
     var posTable = document.getElementById('positions-table');
+    var posCards = document.getElementById('positions-cards');
+    var leverage = {{ leverage }};
+
+    function fmtDur(secs) {
+        if (!secs) return '—';
+        var h = Math.floor(secs / 3600);
+        var m = Math.floor((secs % 3600) / 60);
+        if (h > 0) return h + 'h ' + m + 'm';
+        return m + 'm';
+    }
+
+    function renderMobileCards(positions) {
+        if (!posCards) return;
+        if (!positions.length) {
+            posCards.innerHTML = '<div style="text-align:center;padding:32px 0"><div class="muted" style="font-size:12px">No open positions</div><div class="faint" style="font-size:11px;margin-top:4px">Waiting for next signal from the strategy</div></div>';
+            return;
+        }
+        var html = '';
+        positions.forEach(function(p) {
+            var dirCls = p.direction === 'long' ? 'long' : 'short';
+            var sym = p.symbol.replace('USDT', '');
+            var pnl = p.unrealised_pnl_usdt || 0;
+            var pnlCls = pnl >= 0 ? 'pos' : 'neg';
+            var pnlSign = pnl >= 0 ? '+' : '';
+            var rVal = p.unrealised_r || 0;
+            var rCls = rVal >= 0 ? 'pos' : 'neg';
+            var rSign = rVal >= 0 ? '+' : '';
+            var cur = p.current_price || p.entry_price;
+            var changeUsd = p.direction === 'long' ? cur - p.entry_price : p.entry_price - cur;
+            var changePct = (changeUsd / p.entry_price * 100);
+            var changeCls = changeUsd >= 0 ? 'pos' : 'neg';
+            var changeSign = changeUsd >= 0 ? '+' : '';
+
+            html += '<div class="card accent" style="display:flex;flex-direction:column;gap:12px" data-mc-symbol="' + p.symbol + '" data-mc-dir="' + p.direction + '" data-mc-entry="' + p.entry_price + '" data-mc-qty="' + p.quantity + '" data-mc-sl="' + (p.sl_price||'') + '" data-mc-tp="' + (p.tp_price||'') + '">';
+            html += '<div class="between"><div class="vcenter gap8">';
+            html += '<span class="mono" style="font-size:13px;font-weight:600">' + p.symbol + '</span>';
+            html += '<span style="font-size:10px;color:var(--muted);background:var(--card-3);padding:1px 5px;border-radius:3px">PERP</span>';
+            html += '<span class="dir-badge ' + dirCls + '" style="font-size:9px;padding:1px 5px">' + p.direction.toUpperCase() + '</span>';
+            var srcPill = p.source === 'bot' ? '<span class="pill green" style="font-size:9px;padding:2px 6px">Bot</span>' : '<span class="pill amber" style="font-size:9px;padding:2px 6px">Manual</span>';
+            html += '</div>' + srcPill + '</div>';
+
+            html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+            html += '<div><div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">Entry Price</div>';
+            html += '<div class="mono" style="font-size:15px;font-weight:600">' + fmt(p.entry_price) + '</div></div>';
+            html += '<div><div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">Mark Price</div>';
+            html += '<div class="mono mc-current" style="font-size:15px;font-weight:600">' + fmt(cur) + '</div>';
+            html += '</div></div>';
+
+            html += '<div style="background:var(--card-3);border:1px solid var(--border);border-radius:5px;padding:12px 14px">';
+            var roiVal = p.entry_price * p.quantity > 0 ? (pnl / (p.entry_price * p.quantity) * leverage * 100) : 0;
+            var roiCls = roiVal >= 0 ? 'pos' : 'neg';
+            var roiSign = roiVal >= 0 ? '+' : '';
+            html += '<div class="between">';
+            html += '<div><div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">PNL (USDT)</div>';
+            html += '<div class="mono mc-pnl ' + pnlCls + '" style="font-size:22px;font-weight:700;margin-top:2px">' + pnlSign + fmt(Math.abs(pnl)) + '</div></div>';
+            html += '<div style="text-align:right"><div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">ROI</div>';
+            html += '<div class="mono mc-roi ' + roiCls + '" style="font-size:22px;font-weight:700;margin-top:2px">' + roiSign + roiVal.toFixed(2) + '%</div></div>';
+            html += '</div></div>';
+
+            html += '<div class="vcenter gap6 muted" style="font-size:12px">';
+            html += '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+            html += 'Time in trade <span class="mono mc-time" style="color:var(--text-2)">' + fmtDur(p.time_in_trade_secs) + '</span></div>';
+
+            if (p.sl_price) {
+                var slPct = Math.abs((cur - p.sl_price) / cur * 100);
+                var tpPct = Math.abs((p.tp_price - cur) / cur * 100);
+                var slBar = Math.min(100 - slPct * 14, 100);
+                var tpBar = Math.min(100 - tpPct * 11, 100);
+                html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+                html += '<div><div class="between" style="margin-bottom:5px"><span class="neg" style="font-size:11px;font-weight:600">SL · <span class="mc-sl-pct">' + slPct.toFixed(1) + '%</span> away</span></div>';
+                html += '<div class="pbar" style="background:#231a1d"><span class="mc-sl-bar" style="width:' + Math.max(slBar, 0) + '%;background:var(--red);margin-left:auto;display:block;height:100%"></span></div>';
+                html += '<div class="mono muted" style="font-size:10.5px;margin-top:4px">' + fmt(p.sl_price) + '</div></div>';
+                html += '<div><div class="between" style="margin-bottom:5px"><span class="pos" style="font-size:11px;font-weight:600">TP · <span class="mc-tp-pct">' + tpPct.toFixed(1) + '%</span> away</span></div>';
+                html += '<div class="pbar" style="background:#15241f"><span class="mc-tp-bar" style="width:' + Math.max(tpBar, 0) + '%;background:var(--green);display:block;height:100%"></span></div>';
+                html += '<div class="mono muted" style="font-size:10.5px;margin-top:4px">' + fmt(p.tp_price) + '</div></div></div>';
+            }
+
+            html += '<div class="status-grid" style="margin-top:2px">';
+            html += '<div class="status-cell"><div class="k">Size</div><div class="v">' + p.quantity.toFixed(4) + ' ' + sym + '</div></div>';
+            html += '<div class="status-cell"><div class="k">Leverage</div><div class="v">' + leverage + '×</div></div></div>';
+
+            html += '</div>';
+        });
+        posCards.innerHTML = html;
+    }
 
     function renderPositions(positions) {
         positionsData = positions;
         if (!posTable) return;
         if (!positions.length) {
             posTable.innerHTML = '<div style="text-align:center;padding:32px 0"><div class="muted" style="font-size:12px">No open positions</div><div class="faint" style="font-size:11px;margin-top:4px">Waiting for next signal from the strategy</div></div>';
+            renderMobileCards(positions);
             return;
         }
-        var header = document.querySelector('#positions-table .pill.green');
         var countPill = posTable.parentElement.querySelector('.pill.green');
         if (countPill) countPill.innerHTML = '<span class="led green"></span>' + positions.length;
         var html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11.5px;white-space:nowrap"><thead><tr style="border-bottom:1px solid var(--border)">' +
@@ -681,6 +852,7 @@
             '<th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">Entry Price</th>' +
             '<th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">Mark Price</th>' +
             '<th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">PnL (USDT)</th>' +
+            '<th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">ROI</th>' +
             '<th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">SL / TP</th>' +
             '<th style="padding:8px 12px;text-align:center;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">Source</th>' +
             '</tr></thead><tbody>';
@@ -696,19 +868,26 @@
                 '<td class="mono" style="padding:10px 12px;text-align:right">' + p.quantity.toFixed(4) + '</td>' +
                 '<td class="mono" style="padding:10px 12px;text-align:right">' + fmt(p.entry_price) + '</td>' +
                 '<td class="mono pos-mark" style="padding:10px 12px;text-align:right">' + (p.current_price ? fmt(p.current_price) : '—') + '</td>' +
-                '<td class="mono pos-pnl" style="padding:10px 12px;text-align:right"><span class="' + pnlCls + '">' + pnlSign + pnl.toFixed(2) + '</span></td>' +
+                '<td class="mono pos-pnl" style="padding:10px 12px;text-align:right"><span class="' + pnlCls + '">' + pnlSign + pnl.toFixed(2) + '</span></td>';
+            var roiVal = p.entry_price * p.quantity > 0 ? (pnl / (p.entry_price * p.quantity) * leverage * 100) : 0;
+            var roiCls = roiVal >= 0 ? 'pos' : 'neg';
+            var roiSign = roiVal >= 0 ? '+' : '';
+            html += '<td class="mono pos-roi" style="padding:10px 12px;text-align:right"><span class="' + roiCls + '">' + roiSign + roiVal.toFixed(2) + '%</span></td>' +
                 '<td class="mono" style="padding:10px 12px;text-align:right">' + sltp + '</td>' +
                 '<td style="padding:10px 12px;text-align:center">' + srcPill + '</td></tr>';
         });
         html += '</tbody></table></div>';
         posTable.innerHTML = html;
+        renderMobileCards(positions);
     }
 
     botWS.on('positions', function(msg) {
         renderPositions(msg.positions || []);
     });
 
+    // Live price update for both desktop table and mobile cards
     botWS.on('price', function(msg) {
+        // Desktop table
         var rows = document.querySelectorAll('tr[data-pos-symbol="' + msg.symbol + '"]');
         rows.forEach(function(row) {
             var entry = parseFloat(row.dataset.posEntry);
@@ -722,6 +901,59 @@
                 var cls = pnl >= 0 ? 'pos' : 'neg';
                 var sign = pnl >= 0 ? '+' : '';
                 pnlEl.innerHTML = '<span class="' + cls + '">' + sign + pnl.toFixed(2) + '</span>';
+                var roiEl = row.querySelector('.pos-roi');
+                if (roiEl) {
+                    var roiVal = entry * qty > 0 ? (pnl / (entry * qty) * leverage * 100) : 0;
+                    var rCls = roiVal >= 0 ? 'pos' : 'neg';
+                    var rSign = roiVal >= 0 ? '+' : '';
+                    roiEl.innerHTML = '<span class="' + rCls + '">' + rSign + roiVal.toFixed(2) + '%</span>';
+                }
+            }
+        });
+        // Mobile cards
+        var cards = document.querySelectorAll('[data-mc-symbol="' + msg.symbol + '"]');
+        cards.forEach(function(card) {
+            var entry = parseFloat(card.dataset.mcEntry);
+            var qty = parseFloat(card.dataset.mcQty);
+            var dir = card.dataset.mcDir;
+            var sl = parseFloat(card.dataset.mcSl);
+            var tp = parseFloat(card.dataset.mcTp);
+            var cur = msg.price;
+
+            var curEl = card.querySelector('.mc-current');
+            if (curEl) curEl.textContent = fmt(cur);
+
+            var changeUsd = dir === 'long' ? cur - entry : entry - cur;
+            var changePct = changeUsd / entry * 100;
+            var pnl = (dir === 'long' ? cur - entry : entry - cur) * qty;
+            var pnlEl = card.querySelector('.mc-pnl');
+            if (pnlEl) {
+                var pCls = pnl >= 0 ? 'pos' : 'neg';
+                var pSign = pnl >= 0 ? '+' : '';
+                pnlEl.className = 'mono mc-pnl ' + pCls;
+                pnlEl.textContent = pSign + fmt(Math.abs(pnl));
+            }
+            var roiEl = card.querySelector('.mc-roi');
+            if (roiEl) {
+                var roiVal = entry * qty > 0 ? (pnl / (entry * qty) * leverage * 100) : 0;
+                var rCls = roiVal >= 0 ? 'pos' : 'neg';
+                var rSign = roiVal >= 0 ? '+' : '';
+                roiEl.className = 'mono mc-roi ' + rCls;
+                roiEl.textContent = rSign + roiVal.toFixed(2) + '%';
+            }
+
+            if (sl && tp) {
+                var slPct = Math.abs((cur - sl) / cur * 100);
+                var tpPct = Math.abs((tp - cur) / cur * 100);
+                var slPctEl = card.querySelector('.mc-sl-pct');
+                var tpPctEl = card.querySelector('.mc-tp-pct');
+                if (slPctEl) slPctEl.textContent = slPct.toFixed(1) + '%';
+                if (tpPctEl) tpPctEl.textContent = tpPct.toFixed(1) + '%';
+
+                var slBarEl = card.querySelector('.mc-sl-bar');
+                var tpBarEl = card.querySelector('.mc-tp-bar');
+                if (slBarEl) slBarEl.style.width = Math.max(Math.min(100 - slPct * 14, 100), 0) + '%';
+                if (tpBarEl) tpBarEl.style.width = Math.max(Math.min(100 - tpPct * 11, 100), 0) + '%';
             }
         });
     });
@@ -862,12 +1094,14 @@
             botApiText.style.color = apiOk ? 'var(--green)' : 'var(--red)';
         }
         if (botRisk && msg.risk_mode) {
-            var val = msg.risk_mode === 'static' ? ('$' + Math.round(msg.risk_value)) : (parseFloat(msg.risk_value).toFixed(1) + '%');
+            var val = msg.risk_mode === 'static' ? (Math.round(msg.risk_value)) : (parseFloat(msg.risk_value).toFixed(1) + '%');
             botRisk.textContent = msg.risk_mode.charAt(0).toUpperCase() + msg.risk_mode.slice(1) + ' · ' + val;
         }
         if (botLastTrade) botLastTrade.textContent = fmtTimeAgo(msg.last_trade_ts);
         if (botUptime) botUptime.textContent = fmtDuration(msg.uptime_secs);
     });
 })();
+
+
 </script>
 {% endblock %}

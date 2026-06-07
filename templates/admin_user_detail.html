@@ -86,7 +86,7 @@
         </div>
         <div class="stat">
             <div class="lbl">Paper Balance</div>
-            <div class="val mono" style="font-size:18px">${{ '%.2f'|format(paper_balance) }}</div>
+            <div class="val mono" style="font-size:18px">{{ '%.2f'|format(paper_balance) }}</div>
             <div class="sub">demo account</div>
         </div>
         <div class="stat">
@@ -152,8 +152,8 @@
                     </td>
                     <td class="mono" style="font-size:12px">{{ t.symbol }}</td>
                     <td><span class="dir-badge {{ t.direction }}">{{ t.direction|upper }}</span></td>
-                    <td class="num mono adm-hide-sm">${{ '%.2f'|format(t.entry_price) if t.entry_price else '—' }}</td>
-                    <td class="num mono adm-hide-sm">${{ '%.2f'|format(t.exit_price) if t.exit_price else '—' }}</td>
+                    <td class="num mono adm-hide-sm">{{ '%.2f'|format(t.entry_price) if t.entry_price else '—' }}</td>
+                    <td class="num mono adm-hide-sm">{{ '%.2f'|format(t.exit_price) if t.exit_price else '—' }}</td>
                     <td class="num">
                         {% if t.result == 'win' %}<span class="pill green">WIN</span>
                         {% elif t.result == 'loss' %}<span class="pill red">LOSS</span>

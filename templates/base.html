@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>ZENITH{% block title_suffix %}{% endblock %}</title>
-    <link rel="stylesheet" href="/static/css/app.css?v=10">
+    <link rel="stylesheet" href="/static/css/app.css?v=11">
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
     <script src="/static/js/websocket.js?v=2"></script>
@@ -159,7 +159,7 @@
                 <div style="text-align:right">
                     <div class="balance-lbl">{% if is_paper %}Demo balance{% else %}Balance{% endif %}</div>
                     <div class="mono" style="font-size:13px;font-weight:600">
-                        <span id="usdt-balance">{{ "$%.2f"|format(balance) if balance is defined else '—' }}</span>
+                        <span id="usdt-balance">{{ "%.2f"|format(balance) if balance is defined else '—' }}</span>
                         <span class="muted" style="font-size:10px">USDT</span>
                     </div>
                 </div>
@@ -400,7 +400,7 @@ document.addEventListener('click', function(e) {
         for (var sym in cached) {
             var d = cached[sym];
             var el = document.getElementById('price-' + sym);
-            if (el) el.textContent = '$' + d.price.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+            if (el) el.textContent = d.price.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
             var chgEl = document.getElementById('price-change-' + sym);
             if (chgEl) {
                 var sign = d.change >= 0 ? '+' : '';
@@ -409,7 +409,7 @@ document.addEventListener('click', function(e) {
             }
             if (sym === 'BTCUSDT') {
                 var tp = document.getElementById('topbar-price');
-                if (tp) { tp.textContent = '$' + d.price.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}); tp.dataset.prev = d.price; }
+                if (tp) { tp.textContent = d.price.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}); tp.dataset.prev = d.price; }
                 var tc = document.getElementById('topbar-price-change');
                 if (tc) { var s = d.change >= 0 ? '+' : ''; tc.textContent = s + d.change.toFixed(2) + '%'; tc.className = 'mono ' + (d.change >= 0 ? 'pos' : 'neg'); }
             }
@@ -421,7 +421,7 @@ document.addEventListener('click', function(e) {
 
 botWS.on('price', function(msg) {
     var el = document.getElementById('price-' + msg.symbol);
-    if (el) el.textContent = '$' + msg.price.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    if (el) el.textContent = msg.price.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 
     var chgEl = document.getElementById('price-change-' + msg.symbol);
     if (chgEl) {
@@ -435,7 +435,7 @@ botWS.on('price', function(msg) {
         if (tp) {
             var prev = parseFloat(tp.dataset.prev || '0');
             var cur = msg.price;
-            tp.textContent = '$' + cur.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+            tp.textContent = cur.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
             if (prev > 0) tp.className = 'price mono ' + (cur >= prev ? 'pos' : 'neg');
             tp.dataset.prev = cur;
         }
@@ -457,7 +457,7 @@ botWS.on('price', function(msg) {
 botWS.on('balance', function(msg) {
     if (msg.mode && msg.mode !== currentMode) return;
     var el = document.getElementById('usdt-balance');
-    var txt = '$' + msg.usdt_balance.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    var txt = msg.usdt_balance.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
     if (el) el.textContent = txt;
     try { localStorage.setItem('zenith_balance_' + currentMode, txt); } catch(e) {}
 });
@@ -527,15 +527,15 @@ botWS.on('position', function(msg) {
         '<span class="pill green"><span class="led green"></span>OPEN</span></div>' +
         '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">' +
         '<div><div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">Entry</div>' +
-        '<div class="mono" style="font-size:15px;font-weight:600">$' + msg.entry_price.toLocaleString('en-US',{minimumFractionDigits:2}) + '</div></div>' +
+        '<div class="mono" style="font-size:15px;font-weight:600">' + msg.entry_price.toLocaleString('en-US',{minimumFractionDigits:2}) + '</div></div>' +
         '<div><div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">Unrealised P&L</div>' +
-        '<div class="mono ' + pnlCls + '" style="font-size:15px;font-weight:600">' + pnlSign + '$' + msg.unrealised_pnl_usdt.toFixed(2) + '</div>' +
+        '<div class="mono ' + pnlCls + '" style="font-size:15px;font-weight:600">' + pnlSign + msg.unrealised_pnl_usdt.toFixed(2) + '</div>' +
         '<div class="mono ' + pnlCls + '" style="font-size:11px">' + pnlSign + msg.unrealised_r.toFixed(1) + 'R</div></div>' +
         '<div><div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">SL</div>' +
-        '<div class="mono neg" style="font-size:15px;font-weight:600">$' + msg.sl_price.toFixed(2) + '</div>' +
+        '<div class="mono neg" style="font-size:15px;font-weight:600">' + msg.sl_price.toFixed(2) + '</div>' +
         '<div class="muted" style="font-size:11px">' + msg.sl_distance_pct.toFixed(1) + '% away</div></div>' +
         '<div><div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">TP</div>' +
-        '<div class="mono pos" style="font-size:15px;font-weight:600">$' + msg.tp_price.toFixed(2) + '</div>' +
+        '<div class="mono pos" style="font-size:15px;font-weight:600">' + msg.tp_price.toFixed(2) + '</div>' +
         '<div class="muted" style="font-size:11px">' + msg.tp_distance_pct.toFixed(1) + '% away</div></div></div>';
 });
 

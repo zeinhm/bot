@@ -336,6 +336,9 @@ input[type=range]::-moz-range-thumb { width: 15px; height: 15px; border: none; b
 .seg button.active { background: #232c37; color: var(--text); }
 
 /* status grid (bot health) */
+/* Position mobile cards */
+.pos-cards-mobile { display: none; }
+
 .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); border-radius: var(--radius-sm); overflow: hidden; }
 .status-cell { background: var(--card); padding: 9px 11px; }
 .status-cell .k { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
@@ -595,6 +598,8 @@ input[type=range]::-moz-range-thumb { width: 15px; height: 15px; border: none; b
   .pos-market-trades { order: 4; }
   .pos-chart-card { overflow: visible !important; }
   .pos-chart-card #position-chart { overflow: hidden; }
+  .pos-cards-mobile { display: flex; flex-direction: column; gap: 10px; }
+  #positions-table { display: none !important; }
   .tf-dropdown { left: auto !important; right: 0 !important; }
   .ticker-bar { padding: 8px 12px !important; gap: 8px !important; flex-wrap: wrap !important; }
   .ticker-bar > div[style*="width:1px"] { display: none; }

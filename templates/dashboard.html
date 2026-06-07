@@ -82,8 +82,8 @@
                     <td class="mono muted local-time" data-utc="{{ t.entry_time.strftime('%Y-%m-%dT%H:%M:%SZ') if t.entry_time else '' }}">{{ t.entry_time.strftime('%m/%d %H:%M') if t.entry_time else '—' }}</td>
                     <td class="mono">{{ t.symbol }}</td>
                     <td><span class="dir-badge {{ 'long' if t.direction == 'long' else 'short' }}">{{ t.direction|upper }}</span></td>
-                    <td class="num mono">${{ "%.2f"|format(t.entry_price) if t.entry_price else '—' }}</td>
-                    <td class="num mono">{{ "$%.2f"|format(t.exit_price) if t.exit_price else '—' }}</td>
+                    <td class="num mono">{{ "%.2f"|format(t.entry_price) if t.entry_price else '—' }}</td>
+                    <td class="num mono">{{ "%.2f"|format(t.exit_price) if t.exit_price else '—' }}</td>
                     <td>
                         {% if t.result == 'win' %}
                         <span class="pill green">WIN</span>
@@ -97,7 +97,7 @@
                         {{ "%.1f"|format(t.r_value) if t.r_value is not none else '—' }}R
                     </td>
                     <td class="num mono {{ 'pos' if (t.pnl_usdt or 0) >= 0 else 'neg' }}">
-                        {{ "$%.2f"|format(t.pnl_usdt) if t.pnl_usdt is not none else '—' }}
+                        {{ "%.2f"|format(t.pnl_usdt) if t.pnl_usdt is not none else '—' }}
                     </td>
                 </tr>
                 {% endfor %}
@@ -135,7 +135,7 @@
         bottomColor: 'rgba(0,200,150,.02)',
         lineWidth: 1.5,
         priceLineColor: '#006b53',
-        priceFormat: { type: 'custom', formatter: function(p) { return '$' + p.toLocaleString(undefined, {maximumFractionDigits: 0}); } }
+        priceFormat: { type: 'custom', formatter: function(p) { return p.toLocaleString(undefined, {maximumFractionDigits: 0}); } }
     });
 
     series.setData(raw);
@@ -151,7 +151,7 @@
         if (val && val.value !== undefined) {
             var pnl = val.value - 10000;
             var pct = (pnl / 10000 * 100).toFixed(1);
-            hoverEl.textContent = '$' + val.value.toLocaleString(undefined, {maximumFractionDigits: 0}) + '  (' + (pnl >= 0 ? '+' : '') + pct + '%)';
+            hoverEl.textContent = val.value.toLocaleString(undefined, {maximumFractionDigits: 0}) + '  (' + (pnl >= 0 ? '+' : '') + pct + '%)';
             hoverEl.style.color = pnl >= 0 ? 'var(--green)' : 'var(--red)';
         }
     });

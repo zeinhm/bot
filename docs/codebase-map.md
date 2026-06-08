@@ -97,7 +97,7 @@ Live Binance Futures API wrapper.
 - `place_stop_loss(symbol, side, quantity, stop_price)` — STOP_MARKET, reduceOnly in one-way mode. **NOTE:** python-binance auto-routes STOP/TP to Binance's conditional/algo endpoint; the response has `algoId` (no `orderId`)
 - `place_take_profit(symbol, side, quantity, price)` — TAKE_PROFIT_MARKET (also a conditional/algo order)
 - `get_open_orders(symbol)` — **regular** open orders only (SL/TP are NOT here)
-- `get_conditional_orders(symbol)` — conditional/algo open orders (this is where SL/TP live; `conditional=True`)
+- `get_conditional_orders(symbol, strict=False)` — conditional/algo open orders (this is where SL/TP live; `conditional=True`). `strict=True` re-raises on error so a safety-critical caller can distinguish "no SL" from "couldn't fetch"
 - `get_order(symbol, order_id)` / `get_trades_for_order(symbol, order_id)` — Fill data queries
 - `cancel_order()` / `cancel_all_orders()` — Order cancellation. `cancel_all_orders` clears **both** the regular and conditional/algo buckets
 - `get_klines(symbol, interval, limit)` → list of candle dicts
@@ -319,12 +319,16 @@ Core trading loop for a single user/mode.
 **BotWorker methods**:
 - `start()` — Connect exchange → crash recovery → register candle callback → start user stream + position poll
 - `stop()` — Remove callback, cancel tasks, close exchange
-- `_crash_recovery()` — Reconcile DB vs exchange: close orphan trades, re-place missing SL/TP, close orphan positions
-- `_process_candle(symbol)` — Check skip periods, bot_enabled, active symbols, max trades → call `check_signal()` → execute if signal
+- `_crash_recovery()` — Reconcile DB vs exchange across **all** open trades (`_recover_one_trade`), then close orphan positions on untracked symbols (uses the original DB snapshot so a transient `get_position` miss can't wrongly close a live position)
+- `_process_candle(symbol)` — Check skip periods, bot_enabled, active symbols → per-asset guard (block only if this symbol has an open trade, DB-confirmed) → `check_signal()` → execute. No daily cap
 - `_execute_trade(symbol, signal)` — Calculate quantity (static/dynamic risk + adaptive sizing) → market order → record in DB → place SL/TP → broadcast → Telegram alert
-- `_place_sl_tp(symbol, direction, quantity, sl, tp, trade_id)` — 3 retries, 1s between, cancels existing orders first
-- `_on_user_event(data)` — Handle ORDER_TRADE_UPDATE: calculate PnL, close trade, cancel remaining orders, update adaptive sizing, broadcast, alert, self-heal
-- `_run_position_poll()` — Every 10-30s safety net: detect missed fills, re-place missing SL/TP, Telegram alert after 60s failure
+- `_place_sl_tp(symbol, direction, quantity, sl, tp, trade_id)` — 3 retries, 1s between, cancels both order buckets first; returns `(sl_ok, tp_ok)`
+- `_count_sltp_orders(trade)` → `(sl_count, tp_count)` from the conditional/algo bucket (matched by type + hedge positionSide)
+- `_on_user_event(data)` — Handle ORDER_TRADE_UPDATE: resolve the trade **by symbol**, calculate PnL, close, cancel orders, adaptive sizing, broadcast, alert, self-heal
+- `_run_position_poll()` — Every 10-30s safety net; loops **all** open trades (`_poll_one_trade`): detect missed fills, keep exactly 1 SL + 1 TP, force-close on SL breach, Telegram alert after 60s
+- `_poll_one_trade(trade)` — Per-trade poll body (close-on-missing-position or verify/replace SL/TP)
+- `_maybe_force_close_breach(trade, pos)` → bool — Safety net: force-close only when SL genuinely absent (strict fetch) AND price breached `sl_price` (direction-aware) AND Binance `unrealized_pnl` ≈ ≤ −1R
+- `_force_close_breached(trade, pos, price)` — Market-close the position, record as loss, broadcast, Telegram alert
 - `_self_heal_trade(trade_id)` — Post-close: verify against actual Binance fill data, correct prices/quantities/PnL
 - `_get_effective_risk()` → reduced risk % if adaptive sizing active, else None
 - `_on_trade_result(won)` — Adaptive sizing state machine: track loss streak → activate reduced risk → track recovery wins → deactivate

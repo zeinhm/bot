@@ -98,16 +98,22 @@ class BinanceExchange:
     async def get_open_orders(self, symbol: str) -> list[dict]:
         return await self.client.futures_get_open_orders(symbol=symbol)
 
-    async def get_conditional_orders(self, symbol: str) -> list[dict]:
+    async def get_conditional_orders(self, symbol: str, strict: bool = False) -> list[dict]:
         """Open conditional/algo orders (STOP_MARKET / TAKE_PROFIT_MARKET).
 
         python-binance auto-routes STOP/TP orders to Binance's algo endpoint,
         so SL/TP live in this separate bucket — invisible to get_open_orders().
+
+        strict=True re-raises on error so a caller making a safety-critical
+        decision (e.g. force-close) can tell "no SL exists" apart from
+        "couldn't fetch". Default swallows errors and returns [] (best-effort).
         """
         try:
             res = await self.client.futures_get_open_orders(symbol=symbol, conditional=True)
             return res or []
         except Exception as e:
+            if strict:
+                raise
             log.warning("Failed to get conditional orders on %s: %s", symbol, e)
             return []
 

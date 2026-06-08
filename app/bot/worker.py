@@ -270,7 +270,11 @@ class BotWorker:
             self._active_trades.pop(symbol, None)
         else:
             if not self.is_paper:
-                sl_count, tp_count = await self._count_sltp_orders(open_trade)
+                counts = await self._count_sltp_orders(open_trade)
+                if counts is None:
+                    log.warning("Crash recovery: could not read orders for #%d — leaving as-is", open_trade.id)
+                    return
+                sl_count, tp_count = counts
             else:
                 orders = await self.exchange.get_open_orders(symbol)
                 sl_count = sum(1 for o in orders if o.get("type") == "STOP_MARKET")
@@ -464,7 +468,7 @@ class BotWorker:
 
         return sl_order is not None, tp_order is not None
 
-    async def _count_sltp_orders(self, trade) -> tuple[int, int]:
+    async def _count_sltp_orders(self, trade) -> tuple[int, int] | None:
         """Count active SL/TP orders in the conditional/algo bucket.
 
         Binance routes STOP_MARKET / TAKE_PROFIT_MARKET to its conditional (algo)
@@ -473,8 +477,17 @@ class BotWorker:
         position side. A healthy position has exactly one of each; any other
         count (missing OR duplicated) makes the caller cancel both buckets and
         re-place exactly one SL + one TP — which also clears stray duplicates.
+
+        Returns None if the orders couldn't be read (strict fetch raised). Callers
+        MUST NOT cancel/replace on None — acting on a failed read could disturb a
+        healthy position's SL/TP.
         """
-        orders = await self.exchange.get_conditional_orders(trade.symbol)
+        try:
+            orders = await self.exchange.get_conditional_orders(trade.symbol, strict=True)
+        except Exception as e:
+            log.warning("Could not read conditional orders for %s (#%d): %s — skipping SL/TP check",
+                        trade.symbol, trade.id, e)
+            return None
         expected_ps = ("LONG" if trade.direction == "long" else "SHORT") if self.exchange.hedge_mode else None
         sl_count = 0
         tp_count = 0
@@ -713,7 +726,10 @@ class BotWorker:
         if self.is_paper:
             return
 
-        sl_count, tp_count = await self._count_sltp_orders(trade)
+        counts = await self._count_sltp_orders(trade)
+        if counts is None:
+            return  # couldn't read orders — do nothing this cycle (never act on a failed read)
+        sl_count, tp_count = counts
 
         if sl_count == 1 and tp_count == 1:
             if symbol in self._sltp_missing_since:
@@ -740,6 +756,13 @@ class BotWorker:
             self._sltp_missing_since.pop(symbol, None)
             self._sltp_last_alert.pop(symbol, None)
         else:
+            # Safety net: SL could not be established AND it was genuinely absent
+            # (sl_count == 0 — not a real SL we just cancelled). If price has also
+            # breached the stop, force-close so the position isn't left unprotected.
+            if not sl_ok and sl_count == 0:
+                if await self._maybe_force_close_breach(trade, pos):
+                    return
+
             elapsed = now - self._sltp_missing_since[symbol]
             if elapsed >= 60 and (now - self._sltp_last_alert.get(symbol, 0)) >= 60:
                 missing = []
@@ -756,6 +779,110 @@ class BotWorker:
                 log.error(msg)
                 await send_private(msg)
                 self._sltp_last_alert[symbol] = now
+
+    async def _maybe_force_close_breach(self, trade, pos) -> bool:
+        """Force-close a live position ONLY when there is genuinely no stop order
+        AND price has already breached the SL level. Every gate must independently
+        confirm a real breach — a data/fetch error must never cause a close.
+        Returns True if the position was force-closed.
+        """
+        symbol = trade.symbol
+
+        # Gate 5: authoritatively re-confirm there is no STOP order (strict fetch).
+        # A fetch error -> unknown state -> do NOT close.
+        try:
+            cond = await self.exchange.get_conditional_orders(symbol, strict=True)
+        except Exception as e:
+            log.warning("Force-close check: conditional fetch failed for %s — skipping: %s", symbol, e)
+            return False
+        expected_ps = ("LONG" if trade.direction == "long" else "SHORT") if self.exchange.hedge_mode else None
+        for o in cond:
+            if expected_ps and o.get("positionSide") != expected_ps:
+                continue
+            if (o.get("orderType") or o.get("type")) == "STOP_MARKET":
+                return False  # an SL exists after all — never force-close
+
+        # Gate 6: reliable current price, direction-aware breach of the SL level
+        price = self._shared_market.get_latest_price(symbol) if self._shared_market else 0.0
+        if price <= 0:
+            return False
+        if trade.direction == "long":
+            breached = price <= trade.sl_price
+        else:
+            breached = price >= trade.sl_price
+        if not breached:
+            return False
+
+        # Gate 7: Binance's own position PnL confirms the loss is at SL magnitude (~1R),
+        # not merely negative. Rejects a single bad price tick.
+        expected_loss_at_sl = abs(trade.entry_price - trade.sl_price) * trade.quantity
+        if expected_loss_at_sl <= 0:
+            return False
+        if pos.get("unrealized_pnl", 0.0) > -(expected_loss_at_sl * 0.9):
+            return False
+
+        await self._force_close_breached(trade, pos, price)
+        return True
+
+    async def _force_close_breached(self, trade, pos, price: float):
+        symbol = trade.symbol
+        log.error("FORCE-CLOSE: %s %s has no stop order and price %.4f breached SL %.4f — market-closing",
+                  symbol, trade.direction, price, trade.sl_price)
+
+        close_side = "SELL" if trade.direction == "long" else "BUY"
+        pos_side = "LONG" if trade.direction == "long" else "SHORT"
+        try:
+            order = await self.exchange.place_market_order(symbol, close_side, pos["quantity"], position_side=pos_side)
+        except Exception as e:
+            log.error("Force-close market order FAILED for %s: %s", symbol, e)
+            await send_private(
+                f"🛑 Force-close FAILED for {symbol} ({trade.direction.upper()}) — price {price} past SL "
+                f"{trade.sl_price} with no stop order. CLOSE MANUALLY NOW."
+            )
+            return
+
+        await self.exchange.cancel_all_orders(symbol)
+
+        exit_price = float(order.get("avgPrice") or 0) or price or trade.sl_price
+        exit_comm = exit_price * trade.quantity * self.config.commission_pct
+        total_comm = (trade.commission or 0) + exit_comm
+        if trade.direction == "long":
+            raw_pnl = (exit_price - trade.entry_price) * trade.quantity
+        else:
+            raw_pnl = (trade.entry_price - exit_price) * trade.quantity
+        pnl = raw_pnl - total_comm
+
+        await db.update_trade(trade.id, {
+            "exit_time": datetime.now(timezone.utc),
+            "exit_price": exit_price,
+            "result": "loss",
+            "r_value": -1.0,
+            "pnl_usdt": pnl,
+            "commission": total_comm,
+        })
+
+        self._active_trades.pop(symbol, None)
+        self._sltp_missing_since.pop(symbol, None)
+        self._sltp_last_alert.pop(symbol, None)
+        self._on_trade_result(False)
+
+        await db.log_event(
+            f"Force-closed {symbol}: price breached SL with no stop order on exchange",
+            level="error", category="trade",
+            user_id=self.user_id, is_paper=self.is_paper,
+        )
+        await self._broadcast({
+            "type": "trade_closed",
+            "trade": {"id": trade.id, "symbol": symbol, "result": "loss", "pnl": pnl},
+        })
+
+        balance = await self.exchange.get_balance()
+        await alert_exit(symbol, trade.direction, "loss", trade.entry_price, exit_price, pnl, -1.0, balance)
+        await send_private(
+            f"🛑 Force-closed {symbol} ({trade.direction.upper()}) @ {exit_price:.4f} — price breached SL "
+            f"{trade.sl_price} with no stop order on the exchange"
+        )
+        await self._self_heal_trade(trade.id)
 
     async def _self_heal_trade(self, trade_id: int):
         if self.is_paper:

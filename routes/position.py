@@ -19,7 +19,7 @@ async def position_page(request: Request):
     mode = get_trading_mode(request)
     is_paper = (mode == "paper")
     bot = get_bot_for_user(user.id, mode)
-    bot_trade = await db.get_open_trade(user.id, is_paper)
+    bot_trades = {t.symbol: t for t in await db.get_open_trades(user.id, is_paper)}
 
     positions = []
 
@@ -27,11 +27,8 @@ async def position_page(request: Request):
         try:
             all_pos = await bot.exchange.get_all_positions()
             for pos in all_pos:
-                is_bot = (
-                    bot_trade is not None
-                    and bot_trade.symbol == pos["symbol"]
-                    and bot_trade.direction == pos["side"]
-                )
+                bt = bot_trades.get(pos["symbol"])
+                is_bot = bt is not None and bt.direction == pos["side"]
                 p = {
                     "symbol": pos["symbol"],
                     "direction": pos["side"],
@@ -41,20 +38,20 @@ async def position_page(request: Request):
                     "source": "bot" if is_bot else "manual",
                 }
                 if is_bot:
-                    p["sl_price"] = bot_trade.sl_price
-                    p["tp_price"] = bot_trade.tp_price
+                    p["sl_price"] = bt.sl_price
+                    p["tp_price"] = bt.tp_price
                 positions.append(p)
         except Exception:
-            if bot_trade:
+            for bt in bot_trades.values():
                 positions.append({
-                    "symbol": bot_trade.symbol,
-                    "direction": bot_trade.direction,
-                    "entry_price": bot_trade.entry_price,
-                    "quantity": bot_trade.quantity,
+                    "symbol": bt.symbol,
+                    "direction": bt.direction,
+                    "entry_price": bt.entry_price,
+                    "quantity": bt.quantity,
                     "unrealized_pnl": 0.0,
                     "source": "bot",
-                    "sl_price": bot_trade.sl_price,
-                    "tp_price": bot_trade.tp_price,
+                    "sl_price": bt.sl_price,
+                    "tp_price": bt.tp_price,
                 })
 
     risk_mode = await db.get_state("risk_mode", "static", user_id=user.id, is_paper=is_paper)

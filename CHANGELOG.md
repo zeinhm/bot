@@ -18,6 +18,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 - **WebSocket reconnect loop**: Auto-redirect to `/login` after 3 consecutive WS failures (verified via HEAD request) instead of retrying forever with expired session
 
 ### Changed
+- **Per-asset concurrent trades**: The bot now holds one open trade *per asset* (BTC/ETH/SOL can run simultaneously) instead of one trade total. `BotWorker` tracks `_active_trades` (symbol→trade_id) with per-symbol SL/TP recovery timers; the entry guard blocks only the symbol that already has an open trade (checked against the DB as source of truth). Crash recovery, the position poll, and the order-fill handler all operate per-trade; the fill handler now resolves the trade by symbol (`get_open_trade_for_symbol`) so the correct trade closes. Position page + WebSocket enrich every concurrent position as bot-managed. Paper SL/TP and emergency-close also made per-symbol/multi-trade aware. New queries: `get_open_trades`, `get_open_trade_for_symbol`
+- **Removed daily trade cap**: `max_trades_per_day` no longer gates new trades — adaptive sizing handles drawdown/loss-streaks
 - **Rolling sessions**: Session cookie now refreshes on every HTTP request; active users never expire. Max age increased from 24 hours to 7 days
 
 ---

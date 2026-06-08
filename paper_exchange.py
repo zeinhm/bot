@@ -126,7 +126,7 @@ class PaperExchange:
 
     async def place_stop_loss(self, symbol: str, side: str, quantity: float, stop_price: float) -> dict:
         self._order_counter += 1
-        trade = await db.get_open_trade(self.user_id, is_paper=True)
+        trade = await db.get_open_trade_for_symbol(self.user_id, symbol, is_paper=True)
         trade_id = trade.id if trade else 0
         order = await db.create_paper_order({
             "user_id": self.user_id,
@@ -142,7 +142,7 @@ class PaperExchange:
 
     async def place_take_profit(self, symbol: str, side: str, quantity: float, price: float) -> dict:
         self._order_counter += 1
-        trade = await db.get_open_trade(self.user_id, is_paper=True)
+        trade = await db.get_open_trade_for_symbol(self.user_id, symbol, is_paper=True)
         trade_id = trade.id if trade else 0
         order = await db.create_paper_order({
             "user_id": self.user_id,

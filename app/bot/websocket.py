@@ -250,17 +250,15 @@ async def _position_poll(bot_manager):
                 except Exception:
                     continue
 
-                bot_trade = await db.get_open_trade(uid, is_paper)
+                # All open bot trades, keyed by symbol (one per asset)
+                bot_trades = {t.symbol: t for t in await db.get_open_trades(uid, is_paper)}
 
                 positions = []
                 for pos in all_positions:
                     current_price = _latest_prices.get(pos["symbol"], {}).get("price", pos["entry_price"])
 
-                    is_bot = (
-                        bot_trade is not None
-                        and bot_trade.symbol == pos["symbol"]
-                        and bot_trade.direction == pos["side"]
-                    )
+                    bot_trade = bot_trades.get(pos["symbol"])
+                    is_bot = bot_trade is not None and bot_trade.direction == pos["side"]
 
                     p = {
                         "symbol": pos["symbol"],

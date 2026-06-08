@@ -212,6 +212,8 @@ Key relationships:
 | `update_trade(trade_id, updates)` | — | Update specific fields |
 | `get_trade(trade_id)` | Trade or None | By ID |
 | `get_open_trade(user_id, is_paper)` | Trade or None | First trade with result="open" |
+| `get_open_trades(user_id, is_paper)` | list[Trade] | All open trades (per-asset concurrency: one per symbol) |
+| `get_open_trade_for_symbol(user_id, symbol, is_paper)` | Trade or None | Open trade for a specific symbol (close the right trade on fill) |
 | `get_recent_trades(limit, user_id, is_paper)` | list[Trade] | DESC by ID |
 | `get_all_trades(user_id, is_paper)` | list[Trade] | ASC by ID |
 | `get_trades_filtered(user_id, is_paper, symbol, direction, result_filter)` | list[Trade] | With optional filters |

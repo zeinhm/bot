@@ -67,7 +67,12 @@ class BotWorker:
         self.started_at: float | None = None
         self.last_error: str | None = None
         self.last_error_time: float | None = None
-        self._active_trade_id: int | None = None
+        # Per-asset open trades: symbol -> trade_id. One open trade per symbol
+        # (BTC/ETH/SOL can run concurrently); no global cap.
+        self._active_trades: dict[str, int] = {}
+        # Per-symbol SL/TP recovery timers
+        self._sltp_missing_since: dict[str, float] = {}
+        self._sltp_last_alert: dict[str, float] = {}
         self._broadcast_fn = broadcast_fn
 
         self.current_streak: int = 0
@@ -172,92 +177,25 @@ class BotWorker:
     async def _crash_recovery(self):
         log.info("Running crash recovery check...")
 
-        open_trade = await db.get_open_trade(self.user_id, self.is_paper)
-        if open_trade:
-            self._active_trade_id = open_trade.id
+        open_trades = await db.get_open_trades(self.user_id, self.is_paper)
+        self._active_trades = {t.symbol: t.id for t in open_trades}
+
+        for open_trade in open_trades:
             log.info("Found open trade #%d %s %s in DB", open_trade.id, open_trade.symbol, open_trade.direction)
+            try:
+                await self._recover_one_trade(open_trade)
+            except Exception as e:
+                log.error("Crash recovery failed for %s #%d: %s", open_trade.symbol, open_trade.id, e)
 
-            pos = await self.exchange.get_position(open_trade.symbol)
-            if pos is None:
-                log.warning("Trade #%d is open in DB but no position — marking closed", open_trade.id)
-
-                exit_price = 0.0
-                exit_comm = 0.0
-                is_sl = True
-                if not self.is_paper:
-                    for oid_str in [open_trade.sl_order_id, open_trade.tp_order_id]:
-                        if not oid_str:
-                            continue
-                        order_info = await self.exchange.get_order(open_trade.symbol, int(oid_str))
-                        if order_info and order_info.get("status") == "FILLED":
-                            exit_price = float(order_info.get("avgPrice", 0))
-                            is_sl = order_info.get("type") == "STOP_MARKET"
-                            exit_trades = await self.exchange.get_trades_for_order(open_trade.symbol, int(oid_str))
-                            if exit_trades:
-                                total_qty = sum(float(t["qty"]) for t in exit_trades)
-                                if total_qty > 0:
-                                    exit_price = sum(float(t["price"]) * float(t["qty"]) for t in exit_trades) / total_qty
-                                exit_comm = sum(float(t.get("commission", 0)) for t in exit_trades)
-                            break
-                else:
-                    paper_orders = await db.get_paper_orders_for_trade(open_trade.id)
-                    for po in paper_orders:
-                        if po.status == "FILLED":
-                            exit_price = po.stop_price
-                            is_sl = po.order_type == "STOP_MARKET"
-                            exit_comm = exit_price * open_trade.quantity * self.config.commission_pct
-                            break
-
-                result = "loss" if is_sl else "win"
-                rr = self.config.strategy_params.get("rrr", 2.0)
-                r_value = -1.0 if is_sl else rr
-                total_comm = (open_trade.commission or 0) + exit_comm
-
-                if exit_price > 0:
-                    if open_trade.direction == "long":
-                        raw_pnl = (exit_price - open_trade.entry_price) * open_trade.quantity
-                    else:
-                        raw_pnl = (open_trade.entry_price - exit_price) * open_trade.quantity
-                    pnl = raw_pnl - total_comm
-                else:
-                    pnl = 0.0
-
-                await db.log_event(
-                    f"Orphan trade #{open_trade.id} closed during recovery",
-                    level="warn", category="system",
-                    user_id=self.user_id, is_paper=self.is_paper,
-                )
-                await db.update_trade(open_trade.id, {
-                    "result": result,
-                    "r_value": r_value,
-                    "exit_time": datetime.now(timezone.utc),
-                    "exit_price": exit_price if exit_price > 0 else None,
-                    "pnl_usdt": pnl,
-                    "commission": total_comm,
-                })
-                self._active_trade_id = None
-            else:
-                if not self.is_paper:
-                    sl_count, tp_count = await self._count_sltp_orders(open_trade)
-                else:
-                    orders = await self.exchange.get_open_orders(open_trade.symbol)
-                    sl_count = sum(1 for o in orders if o.get("type") == "STOP_MARKET")
-                    tp_count = sum(1 for o in orders if o.get("type") == "TAKE_PROFIT_MARKET")
-                if sl_count != 1 or tp_count != 1:
-                    log.warning("Trade #%d has %d SL / %d TP orders (need 1/1) — cancelling all and re-placing",
-                                open_trade.id, sl_count, tp_count)
-                    await self.exchange.cancel_all_orders(open_trade.symbol)
-                    await self._place_sl_tp(
-                        open_trade.symbol, open_trade.direction,
-                        pos["quantity"], open_trade.sl_price, open_trade.tp_price,
-                        open_trade.id,
-                    )
-            return
-
+        # Sweep orphan positions on symbols that have no DB trade at all.
+        # Use the original open-trades snapshot (NOT self._active_trades, which
+        # _recover_one_trade may have popped on a transient get_position miss) —
+        # otherwise a glitchy read could wrongly orphan-close a live position.
         if not self.is_paper:
+            tracked = {t.symbol for t in open_trades}
             positions = await self.exchange.get_all_positions()
             for pos in positions:
-                if pos["symbol"] in self.config.symbols:
+                if pos["symbol"] in self.config.symbols and pos["symbol"] not in tracked:
                     log.warning(
                         "Found orphan position: %s %s qty=%.4f — closing it",
                         pos["symbol"], pos["side"], pos["quantity"],
@@ -267,7 +205,85 @@ class BotWorker:
                     await self.exchange.place_market_order(pos["symbol"], close_side, pos["quantity"], position_side=pos_side)
                     await self.exchange.cancel_all_orders(pos["symbol"])
 
-        log.info("Crash recovery complete — no open trades")
+        log.info("Crash recovery complete — %d open trade(s) recovered", len(self._active_trades))
+
+    async def _recover_one_trade(self, open_trade):
+        symbol = open_trade.symbol
+        pos = await self.exchange.get_position(symbol)
+        if pos is None:
+            log.warning("Trade #%d is open in DB but no position — marking closed", open_trade.id)
+
+            exit_price = 0.0
+            exit_comm = 0.0
+            is_sl = True
+            if not self.is_paper:
+                for oid_str in [open_trade.sl_order_id, open_trade.tp_order_id]:
+                    if not oid_str:
+                        continue
+                    order_info = await self.exchange.get_order(symbol, int(oid_str))
+                    if order_info and order_info.get("status") == "FILLED":
+                        exit_price = float(order_info.get("avgPrice", 0))
+                        is_sl = order_info.get("type") == "STOP_MARKET"
+                        exit_trades = await self.exchange.get_trades_for_order(symbol, int(oid_str))
+                        if exit_trades:
+                            total_qty = sum(float(t["qty"]) for t in exit_trades)
+                            if total_qty > 0:
+                                exit_price = sum(float(t["price"]) * float(t["qty"]) for t in exit_trades) / total_qty
+                            exit_comm = sum(float(t.get("commission", 0)) for t in exit_trades)
+                        break
+            else:
+                paper_orders = await db.get_paper_orders_for_trade(open_trade.id)
+                for po in paper_orders:
+                    if po.status == "FILLED":
+                        exit_price = po.stop_price
+                        is_sl = po.order_type == "STOP_MARKET"
+                        exit_comm = exit_price * open_trade.quantity * self.config.commission_pct
+                        break
+
+            result = "loss" if is_sl else "win"
+            rr = self.config.strategy_params.get("rrr", 2.0)
+            r_value = -1.0 if is_sl else rr
+            total_comm = (open_trade.commission or 0) + exit_comm
+
+            if exit_price > 0:
+                if open_trade.direction == "long":
+                    raw_pnl = (exit_price - open_trade.entry_price) * open_trade.quantity
+                else:
+                    raw_pnl = (open_trade.entry_price - exit_price) * open_trade.quantity
+                pnl = raw_pnl - total_comm
+            else:
+                pnl = 0.0
+
+            await db.log_event(
+                f"Orphan trade #{open_trade.id} closed during recovery",
+                level="warn", category="system",
+                user_id=self.user_id, is_paper=self.is_paper,
+            )
+            await db.update_trade(open_trade.id, {
+                "result": result,
+                "r_value": r_value,
+                "exit_time": datetime.now(timezone.utc),
+                "exit_price": exit_price if exit_price > 0 else None,
+                "pnl_usdt": pnl,
+                "commission": total_comm,
+            })
+            self._active_trades.pop(symbol, None)
+        else:
+            if not self.is_paper:
+                sl_count, tp_count = await self._count_sltp_orders(open_trade)
+            else:
+                orders = await self.exchange.get_open_orders(symbol)
+                sl_count = sum(1 for o in orders if o.get("type") == "STOP_MARKET")
+                tp_count = sum(1 for o in orders if o.get("type") == "TAKE_PROFIT_MARKET")
+            if sl_count != 1 or tp_count != 1:
+                log.warning("Trade #%d has %d SL / %d TP orders (need 1/1) — cancelling all and re-placing",
+                            open_trade.id, sl_count, tp_count)
+                await self.exchange.cancel_all_orders(symbol)
+                await self._place_sl_tp(
+                    symbol, open_trade.direction,
+                    pos["quantity"], open_trade.sl_price, open_trade.tp_price,
+                    open_trade.id,
+                )
 
     # --- Candle handling (shared) ---
 
@@ -292,13 +308,15 @@ class BotWorker:
         if symbol not in active_symbols:
             return
 
-        if self._active_trade_id is not None:
+        # One open trade per asset: block only if THIS symbol already has one.
+        # Other symbols can still open (BTC/ETH/SOL run concurrently). Checked
+        # against the DB (source of truth) to avoid any in-memory race.
+        if symbol in self._active_trades:
+            return
+        if await db.get_open_trade_for_symbol(self.user_id, symbol, self.is_paper) is not None:
             return
 
-        max_trades = await db.get_state("max_trades_per_day", 99, user_id=self.user_id, is_paper=self.is_paper)
-        today_count = await db.get_today_trade_count(self.user_id, self.is_paper)
-        if today_count >= max_trades:
-            return
+        # No daily trade cap — adaptive sizing handles drawdown/loss-streaks.
 
         rr = await db.get_state("rr_ratio", self.config.strategy_params["rrr"], user_id=self.user_id, is_paper=self.is_paper)
         sessions = await db.get_state("active_sessions", self.config.strategy_params["sessions"], user_id=self.user_id, is_paper=self.is_paper)
@@ -384,7 +402,7 @@ class BotWorker:
                 "entry_order_id": str(order.get("orderId", "")),
             })
 
-            self._active_trade_id = trade.id
+            self._active_trades[symbol] = trade.id
 
             await self._place_sl_tp(symbol, signal["direction"], fill_qty, signal["sl"], signal["tp"], trade.id)
 
@@ -497,8 +515,8 @@ class BotWorker:
         if order_type not in ("STOP_MARKET", "TAKE_PROFIT_MARKET"):
             return
 
-        trade = await db.get_open_trade(self.user_id, self.is_paper)
-        if trade is None or trade.symbol != symbol:
+        trade = await db.get_open_trade_for_symbol(self.user_id, symbol, self.is_paper)
+        if trade is None:
             return
 
         is_sl = order_type == "STOP_MARKET"
@@ -535,7 +553,9 @@ class BotWorker:
 
         await self.exchange.cancel_all_orders(symbol)
 
-        self._active_trade_id = None
+        self._active_trades.pop(symbol, None)
+        self._sltp_missing_since.pop(symbol, None)
+        self._sltp_last_alert.pop(symbol, None)
 
         self._on_trade_result(result == "win")
 
@@ -568,166 +588,174 @@ class BotWorker:
     # --- Fallback Position Poll ---
 
     async def _run_position_poll(self):
-        self._sltp_missing_since: float | None = None
-        self._sltp_last_alert: float = 0
-
         while self.running:
-            has_active = self._active_trade_id is not None
-            poll_interval = 10 if (has_active and self._sltp_missing_since) else 30
+            poll_interval = 10 if (self._active_trades and self._sltp_missing_since) else 30
             await asyncio.sleep(poll_interval)
             try:
-                if self._active_trade_id is None:
-                    self._sltp_missing_since = None
-                    continue
+                open_trades = await db.get_open_trades(self.user_id, self.is_paper)
+                open_symbols = {t.symbol for t in open_trades}
 
-                trade = await db.get_open_trade(self.user_id, self.is_paper)
-                if trade is None:
-                    self._active_trade_id = None
-                    self._sltp_missing_since = None
-                    continue
+                # Sync in-memory state to what's actually open in the DB
+                self._active_trades = {t.symbol: t.id for t in open_trades}
+                for sym in list(self._sltp_missing_since):
+                    if sym not in open_symbols:
+                        self._sltp_missing_since.pop(sym, None)
+                for sym in list(self._sltp_last_alert):
+                    if sym not in open_symbols:
+                        self._sltp_last_alert.pop(sym, None)
 
-                pos = await self.exchange.get_position(trade.symbol)
-                if pos is None:
-                    log.info("Position poll: no position found for trade #%d — checking orders", trade.id)
-
-                    exit_price = None
-                    exit_comm = 0.0
-                    exit_order_id = None
-
-                    if not self.is_paper:
-                        for oid_str in [trade.sl_order_id, trade.tp_order_id]:
-                            if not oid_str:
-                                continue
-                            order_info = await self.exchange.get_order(trade.symbol, int(oid_str))
-                            if order_info and order_info.get("status") == "FILLED":
-                                exit_order_id = int(oid_str)
-                                exit_price = float(order_info.get("avgPrice", 0))
-                                exit_trades = await self.exchange.get_trades_for_order(trade.symbol, exit_order_id)
-                                if exit_trades:
-                                    total_qty = sum(float(t["qty"]) for t in exit_trades)
-                                    if total_qty > 0:
-                                        exit_price = sum(float(t["price"]) * float(t["qty"]) for t in exit_trades) / total_qty
-                                    exit_comm = sum(float(t.get("commission", 0)) for t in exit_trades)
-                                is_sl = order_info.get("type") == "STOP_MARKET"
-                                break
-                    else:
-                        paper_orders = await db.get_paper_orders_for_trade(trade.id)
-                        for po in paper_orders:
-                            if po.status == "FILLED":
-                                exit_price = po.stop_price
-                                is_sl = po.order_type == "STOP_MARKET"
-                                exit_comm = exit_price * trade.quantity * self.config.commission_pct
-                                break
-
-                    if exit_price is None or exit_price == 0:
-                        sm_candles = self._shared_market.get_candles(trade.symbol) if self._shared_market else []
-                        recent = sm_candles[-3:] if sm_candles else []
-                        if not recent:
-                            continue
-                        if trade.direction == "long":
-                            sl_hit = any(c["low"] <= trade.sl_price for c in recent)
-                            tp_hit = any(c["high"] >= trade.tp_price for c in recent)
-                        else:
-                            sl_hit = any(c["high"] >= trade.sl_price for c in recent)
-                            tp_hit = any(c["low"] <= trade.tp_price for c in recent)
-                        is_sl = sl_hit or not tp_hit
-                        exit_price = trade.sl_price if is_sl else trade.tp_price
-                        exit_comm = exit_price * trade.quantity * self.config.commission_pct
-
-                    result = "loss" if is_sl else "win"
-                    rr = await db.get_state("rr_ratio", self.config.strategy_params["rrr"],
-                                            user_id=self.user_id, is_paper=self.is_paper)
-                    r_value = -1.0 if is_sl else rr
-
-                    total_comm = (trade.commission or 0) + exit_comm
-
-                    if trade.direction == "long":
-                        raw_pnl = (exit_price - trade.entry_price) * trade.quantity
-                    else:
-                        raw_pnl = (trade.entry_price - exit_price) * trade.quantity
-                    pnl = raw_pnl - total_comm
-
-                    await db.update_trade(trade.id, {
-                        "exit_time": datetime.now(timezone.utc),
-                        "exit_price": exit_price,
-                        "result": result,
-                        "r_value": r_value,
-                        "pnl_usdt": pnl,
-                        "commission": total_comm,
-                    })
-
-                    await self.exchange.cancel_all_orders(trade.symbol)
-                    self._active_trade_id = None
-
-                    self._on_trade_result(result == "win")
-
-                    log.info("Position poll: trade #%d resolved as %s", trade.id, result)
-
-                    await self._broadcast({
-                        "type": "trade_closed",
-                        "trade": {
-                            "id": trade.id,
-                            "symbol": trade.symbol,
-                            "result": result,
-                            "pnl": pnl,
-                        },
-                    })
-
-                    balance = await self.exchange.get_balance()
-                    if not self.is_paper:
-                        await alert_exit(trade.symbol, trade.direction, result, trade.entry_price, exit_price, pnl, r_value, balance)
-                        await self._self_heal_trade(trade.id)
-
-                    self._sltp_missing_since = None
-                else:
-                    if not self.is_paper:
-                        sl_count, tp_count = await self._count_sltp_orders(trade)
-
-                        if sl_count == 1 and tp_count == 1:
-                            if self._sltp_missing_since is not None:
-                                log.info("Position poll: SL/TP confirmed for trade #%d", trade.id)
-                            self._sltp_missing_since = None
-                            self._sltp_last_alert = 0
-                        else:
-                            if sl_count > 1 or tp_count > 1:
-                                log.warning("Position poll: trade #%d has %d SL / %d TP (need 1/1) — cleaning duplicates",
-                                            trade.id, sl_count, tp_count)
-                            now = time.time()
-                            if self._sltp_missing_since is None:
-                                self._sltp_missing_since = now
-
-                            # Cancel all open orders, then place exactly one SL + one TP.
-                            # _place_sl_tp cancels first, so this can never accumulate
-                            # duplicate orders (the bug that hit Binance's order limit).
-                            sl_ok, tp_ok = await self._place_sl_tp(
-                                trade.symbol, trade.direction, pos["quantity"],
-                                trade.sl_price, trade.tp_price, trade.id,
-                            )
-
-                            if sl_ok and tp_ok:
-                                log.info("Position poll: re-placed SL/TP for trade #%d", trade.id)
-                                self._sltp_missing_since = None
-                                self._sltp_last_alert = 0
-                            else:
-                                elapsed = now - self._sltp_missing_since
-                                if elapsed >= 60 and (now - self._sltp_last_alert) >= 60:
-                                    missing = []
-                                    if not sl_ok:
-                                        missing.append("SL")
-                                    if not tp_ok:
-                                        missing.append("TP")
-                                    user_info = await db.get_user(self.user_id)
-                                    user_label = f"{user_info.name} (#{self.user_id})" if user_info and user_info.name else f"#{self.user_id}"
-                                    msg = (
-                                        f"⚠️ Failed to place {'/'.join(missing)} for {trade.symbol} "
-                                        f"({trade.direction.upper()}) — {user_label}\nCheck position manually"
-                                    )
-                                    log.error(msg)
-                                    await send_private(msg)
-                                    self._sltp_last_alert = now
-
+                for trade in open_trades:
+                    try:
+                        await self._poll_one_trade(trade)
+                    except Exception as e:
+                        log.error("Position poll error for %s #%d: %s", trade.symbol, trade.id, e)
             except Exception as e:
                 log.error("Position poll error: %s", e)
+
+    async def _poll_one_trade(self, trade):
+        symbol = trade.symbol
+        pos = await self.exchange.get_position(symbol)
+        if pos is None:
+            log.info("Position poll: no position found for trade #%d — checking orders", trade.id)
+
+            exit_price = None
+            exit_comm = 0.0
+            exit_order_id = None
+
+            if not self.is_paper:
+                for oid_str in [trade.sl_order_id, trade.tp_order_id]:
+                    if not oid_str:
+                        continue
+                    order_info = await self.exchange.get_order(symbol, int(oid_str))
+                    if order_info and order_info.get("status") == "FILLED":
+                        exit_order_id = int(oid_str)
+                        exit_price = float(order_info.get("avgPrice", 0))
+                        exit_trades = await self.exchange.get_trades_for_order(symbol, exit_order_id)
+                        if exit_trades:
+                            total_qty = sum(float(t["qty"]) for t in exit_trades)
+                            if total_qty > 0:
+                                exit_price = sum(float(t["price"]) * float(t["qty"]) for t in exit_trades) / total_qty
+                            exit_comm = sum(float(t.get("commission", 0)) for t in exit_trades)
+                        is_sl = order_info.get("type") == "STOP_MARKET"
+                        break
+            else:
+                paper_orders = await db.get_paper_orders_for_trade(trade.id)
+                for po in paper_orders:
+                    if po.status == "FILLED":
+                        exit_price = po.stop_price
+                        is_sl = po.order_type == "STOP_MARKET"
+                        exit_comm = exit_price * trade.quantity * self.config.commission_pct
+                        break
+
+            if exit_price is None or exit_price == 0:
+                sm_candles = self._shared_market.get_candles(symbol) if self._shared_market else []
+                recent = sm_candles[-3:] if sm_candles else []
+                if not recent:
+                    return
+                if trade.direction == "long":
+                    sl_hit = any(c["low"] <= trade.sl_price for c in recent)
+                    tp_hit = any(c["high"] >= trade.tp_price for c in recent)
+                else:
+                    sl_hit = any(c["high"] >= trade.sl_price for c in recent)
+                    tp_hit = any(c["low"] <= trade.tp_price for c in recent)
+                is_sl = sl_hit or not tp_hit
+                exit_price = trade.sl_price if is_sl else trade.tp_price
+                exit_comm = exit_price * trade.quantity * self.config.commission_pct
+
+            result = "loss" if is_sl else "win"
+            rr = await db.get_state("rr_ratio", self.config.strategy_params["rrr"],
+                                    user_id=self.user_id, is_paper=self.is_paper)
+            r_value = -1.0 if is_sl else rr
+
+            total_comm = (trade.commission or 0) + exit_comm
+
+            if trade.direction == "long":
+                raw_pnl = (exit_price - trade.entry_price) * trade.quantity
+            else:
+                raw_pnl = (trade.entry_price - exit_price) * trade.quantity
+            pnl = raw_pnl - total_comm
+
+            await db.update_trade(trade.id, {
+                "exit_time": datetime.now(timezone.utc),
+                "exit_price": exit_price,
+                "result": result,
+                "r_value": r_value,
+                "pnl_usdt": pnl,
+                "commission": total_comm,
+            })
+
+            await self.exchange.cancel_all_orders(symbol)
+            self._active_trades.pop(symbol, None)
+            self._sltp_missing_since.pop(symbol, None)
+            self._sltp_last_alert.pop(symbol, None)
+
+            self._on_trade_result(result == "win")
+
+            log.info("Position poll: trade #%d resolved as %s", trade.id, result)
+
+            await self._broadcast({
+                "type": "trade_closed",
+                "trade": {
+                    "id": trade.id,
+                    "symbol": symbol,
+                    "result": result,
+                    "pnl": pnl,
+                },
+            })
+
+            balance = await self.exchange.get_balance()
+            if not self.is_paper:
+                await alert_exit(symbol, trade.direction, result, trade.entry_price, exit_price, pnl, r_value, balance)
+                await self._self_heal_trade(trade.id)
+            return
+
+        # Position still open — verify exactly one SL + one TP (live only)
+        if self.is_paper:
+            return
+
+        sl_count, tp_count = await self._count_sltp_orders(trade)
+
+        if sl_count == 1 and tp_count == 1:
+            if symbol in self._sltp_missing_since:
+                log.info("Position poll: SL/TP confirmed for trade #%d", trade.id)
+            self._sltp_missing_since.pop(symbol, None)
+            self._sltp_last_alert.pop(symbol, None)
+            return
+
+        if sl_count > 1 or tp_count > 1:
+            log.warning("Position poll: trade #%d has %d SL / %d TP (need 1/1) — cleaning duplicates",
+                        trade.id, sl_count, tp_count)
+        now = time.time()
+        self._sltp_missing_since.setdefault(symbol, now)
+
+        # Cancel all open orders (both buckets), then place exactly one SL + one TP.
+        # _place_sl_tp cancels first, so this can never accumulate duplicate orders.
+        sl_ok, tp_ok = await self._place_sl_tp(
+            symbol, trade.direction, pos["quantity"],
+            trade.sl_price, trade.tp_price, trade.id,
+        )
+
+        if sl_ok and tp_ok:
+            log.info("Position poll: re-placed SL/TP for trade #%d", trade.id)
+            self._sltp_missing_since.pop(symbol, None)
+            self._sltp_last_alert.pop(symbol, None)
+        else:
+            elapsed = now - self._sltp_missing_since[symbol]
+            if elapsed >= 60 and (now - self._sltp_last_alert.get(symbol, 0)) >= 60:
+                missing = []
+                if not sl_ok:
+                    missing.append("SL")
+                if not tp_ok:
+                    missing.append("TP")
+                user_info = await db.get_user(self.user_id)
+                user_label = f"{user_info.name} (#{self.user_id})" if user_info and user_info.name else f"#{self.user_id}"
+                msg = (
+                    f"⚠️ Failed to place {'/'.join(missing)} for {symbol} "
+                    f"({trade.direction.upper()}) — {user_label}\nCheck position manually"
+                )
+                log.error(msg)
+                await send_private(msg)
+                self._sltp_last_alert[symbol] = now
 
     async def _self_heal_trade(self, trade_id: int):
         if self.is_paper:

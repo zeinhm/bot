@@ -45,6 +45,32 @@ async def get_open_trade(user_id: int, is_paper: bool = False) -> Trade | None:
         return result.scalar_one_or_none()
 
 
+async def get_open_trades(user_id: int, is_paper: bool = False) -> list[Trade]:
+    """All currently-open trades for a user (one per asset under per-asset mode)."""
+    async with get_session() as session:
+        result = await session.execute(
+            select(Trade)
+            .where(Trade.user_id == user_id, Trade.is_paper == is_paper, Trade.result == "open")
+        )
+        return list(result.scalars().all())
+
+
+async def get_open_trade_for_symbol(user_id: int, symbol: str, is_paper: bool = False) -> Trade | None:
+    """The open trade for a specific symbol (used to close the right trade on fill)."""
+    async with get_session() as session:
+        result = await session.execute(
+            select(Trade)
+            .where(
+                Trade.user_id == user_id,
+                Trade.is_paper == is_paper,
+                Trade.result == "open",
+                Trade.symbol == symbol,
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+
 async def get_recent_trades(limit: int = 50, user_id: int | None = None, is_paper: bool = False) -> list[Trade]:
     async with get_session() as session:
         q = select(Trade).where(Trade.is_paper == is_paper)

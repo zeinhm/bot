@@ -203,9 +203,8 @@ async def emergency_close(request: Request):
             except Exception as e:
                 errors.append(f"{pos['symbol']}: {e}")
 
-        open_trade = await db.get_open_trade(user.id, is_paper)
-        if open_trade:
-            from config import COMMISSION_PCT
+        from config import COMMISSION_PCT
+        for open_trade in await db.get_open_trades(user.id, is_paper):
             exit_price = closed_fills.get(open_trade.symbol, 0) or None
 
             if exit_price and exit_price > 0:

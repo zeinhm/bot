@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 
 ---
 
+## [2026-06-09]
+
+### Fixed
+- **SL/TP false-positive alerts**: Replaced fragile `get_open_orders` type scan with direct order-ID lookup via `get_order()` for SL/TP verification; also checks `origType` field as fallback; handles Binance `-4045` error as confirmation that orders exist instead of alerting
+- **Position page mode flickering**: Added WebSocket mode filter so live/paper position data doesn't cross-render
+
+---
+
 ## [2026-06-08]
 
 ### Added

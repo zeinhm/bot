@@ -237,9 +237,12 @@ class BotWorker:
                 })
                 self._active_trade_id = None
             else:
-                orders = await self.exchange.get_open_orders(open_trade.symbol)
-                has_sl = any(o["type"] == "STOP_MARKET" for o in orders)
-                has_tp = any(o["type"] == "TAKE_PROFIT_MARKET" for o in orders)
+                if not self.is_paper:
+                    has_sl, has_tp = await self._check_sltp_orders(open_trade)
+                else:
+                    orders = await self.exchange.get_open_orders(open_trade.symbol)
+                    has_sl = any(o.get("type") == "STOP_MARKET" for o in orders)
+                    has_tp = any(o.get("type") == "TAKE_PROFIT_MARKET" for o in orders)
                 if not has_sl or not has_tp:
                     log.warning("Missing SL/TP orders for trade #%d — re-placing", open_trade.id)
                     await self.exchange.cancel_all_orders(open_trade.symbol)
@@ -437,6 +440,33 @@ class BotWorker:
             update["tp_order_id"] = str(tp_order.get("orderId", ""))
         if update:
             await db.update_trade(trade_id, update)
+
+    async def _check_sltp_orders(self, trade) -> tuple[bool, bool]:
+        """Check if SL/TP orders exist by querying individual order IDs (most reliable)."""
+        has_sl = False
+        has_tp = False
+
+        if trade.sl_order_id and trade.sl_order_id.isdigit():
+            sl_info = await self.exchange.get_order(trade.symbol, int(trade.sl_order_id))
+            has_sl = sl_info is not None and sl_info.get("status") in ("NEW", "PARTIALLY_FILLED")
+        if trade.tp_order_id and trade.tp_order_id.isdigit():
+            tp_info = await self.exchange.get_order(trade.symbol, int(trade.tp_order_id))
+            has_tp = tp_info is not None and tp_info.get("status") in ("NEW", "PARTIALLY_FILLED")
+
+        if (not trade.sl_order_id or not trade.tp_order_id) and (not has_sl or not has_tp):
+            orders = await self.exchange.get_open_orders(trade.symbol)
+            expected_ps = ("LONG" if trade.direction == "long" else "SHORT") if self.exchange.hedge_mode else None
+            for o in orders:
+                otype = o.get("type", "")
+                orig = o.get("origType", "")
+                if expected_ps and o.get("positionSide") != expected_ps:
+                    continue
+                if not has_sl and (otype in ("STOP_MARKET", "STOP") or orig in ("STOP_MARKET", "STOP")):
+                    has_sl = True
+                if not has_tp and (otype in ("TAKE_PROFIT_MARKET", "TAKE_PROFIT") or orig in ("TAKE_PROFIT_MARKET", "TAKE_PROFIT")):
+                    has_tp = True
+
+        return has_sl, has_tp
 
     # --- Order Fill Monitoring ---
 
@@ -649,48 +679,44 @@ class BotWorker:
                     self._sltp_missing_since = None
                 else:
                     if not self.is_paper:
-                        orders = await self.exchange.get_open_orders(trade.symbol)
-                        has_sl = any(o["type"] == "STOP_MARKET" for o in orders)
-                        has_tp = any(o["type"] == "TAKE_PROFIT_MARKET" for o in orders)
+                        has_sl, has_tp = await self._check_sltp_orders(trade)
 
                         if not has_sl or not has_tp:
-                            order_types = [o.get("type") for o in orders]
-                            log.warning("User %d: SL/TP check — has_sl=%s has_tp=%s, order_types=%s, total_orders=%d",
-                                        self.user_id, has_sl, has_tp, order_types, len(orders))
                             now = time.time()
                             if self._sltp_missing_since is None:
                                 self._sltp_missing_since = now
 
                             close_side = "SELL" if trade.direction == "long" else "BUY"
-                            placed = False
                             if not has_sl:
                                 try:
-                                    await self.exchange.place_stop_loss(trade.symbol, close_side, pos["quantity"], trade.sl_price)
-                                    placed = True
+                                    sl_order = await self.exchange.place_stop_loss(trade.symbol, close_side, pos["quantity"], trade.sl_price)
+                                    await db.update_trade(trade.id, {"sl_order_id": str(sl_order.get("orderId", ""))})
+                                    has_sl = True
                                 except Exception as e:
-                                    log.warning("Position poll: failed to re-place SL: %s", e)
+                                    if "-4045" in str(e):
+                                        log.info("User %d: SL confirmed on Binance (order limit reached)", self.user_id)
+                                        has_sl = True
+                                    else:
+                                        log.warning("Position poll: failed to re-place SL: %s", e)
                             if not has_tp:
                                 try:
-                                    await self.exchange.place_take_profit(trade.symbol, close_side, pos["quantity"], trade.tp_price)
-                                    placed = True
+                                    tp_order = await self.exchange.place_take_profit(trade.symbol, close_side, pos["quantity"], trade.tp_price)
+                                    await db.update_trade(trade.id, {"tp_order_id": str(tp_order.get("orderId", ""))})
+                                    has_tp = True
                                 except Exception as e:
-                                    log.warning("Position poll: failed to re-place TP: %s", e)
+                                    if "-4045" in str(e):
+                                        log.info("User %d: TP confirmed on Binance (order limit reached)", self.user_id)
+                                        has_tp = True
+                                    else:
+                                        log.warning("Position poll: failed to re-place TP: %s", e)
 
-                            if placed:
-                                orders_after = await self.exchange.get_open_orders(trade.symbol)
-                                still_missing_sl = not any(o["type"] == "STOP_MARKET" for o in orders_after)
-                                still_missing_tp = not any(o["type"] == "TAKE_PROFIT_MARKET" for o in orders_after)
-                            else:
-                                still_missing_sl = not has_sl
-                                still_missing_tp = not has_tp
-
-                            if still_missing_sl or still_missing_tp:
+                            if not has_sl or not has_tp:
                                 elapsed = now - self._sltp_missing_since
                                 if elapsed >= 60 and (now - self._sltp_last_alert) >= 60:
                                     missing = []
-                                    if still_missing_sl:
+                                    if not has_sl:
                                         missing.append("SL")
-                                    if still_missing_tp:
+                                    if not has_tp:
                                         missing.append("TP")
                                     user_info = await db.get_user(self.user_id)
                                     user_label = f"{user_info.name} (#{self.user_id})" if user_info and user_info.name else f"#{self.user_id}"
@@ -702,7 +728,8 @@ class BotWorker:
                                     await send_private(msg)
                                     self._sltp_last_alert = now
                             else:
-                                log.info("Position poll: re-placed missing SL/TP for trade #%d", trade.id)
+                                if self._sltp_missing_since is not None:
+                                    log.info("Position poll: SL/TP confirmed for trade #%d", trade.id)
                                 self._sltp_missing_since = None
                                 self._sltp_last_alert = 0
                         else:

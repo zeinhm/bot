@@ -595,6 +595,7 @@ class BotWorker:
     async def _run_position_poll(self):
         self._sltp_missing_since: float | None = None
         self._sltp_last_alert: float = 0
+        self._sltp_confirmed_at: float = 0
 
         while self.running:
             has_active = self._active_trade_id is not None
@@ -603,12 +604,14 @@ class BotWorker:
             try:
                 if self._active_trade_id is None:
                     self._sltp_missing_since = None
+                    self._sltp_confirmed_at = 0
                     continue
 
                 trade = await db.get_open_trade(self.user_id, self.is_paper)
                 if trade is None:
                     self._active_trade_id = None
                     self._sltp_missing_since = None
+                    self._sltp_confirmed_at = 0
                     continue
 
                 pos = await self.exchange.get_position(trade.symbol)
@@ -706,6 +709,9 @@ class BotWorker:
                     self._sltp_missing_since = None
                 else:
                     if not self.is_paper:
+                        if time.time() - self._sltp_confirmed_at < 300:
+                            continue
+
                         has_sl, has_tp = await self._check_sltp_orders(trade)
 
                         if not has_sl or not has_tp:
@@ -714,30 +720,40 @@ class BotWorker:
                                 self._sltp_missing_since = now
 
                             close_side = "SELL" if trade.direction == "long" else "BUY"
+                            confirmed_via_4045 = True
                             if not has_sl:
                                 try:
                                     sl_order = await self.exchange.place_stop_loss(trade.symbol, close_side, pos["quantity"], trade.sl_price)
                                     await db.update_trade(trade.id, {"sl_order_id": str(sl_order.get("orderId", ""))})
                                     has_sl = True
+                                    confirmed_via_4045 = False
                                 except Exception as e:
                                     if "-4045" in str(e):
-                                        log.info("User %d: SL confirmed on Binance (order limit reached)", self.user_id)
                                         has_sl = True
                                     else:
                                         log.warning("Position poll: failed to re-place SL: %s", e)
+                                        confirmed_via_4045 = False
                             if not has_tp:
                                 try:
                                     tp_order = await self.exchange.place_take_profit(trade.symbol, close_side, pos["quantity"], trade.tp_price)
                                     await db.update_trade(trade.id, {"tp_order_id": str(tp_order.get("orderId", ""))})
                                     has_tp = True
+                                    confirmed_via_4045 = False
                                 except Exception as e:
                                     if "-4045" in str(e):
-                                        log.info("User %d: TP confirmed on Binance (order limit reached)", self.user_id)
                                         has_tp = True
                                     else:
                                         log.warning("Position poll: failed to re-place TP: %s", e)
+                                        confirmed_via_4045 = False
 
-                            if not has_sl or not has_tp:
+                            if has_sl and has_tp and confirmed_via_4045:
+                                self._sltp_confirmed_at = now
+                                if self._sltp_missing_since is not None:
+                                    log.info("User %d: SL/TP confirmed via -4045 for trade #%d, backing off 5min",
+                                             self.user_id, trade.id)
+                                self._sltp_missing_since = None
+                                self._sltp_last_alert = 0
+                            elif not has_sl or not has_tp:
                                 elapsed = now - self._sltp_missing_since
                                 if elapsed >= 60 and (now - self._sltp_last_alert) >= 60:
                                     missing = []

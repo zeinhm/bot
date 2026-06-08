@@ -50,6 +50,16 @@ async def _ensure_schema(eng):
             "ALTER TABLE bot_state ADD COLUMN IF NOT EXISTS is_paper BOOLEAN NOT NULL DEFAULT false"
         ))
 
+        # Drop old single-column unique constraint on bot_state.key
+        old_exists = await conn.execute(text(
+            "SELECT 1 FROM pg_constraint WHERE conname = 'bot_state_key_key'"
+        ))
+        if old_exists.scalar():
+            await conn.execute(text(
+                "ALTER TABLE bot_state DROP CONSTRAINT bot_state_key_key"
+            ))
+            log.info("Dropped old bot_state_key_key constraint")
+
         # bot_state unique constraint (required by set_state upsert)
         exists = await conn.execute(text(
             "SELECT 1 FROM pg_constraint WHERE conname = 'uq_bot_state_scoped'"

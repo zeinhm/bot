@@ -9,9 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 ## [2026-06-09]
 
 ### Fixed
-- **SL/TP false-positive alerts**: Replaced fragile `get_open_orders` type scan with direct order-ID lookup via `get_order()` for SL/TP verification; also checks `origType` field as fallback; handles Binance `-4045` error as confirmation that orders exist instead of alerting
-- **WebSocket 403 on new sessions**: Moved WebSocket upgrade check before session access in CSRF middleware — `BaseHTTPMiddleware` tried to set cookie on WS upgrade when session was new, causing 403
-- **`bot_state` upsert error**: Auto-create `uq_bot_state_scoped` constraint on startup if missing (migration wasn't applied on prod); deduplicates existing rows first
+- **SL/TP false-positive alerts**: Replaced fragile `get_open_orders` type scan with direct order-ID lookup via `get_order()` for SL/TP verification; also checks `origType` field as fallback; handles Binance `-4045` error as confirmation that orders exist instead of alerting; added 5-minute backoff after `-4045` confirmation to prevent log spam
+- **WebSocket 403 on new sessions**: Converted CSRF middleware from `BaseHTTPMiddleware` to pure ASGI middleware — `BaseHTTPMiddleware` wraps the ASGI lifecycle in a way that breaks WebSocket upgrades; pure ASGI skips non-HTTP scopes entirely
+- **`bot_state` upsert error**: Drop old `bot_state_key_key` single-column unique constraint before creating `uq_bot_state_scoped` (scoped by user_id + is_paper); deduplicates existing rows first
 - **Position page mode flickering**: Added WebSocket mode filter so live/paper position data doesn't cross-render
 
 ---

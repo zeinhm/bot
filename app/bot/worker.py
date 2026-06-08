@@ -691,7 +691,7 @@ class BotWorker:
                                         missing.append("TP")
                                     msg = (
                                         f"⚠️ Failed to place {'/'.join(missing)} for {trade.symbol} "
-                                        f"({trade.direction.upper()}) — please check your position manually"
+                                        f"({trade.direction.upper()}) user #{self.user_id} — check position manually"
                                     )
                                     log.error(msg)
                                     await send_private(msg)

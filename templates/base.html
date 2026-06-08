@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="/static/css/app.css?v=12">
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
-    <script src="/static/js/websocket.js?v=2"></script>
+    <script src="/static/js/websocket.js?v=3"></script>
     <meta name="csrf-token" content="{{ request.session.csrf_token }}">
     <script>var botWS = new BotWebSocket({{ user.id if user else 1 }});</script>
     <script>function csrfToken(){return document.querySelector('meta[name=csrf-token]').content;}</script>

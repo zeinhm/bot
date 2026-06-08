@@ -8,9 +8,9 @@ Platform handles real money (Binance Futures) and stores encrypted API keys for 
 
 ---
 
-## P0 — Critical (exploitable now, no auth needed)
+## P0 — Critical (exploitable now, no auth needed) ✅ FIXED
 
-### 1. WebSocket Authentication Bypass
+### 1. WebSocket Authentication Bypass ✅
 
 **Vulnerability**: Two WebSocket endpoints have no/broken authentication.
 
@@ -47,7 +47,7 @@ Change `is not None and` to `is None or` — reject if no session OR if user mis
 
 ---
 
-### 2. CSRF Protection
+### 2. CSRF Protection ✅
 
 **Vulnerability**: All POST endpoints lack CSRF tokens. A malicious page can trigger actions on behalf of a logged-in user: emergency close positions, delete API keys, stop bot, approve/reject users.
 
@@ -87,7 +87,7 @@ Update `main.py`:
 
 ## P1 — High (requires compromised session or leaked secrets)
 
-### 3. Validate SESSION_SECRET Is Not Default
+### 3. Validate SESSION_SECRET Is Not Default ✅
 
 **Vulnerability**: `SESSION_SECRET` defaults to `"change-me-in-production"`. If not overridden, sessions can be forged.
 
@@ -176,7 +176,7 @@ Limits:
 
 **Fix**: Add a middleware or response hook that sets:
 ```
-Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://lh3.googleusercontent.com; connect-src 'self' wss://*.zeinhm.dev
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://lh3.googleusercontent.com; connect-src 'self' wss://*.zenithbot.org
 X-Frame-Options: DENY
 X-Content-Type-Options: nosniff
 Strict-Transport-Security: max-age=31536000; includeSubDomains
@@ -200,7 +200,7 @@ This prevents session fixation attacks.
 
 ---
 
-### 10. Secure Cookie Settings
+### 10. Secure Cookie Settings ✅
 
 **Fix**: Ensure session cookie has proper flags:
 ```python

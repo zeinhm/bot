@@ -8,13 +8,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 
 ## [2026-06-08]
 
+### Added
+- **CSRF protection**: Session-based CSRF middleware validates `X-CSRF-Token` header on all POST/PUT/DELETE requests; exempt GET, WebSocket upgrades, and `/auth/callback`; token injected via `<meta>` tag in templates
+- **Session secret validation**: Generates random secret on startup if default value detected, with CRITICAL log warning
+- **Secure cookies**: `SameSite=Lax` and `Secure` flag (in production) on session cookies
+- **Mobile position cards**: Responsive card layout on mobile with PnL/ROI display, SL/TP progress bars, and live WebSocket price updates
+- **ROI column**: Added ROI percentage to desktop position table with live updates
+
 ### Changed
 - **Settings redesign**: API keys now show as read-only masked view when configured; delete via confirmation modal + toast notification instead of page reload
 - **Currency formatting**: Removed `$` signs from all price, PnL, balance, and equity displays globally
 
-### Added
-- **Mobile position cards**: Responsive card layout on mobile with PnL/ROI display, SL/TP progress bars, and live WebSocket price updates
-- **ROI column**: Added ROI percentage to desktop position table with live updates
+### Fixed
+- **WebSocket auth bypass**: Fixed `/ws/{user_id}` allowing unauthenticated connections (changed `is not None and` to `is None or`)
+
+### Removed
+- **Legacy WebSocket endpoint**: Deleted `routes/ws.py` — zero-auth `/ws` endpoint that leaked all broadcast data
 
 ---
 

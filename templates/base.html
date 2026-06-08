@@ -8,7 +8,9 @@
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
     <script src="/static/js/websocket.js?v=2"></script>
+    <meta name="csrf-token" content="{{ request.session.csrf_token }}">
     <script>var botWS = new BotWebSocket({{ user.id if user else 1 }});</script>
+    <script>function csrfToken(){return document.querySelector('meta[name=csrf-token]').content;}</script>
     {% block head %}{% endblock %}
 </head>
 <body>
@@ -334,7 +336,7 @@
 
 <script>
 function toggleAdminMode(enable) {
-    fetch('/admin/toggle', { method: 'POST' })
+    fetch('/admin/toggle', { method: 'POST', headers: {'X-CSRF-Token': csrfToken()} })
     .then(function(r) { return r.json(); })
     .then(function(data) {
         if (data.ok) window.location.href = enable ? '/admin' : '/dashboard';
@@ -344,7 +346,7 @@ var currentMode = '{{ trading_mode|default("paper") }}';
 function switchMode(mode) {
     fetch('/api/switch-mode', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken()},
         body: JSON.stringify({mode: mode})
     }).then(function(r) { return r.json(); })
     .then(function(data) {
@@ -354,7 +356,7 @@ function switchMode(mode) {
             return;
         }
         if (mode === 'paper' && data.paper_bot_started && !data.paper_bot_running) {
-            fetch('/bot/start-paper', { method: 'POST' })
+            fetch('/bot/start-paper', { method: 'POST', headers: {'X-CSRF-Token': csrfToken()} })
                 .then(function() { window.location.href = '/dashboard'; });
             return;
         }
@@ -365,7 +367,7 @@ function closePaperModal(start) {
     var m = document.getElementById('paper-modal');
     if (m) m.style.display = 'none';
     if (start) {
-        fetch('/bot/start-paper', { method: 'POST' })
+        fetch('/bot/start-paper', { method: 'POST', headers: {'X-CSRF-Token': csrfToken()} })
             .then(function() { window.location.href = '/dashboard'; });
     } else {
         window.location.href = '/dashboard';

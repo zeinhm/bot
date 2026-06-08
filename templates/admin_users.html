@@ -322,7 +322,7 @@ function doAction(id, action) {
     var row = document.getElementById('row-' + id) || document.getElementById('row-rl-' + id);
     if (row) row.classList.add('resolving');
 
-    fetch('/admin/users/' + action + '/' + id, { method: 'POST' })
+    fetch('/admin/users/' + action + '/' + id, { method: 'POST', headers: {'X-CSRF-Token': csrfToken()} })
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.ok) {

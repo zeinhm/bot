@@ -12,8 +12,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+import secrets as _secrets
+
 from starlette.middleware.sessions import SessionMiddleware
 
+from app.middleware.csrf import CSRFMiddleware
 from config import (
     DATABASE_URL, BINANCE_API_KEY, BINANCE_API_SECRET,
     SESSION_SECRET, GOOGLE_CLIENT_ID,
@@ -36,7 +39,6 @@ from routes.alerts import router as alerts_router
 from routes.track_record import router as track_record_router
 from routes.bot_control import router as bot_control_router
 from routes.admin import router as admin_router, AdminNotFound
-from routes.ws import router as ws_legacy_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -119,7 +121,21 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Trading Futures Bot", lifespan=lifespan)
 
-app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, max_age=86400)
+if SESSION_SECRET == "change-me-in-production":
+    log.critical("SESSION_SECRET is the default value! Generating a random one. Set SESSION_SECRET in .env for persistent sessions.")
+    _session_secret = _secrets.token_hex(32)
+else:
+    _session_secret = SESSION_SECRET
+
+app.add_middleware(CSRFMiddleware)
+
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=_session_secret,
+    max_age=86400,
+    same_site="lax",
+    https_only=SESSION_SECRET != "change-me-in-production",
+)
 
 
 @app.exception_handler(AuthRequired)
@@ -167,5 +183,4 @@ app.include_router(alerts_router)
 app.include_router(track_record_router)
 app.include_router(bot_control_router)
 app.include_router(admin_router)
-app.include_router(ws_legacy_router)
 app.include_router(ws_router)

@@ -12,7 +12,7 @@
     </div>
     <div style="font-size:15px;font-weight:600;margin-bottom:4px">Paper Trading</div>
     <div class="muted" style="font-size:13px;margin-bottom:16px">Start the demo bot to practice with $10,000 virtual funds</div>
-    <button class="btn btn-primary" onclick="fetch('/bot/start-paper',{method:'POST'}).then(function(){window.location.reload()})">
+    <button class="btn btn-primary" onclick="fetch('/bot/start-paper',{method:'POST',headers:{'X-CSRF-Token':csrfToken()}}).then(function(){window.location.reload()})">
         Start Paper Trading
     </button>
 </div>

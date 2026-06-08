@@ -58,7 +58,7 @@ ws_manager = ConnectionManager()
 @router.websocket("/ws/{user_id}")
 async def websocket_endpoint(ws: WebSocket, user_id: int):
     session_user = ws.session.get("user_id") if hasattr(ws, "session") else None
-    if session_user is not None and session_user != user_id:
+    if session_user is None or session_user != user_id:
         await ws.close(code=4003)
         return
 

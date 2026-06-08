@@ -42,8 +42,10 @@ FastAPI app entry point.
 - Two modes: multi-user (Google OAuth) or single-user/legacy (env API keys)
 - Exception handlers: `AuthRequired` → `/login`, `PendingApproval` → `/pending`, `AccountRejected` → `/rejected`, `AdminNotFound` → 404
 - `landing_page()` — Serves static `landing-page/landing-page.html` at `/`
-- Mounts 12 route modules + static files at `/static` and `/landing`
-- Session middleware: `max_age=86400` (24 hours)
+- Mounts 11 route modules + static files at `/static` and `/landing`
+- Middleware stack (outermost → innermost): SessionMiddleware → CSRFMiddleware → app
+- Session middleware: `max_age=86400`, `same_site="lax"`, `https_only` in production
+- Session secret: auto-generates random if default `"change-me-in-production"` detected
 
 ---
 
@@ -289,10 +291,16 @@ Key relationships:
 
 ## Bot Layer
 
+### `app/middleware/csrf.py`
+CSRF protection middleware (session-based tokens).
+
+- `CSRFMiddleware(BaseHTTPMiddleware)` — Generates `csrf_token` in session on first request; validates `X-CSRF-Token` header on POST/PUT/DELETE; exempts safe methods, WebSocket upgrades, `/auth/callback`; returns 403 on mismatch
+
 ### `app/bot/__init__.py`
 Bot accessors and config builders.
 
 - `set_bot_manager(manager)` — Stores global reference
+- `broadcast(data)` — Sends to user 1 via ws_manager (legacy compat)
 - `make_broadcast_fn(user_id, mode)` → closure that broadcasts to specific user/mode via ws_manager
 - `get_bot()` → BotWorker for user 1 (legacy)
 - `get_bot_for_user(user_id, mode)` → BotWorker for any user/mode
@@ -340,7 +348,7 @@ Shared public Binance connection (no API key needed).
 WebSocket connection manager + 7 background push tasks.
 
 - `ConnectionManager` — Per-user WebSocket connections: `connect`, `disconnect`, `send_to_user`, `broadcast_all`
-- `websocket_endpoint(ws, user_id)` — `/ws/{user_id}` route, validates session ownership
+- `websocket_endpoint(ws, user_id)` — `/ws/{user_id}` route, rejects if no session or user ID mismatch (code 4003)
 - `start_ws_tasks(bot_manager, shared_market)` → 7 asyncio tasks:
   1. `_price_stream` — Real-time ticker prices → all clients
   2. `_heartbeat_loop` — Every 15s: bot status, risk, session, candle age, uptime

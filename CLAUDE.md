@@ -1,6 +1,6 @@
 # ZENITH Trading Bot — Platform Codebase
 
-Python FastAPI trading bot for the AMD FVG strategy on Binance Futures, with a full web dashboard, multi-user Google SSO, paper trading, admin panel, and real-time WebSocket data streaming. Deployed on Railway at bot.zeinhm.dev.
+Python FastAPI trading bot for the AMD FVG strategy on Binance Futures, with a full web dashboard, multi-user Google SSO, paper trading, admin panel, and real-time WebSocket data streaming. Deployed on Railway at zenithbot.org.
 
 ## Tech Stack
 
@@ -61,12 +61,14 @@ bot/
 │   │       ├── state.py       # Key-value state store (per user+mode)
 │   │       ├── paper.py       # Paper account + order management
 │   │       └── backtest.py    # Backtest result storage
+│   ├── middleware/
+│   │   └── csrf.py            # CSRF protection middleware (session-based token)
 │   └── bot/
 │       ├── __init__.py        # Bot accessors, broadcast factory, config builders
 │       ├── worker.py          # Core trading loop: candle → signal → execute → monitor
 │       ├── manager.py         # Multi-user BotWorker lifecycle (start/stop/status)
 │       ├── shared_market.py   # Shared Binance connection for candle data (no API key)
-│       └── websocket.py       # WS connection manager + 7 background push tasks
+│       └── websocket.py       # WS connection manager + 7 background push tasks (authenticated)
 │
 ├── routes/
 │   ├── auth.py                # Google OAuth flow, /setup, /login, /logout
@@ -79,7 +81,6 @@ bot/
 │   ├── backtester.py          # GET /backtester, GET /api/backtest, /api/candles
 │   ├── alerts.py              # GET /alerts (event log)
 │   ├── track_record.py        # GET /track-record (public, no auth)
-│   ├── ws.py                  # Legacy WebSocket endpoint
 │   └── admin/
 │       ├── __init__.py        # Admin router, require_admin middleware
 │       ├── dashboard.py       # GET /admin (platform overview)
@@ -168,6 +169,8 @@ bot/
 | **Design tokens / colors**          | `static/css/app.css` → CSS custom properties at top           |
 | **Historical data import**          | `import_candles.py` (CLI tool, raw psycopg2)                 |
 | **Seed backtest results**           | `seed_trades.py` (CLI tool)                                  |
+| **CSRF / security middleware**      | `app/middleware/csrf.py`, `main.py` (middleware order)        |
+| **Session config / cookies**        | `main.py` → SessionMiddleware config                         |
 | **Deployment config**               | `Procfile`, `nixpacks.toml`, `.env`                          |
 
 ## Key Patterns
@@ -181,6 +184,10 @@ bot/
 **WebSocket messages**: Server sends JSON `{"type": "...", ...}`. Client in `base.html` dispatches via `ws.on("type", handler)`. Types: `price`, `balance`, `heartbeat`, `bot_status`, `position`, `positions`, `adaptive_sizing`, `trade_opened`, `trade_closed`, `orderbook`, `agg_trade`.
 
 **Two operational modes**: Multi-user (Google OAuth enabled) or single-user/legacy (env API keys). Controlled by `GOOGLE_CLIENT_ID` in config.
+
+**CSRF protection**: All POST/PUT/DELETE requests require `X-CSRF-Token` header matching the session token. Token is injected via `<meta name="csrf-token">` in `base.html` and `setup.html`. Helper `csrfToken()` is available globally. Middleware in `app/middleware/csrf.py`, exempts GET/HEAD/OPTIONS, WebSocket upgrades, and `/auth/callback`.
+
+**WebSocket auth**: `/ws/{user_id}` requires session authentication — rejects if no session or user ID mismatch (code 4003). No legacy unauthenticated WS endpoint.
 
 **Live vs Paper**: Scoped by `(user_id, is_paper)` throughout DB queries and bot workers. `exchange.py` for live, `paper_exchange.py` for paper.
 

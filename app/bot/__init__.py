@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from typing import TYPE_CHECKING
 
@@ -9,7 +8,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-_ws_clients: set = set()
 _bot_manager = None
 
 PHASE1_USER_ID = 1
@@ -20,26 +18,9 @@ def set_bot_manager(manager):
     _bot_manager = manager
 
 
-def register_ws(ws):
-    _ws_clients.add(ws)
-
-
-def unregister_ws(ws):
-    _ws_clients.discard(ws)
-
-
 async def broadcast(data: dict):
     from app.bot.websocket import ws_manager
     await ws_manager.send_to_user(PHASE1_USER_ID, data)
-
-    msg = json.dumps(data)
-    dead = set()
-    for ws in _ws_clients:
-        try:
-            await ws.send_text(msg)
-        except Exception:
-            dead.add(ws)
-    _ws_clients -= dead
 
 
 def make_broadcast_fn(user_id: int, mode: str = "live"):

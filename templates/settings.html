@@ -112,7 +112,7 @@ function saveApiKeys(e) {
     var fd = new FormData(form);
     btn.disabled = true;
     btn.textContent = 'Saving...';
-    fetch('/settings/api-keys', {method:'POST', body: fd})
+    fetch('/settings/api-keys', {method:'POST', headers:{'X-CSRF-Token':csrfToken()}, body: fd})
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.ok) {
@@ -130,7 +130,7 @@ function deleteApiKeys() {
     var btn = document.getElementById('btn-delete-keys');
     btn.disabled = true;
     btn.textContent = 'Deleting...';
-    fetch('/settings/api-keys/delete', {method:'POST'})
+    fetch('/settings/api-keys/delete', {method:'POST', headers:{'X-CSRF-Token':csrfToken()}})
         .then(function(r) { return r.json(); })
         .then(function(data) {
             document.getElementById('delete-keys-modal').style.display = 'none';
@@ -150,7 +150,7 @@ function emergencyClose() {
     var res = document.getElementById('emergency-result');
     btn.disabled = true;
     btn.textContent = 'Closing...';
-    fetch('/api/emergency-close', {method:'POST'})
+    fetch('/api/emergency-close', {method:'POST', headers:{'X-CSRF-Token':csrfToken()}})
         .then(function(r) { return r.json(); })
         .then(function(data) {
             res.style.display = 'block';

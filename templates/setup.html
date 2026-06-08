@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ZENITH — Setup</title>
     <link rel="stylesheet" href="/static/css/app.css">
+    <meta name="csrf-token" content="{{ request.session.csrf_token }}">
 </head>
 <body class="app" style="display:grid;place-items:center;min-height:100vh">
 
@@ -17,7 +18,7 @@
         </p>
     </div>
 
-    <form method="post" action="/setup" class="card" style="padding:28px 24px">
+    <form id="setup-form" class="card" style="padding:28px 24px" onsubmit="return submitSetup(event)">
         <div style="margin-bottom:18px">
             <label class="field-lbl">API Key</label>
             <input class="input mono" name="api_key" required placeholder="Enter your Binance API key"
@@ -53,5 +54,29 @@
     </div>
 </div>
 
+<script>
+function submitSetup(e) {
+    e.preventDefault();
+    var form = document.getElementById('setup-form');
+    var btn = form.querySelector('button[type=submit]');
+    btn.disabled = true;
+    btn.textContent = 'Connecting...';
+    fetch('/setup', {
+        method: 'POST',
+        headers: {'X-CSRF-Token': document.querySelector('meta[name=csrf-token]').content},
+        body: new FormData(form)
+    }).then(function(r) {
+        if (r.redirected) { window.location.href = r.url; return; }
+        return r.text().then(function(html) {
+            if (r.ok) { window.location.href = '/dashboard'; }
+            else { btn.disabled = false; btn.textContent = 'Connect & Start Bot'; }
+        });
+    }).catch(function() {
+        btn.disabled = false;
+        btn.textContent = 'Connect & Start Bot';
+    });
+    return false;
+}
+</script>
 </body>
 </html>

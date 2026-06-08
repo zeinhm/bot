@@ -15,13 +15,6 @@
 </div>
 {% endif %}
 
-{% if keys_saved %}
-<div class="callout green" style="margin-bottom:14px">
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg>
-    <span>API keys updated. Bot restarted with new credentials.</span>
-</div>
-{% endif %}
-
 {% if error %}
 <div class="callout amber" style="margin-bottom:14px">
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
@@ -44,34 +37,54 @@
             </div>
         </div>
 
-        <details style="margin-top:4px">
-            <summary style="cursor:pointer;font-size:12px;color:var(--text-2);margin-bottom:10px">
-                {{ 'Update API keys' if api_key_set else 'Configure API keys' }}
-            </summary>
-            <form method="post" action="/settings/api-keys">
-                <div style="margin-bottom:10px">
-                    <label class="field-lbl">API Key</label>
-                    <input class="input mono" name="api_key" required placeholder="{{ '••••••••••' if api_key_set else 'Enter API key' }}" style="font-size:12px" autocomplete="off">
-                </div>
-                <div style="margin-bottom:10px">
-                    <label class="field-lbl">API Secret</label>
-                    <input class="input mono" name="api_secret" type="password" required placeholder="{{ '••••••••••' if api_key_set else 'Enter API secret' }}" style="font-size:12px" autocomplete="off">
-                </div>
-                <button type="submit" class="btn btn-primary btn-block">Save & Restart Bot</button>
+        {% if api_key_set %}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+            <div style="background:var(--card-3);border-radius:var(--radius-sm);padding:9px 11px">
+                <div class="k" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">API Key</div>
+                <div class="mono" style="font-size:12px;color:var(--text-2);margin-top:2px">{{ api_key_preview }}</div>
+            </div>
+            <div style="background:var(--card-3);border-radius:var(--radius-sm);padding:9px 11px">
+                <div class="k" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">API Secret</div>
+                <div class="mono" style="font-size:12px;color:var(--text-2);margin-top:2px">••••••••••••</div>
+            </div>
+        </div>
+        <button type="button" class="btn btn-ghost btn-block" style="font-size:12px;color:var(--red)" onclick="document.getElementById('delete-keys-modal').style.display='flex'">Delete API Keys</button>
 
-                <div class="callout" style="margin-top:14px;padding:10px 12px;flex-wrap:wrap">
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" style="flex:none;margin-top:1px"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
-                    <div style="flex:1;min-width:0">
-                        <span style="font-size:11.5px" class="muted">Whitelist these IPs in your Binance API settings:</span>
-                        <div style="margin-top:6px;font-family:var(--mono);font-size:11px;color:var(--text-2);line-height:1.8;user-select:all">
-                            208.77.246.240<br>
-                            208.77.246.241<br>
-                            208.77.246.242
-                        </div>
-                    </div>
+        <div id="delete-keys-modal" style="display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.6);align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)this.style.display='none'">
+            <div class="card" style="max-width:400px;width:100%">
+                <div style="font-size:15px;font-weight:700;margin-bottom:8px">Delete API Keys</div>
+                <p class="muted" style="font-size:12.5px;margin:0 0 16px">This will remove your Binance API keys and stop the live bot. You can add new keys anytime.</p>
+                <div style="display:flex;gap:8px">
+                    <button type="button" class="btn btn-ghost" style="flex:1;font-size:12px" onclick="document.getElementById('delete-keys-modal').style.display='none'">Cancel</button>
+                    <button type="button" class="btn btn-red" style="flex:1;font-size:12px" id="btn-delete-keys" onclick="deleteApiKeys()">Delete</button>
                 </div>
-            </form>
-        </details>
+            </div>
+        </div>
+        {% else %}
+        <form id="api-keys-form" onsubmit="return saveApiKeys(event)">
+            <div style="margin-bottom:10px">
+                <label class="field-lbl">API Key</label>
+                <input class="input mono" name="api_key" required placeholder="Enter API key" style="font-size:12px" autocomplete="new-password">
+            </div>
+            <div style="margin-bottom:10px">
+                <label class="field-lbl">API Secret</label>
+                <input class="input mono" name="api_secret" type="password" required placeholder="Enter API secret" style="font-size:12px" autocomplete="new-password">
+            </div>
+            <button type="submit" class="btn btn-primary btn-block" id="btn-save-keys">Save & Restart Bot</button>
+        </form>
+        {% endif %}
+
+        <div class="callout" style="margin-top:14px;padding:10px 12px;flex-wrap:wrap">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" style="flex:none;margin-top:1px"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+            <div style="flex:1;min-width:0">
+                <span style="font-size:11.5px" class="muted">Whitelist these IPs in your Binance API settings:</span>
+                <div style="margin-top:6px;font-family:var(--mono);font-size:11px;color:var(--text-2);line-height:1.8;user-select:all">
+                    208.77.246.240<br>
+                    208.77.246.241<br>
+                    208.77.246.242
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Danger Zone -->
@@ -84,7 +97,53 @@
         <button type="button" class="btn btn-ghost btn-block" disabled>Reset paper trading wallet</button>
     </div>
 </div>
+<div id="toast" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a2a22;border:1px solid var(--green-line);color:var(--green);padding:10px 20px;border-radius:var(--radius);font-size:13px;font-weight:600;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,.4)"></div>
 <script>
+function showToast(msg) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.display = 'block';
+    setTimeout(function() { t.style.display = 'none'; }, 3000);
+}
+function saveApiKeys(e) {
+    e.preventDefault();
+    var form = document.getElementById('api-keys-form');
+    var btn = document.getElementById('btn-save-keys');
+    var fd = new FormData(form);
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    fetch('/settings/api-keys', {method:'POST', body: fd})
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.ok) {
+                showToast('API keys updated. Bot restarted.');
+                setTimeout(function() { location.reload(); }, 1000);
+            }
+        })
+        .catch(function() {
+            btn.disabled = false;
+            btn.textContent = 'Save & Restart Bot';
+        });
+    return false;
+}
+function deleteApiKeys() {
+    var btn = document.getElementById('btn-delete-keys');
+    btn.disabled = true;
+    btn.textContent = 'Deleting...';
+    fetch('/settings/api-keys/delete', {method:'POST'})
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            document.getElementById('delete-keys-modal').style.display = 'none';
+            if (data.ok) {
+                showToast('API keys deleted. Bot stopped.');
+                setTimeout(function() { location.reload(); }, 1000);
+            }
+        })
+        .catch(function() {
+            btn.disabled = false;
+            btn.textContent = 'Delete';
+        });
+}
 function emergencyClose() {
     if (!confirm('EMERGENCY CLOSE\n\nThis will immediately close ALL open positions at market price.\n\nAre you sure?')) return;
     var btn = document.getElementById('btn-emergency-close');

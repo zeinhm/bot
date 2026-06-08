@@ -84,6 +84,19 @@ async def save_user_config(
         return cfg
 
 
+async def delete_user_api_keys(user_id: int) -> None:
+    async with get_session() as session:
+        result = await session.execute(
+            select(UserConfig).where(UserConfig.user_id == user_id)
+        )
+        cfg = result.scalar_one_or_none()
+        if cfg:
+            cfg.binance_api_key_enc = None
+            cfg.binance_api_secret_enc = None
+            cfg.updated_at = datetime.now(timezone.utc)
+            await session.commit()
+
+
 async def get_all_configured_users() -> list[tuple[User, UserConfig]]:
     async with get_session() as session:
         result = await session.execute(

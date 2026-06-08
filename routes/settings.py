@@ -35,8 +35,19 @@ async def settings_page(request: Request):
     cfg = await db.get_user_config(user.id)
     api_key_set = cfg is not None and cfg.binance_api_key_enc is not None
 
+    api_key_preview = ""
+    if api_key_set:
+        try:
+            raw_key = decrypt(cfg.binance_api_key_enc)
+            if raw_key and len(raw_key) >= 8:
+                api_key_preview = raw_key[:8] + "••••••••"
+            else:
+                api_key_preview = "••••••••••••"
+        except Exception as e:
+            log.warning("Failed to decrypt API key preview for user: %s", e)
+            api_key_preview = "••••••••••••"
+
     saved = request.query_params.get("saved")
-    keys_saved = request.query_params.get("keys_saved")
     error = request.query_params.get("error")
 
     ctx = await get_global_context(user.id, mode)
@@ -48,13 +59,13 @@ async def settings_page(request: Request):
         "rr_ratio": rr_ratio,
         "max_trades": max_trades,
         "api_key_set": api_key_set,
+        "api_key_preview": api_key_preview,
         "leverage": LEVERAGE,
         "all_symbols": SYMBOLS,
         "active_symbols": active_symbols,
         "all_sessions": ALL_SESSIONS,
         "active_sessions": active_sessions,
         "saved": saved == "1",
-        "keys_saved": keys_saved == "1",
         "error": error or "",
         "page": "settings",
     })
@@ -146,7 +157,24 @@ async def save_api_keys(
                             shared_market=shared_market)
 
     log.info("User %d updated API keys", user.id)
-    return RedirectResponse("/settings?keys_saved=1", status_code=303)
+    return JSONResponse({"ok": True})
+
+
+@router.post("/settings/api-keys/delete")
+async def delete_api_keys(request: Request):
+    user = await require_auth(request)
+
+    manager = request.app.state.bot_manager
+    worker = manager.get_worker(user.id, "live")
+    if worker:
+        try:
+            await manager.stop_bot(user.id, "live")
+        except Exception:
+            pass
+
+    await db.delete_user_api_keys(user.id)
+    log.info("User %d deleted API keys", user.id)
+    return JSONResponse({"ok": True})
 
 
 @router.post("/api/emergency-close")

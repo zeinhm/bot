@@ -238,13 +238,14 @@ class BotWorker:
                 self._active_trade_id = None
             else:
                 if not self.is_paper:
-                    has_sl, has_tp = await self._check_sltp_orders(open_trade)
+                    sl_count, tp_count = await self._count_sltp_orders(open_trade)
                 else:
                     orders = await self.exchange.get_open_orders(open_trade.symbol)
-                    has_sl = any(o.get("type") == "STOP_MARKET" for o in orders)
-                    has_tp = any(o.get("type") == "TAKE_PROFIT_MARKET" for o in orders)
-                if not has_sl or not has_tp:
-                    log.warning("Missing SL/TP orders for trade #%d — re-placing", open_trade.id)
+                    sl_count = sum(1 for o in orders if o.get("type") == "STOP_MARKET")
+                    tp_count = sum(1 for o in orders if o.get("type") == "TAKE_PROFIT_MARKET")
+                if sl_count != 1 or tp_count != 1:
+                    log.warning("Trade #%d has %d SL / %d TP orders (need 1/1) — cancelling all and re-placing",
+                                open_trade.id, sl_count, tp_count)
                     await self.exchange.cancel_all_orders(open_trade.symbol)
                     await self._place_sl_tp(
                         open_trade.symbol, open_trade.direction,
@@ -350,8 +351,10 @@ class BotWorker:
 
             if not self.is_paper:
                 existing_orders = await self.exchange.get_open_orders(symbol)
-                if existing_orders:
-                    log.warning("Cleaning %d stale orders on %s before entry", len(existing_orders), symbol)
+                existing_cond = await self.exchange.get_conditional_orders(symbol)
+                if existing_orders or existing_cond:
+                    log.warning("Cleaning %d regular + %d conditional stale orders on %s before entry",
+                                len(existing_orders), len(existing_cond), symbol)
                     await self.exchange.cancel_all_orders(symbol)
 
             side = "BUY" if signal["direction"] == "long" else "SELL"
@@ -435,36 +438,37 @@ class BotWorker:
 
         update = {}
         if sl_order:
-            update["sl_order_id"] = str(sl_order.get("orderId", ""))
+            update["sl_order_id"] = str(sl_order.get("algoId") or sl_order.get("orderId") or "")
         if tp_order:
-            update["tp_order_id"] = str(tp_order.get("orderId", ""))
+            update["tp_order_id"] = str(tp_order.get("algoId") or tp_order.get("orderId") or "")
         if update:
             await db.update_trade(trade_id, update)
 
         return sl_order is not None, tp_order is not None
 
-    async def _check_sltp_orders(self, trade) -> tuple[bool, bool]:
-        """Check if SL/TP orders are active by querying their stored order IDs.
+    async def _count_sltp_orders(self, trade) -> tuple[int, int]:
+        """Count active SL/TP orders in the conditional/algo bucket.
 
-        Only trusts stored order IDs (get_order is the reliable endpoint). When
-        an ID is missing or its order is no longer active, the caller re-places
-        via _place_sl_tp, which cancels all open orders first — so any stray
-        duplicates are cleaned up rather than detected and left in place.
+        Binance routes STOP_MARKET / TAKE_PROFIT_MARKET to its conditional (algo)
+        order system, so SL/TP never appear in regular open orders and have no
+        regular orderId pre-trigger. Match by order type and, in hedge mode,
+        position side. A healthy position has exactly one of each; any other
+        count (missing OR duplicated) makes the caller cancel both buckets and
+        re-place exactly one SL + one TP — which also clears stray duplicates.
         """
-        has_sl = False
-        has_tp = False
-
-        if trade.sl_order_id and trade.sl_order_id.isdigit():
-            sl_info = await self.exchange.get_order(trade.symbol, int(trade.sl_order_id))
-            if sl_info is not None:
-                has_sl = sl_info.get("status") in ("NEW", "PARTIALLY_FILLED")
-
-        if trade.tp_order_id and trade.tp_order_id.isdigit():
-            tp_info = await self.exchange.get_order(trade.symbol, int(trade.tp_order_id))
-            if tp_info is not None:
-                has_tp = tp_info.get("status") in ("NEW", "PARTIALLY_FILLED")
-
-        return has_sl, has_tp
+        orders = await self.exchange.get_conditional_orders(trade.symbol)
+        expected_ps = ("LONG" if trade.direction == "long" else "SHORT") if self.exchange.hedge_mode else None
+        sl_count = 0
+        tp_count = 0
+        for o in orders:
+            if expected_ps and o.get("positionSide") != expected_ps:
+                continue
+            otype = o.get("orderType") or o.get("type")
+            if otype == "STOP_MARKET":
+                sl_count += 1
+            elif otype == "TAKE_PROFIT_MARKET":
+                tp_count += 1
+        return sl_count, tp_count
 
     # --- Order Fill Monitoring ---
 
@@ -677,14 +681,17 @@ class BotWorker:
                     self._sltp_missing_since = None
                 else:
                     if not self.is_paper:
-                        has_sl, has_tp = await self._check_sltp_orders(trade)
+                        sl_count, tp_count = await self._count_sltp_orders(trade)
 
-                        if has_sl and has_tp:
+                        if sl_count == 1 and tp_count == 1:
                             if self._sltp_missing_since is not None:
                                 log.info("Position poll: SL/TP confirmed for trade #%d", trade.id)
                             self._sltp_missing_since = None
                             self._sltp_last_alert = 0
                         else:
+                            if sl_count > 1 or tp_count > 1:
+                                log.warning("Position poll: trade #%d has %d SL / %d TP (need 1/1) — cleaning duplicates",
+                                            trade.id, sl_count, tp_count)
                             now = time.time()
                             if self._sltp_missing_since is None:
                                 self._sltp_missing_since = now

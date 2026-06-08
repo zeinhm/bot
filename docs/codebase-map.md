@@ -94,10 +94,12 @@ Live Binance Futures API wrapper.
 - `get_position(symbol)` → `{symbol, side, quantity, entry_price, unrealized_pnl}` or None
 - `get_all_positions()` → list of non-zero positions
 - `place_market_order(symbol, side, quantity, position_side)` — Hedge mode auto-sets positionSide
-- `place_stop_loss(symbol, side, quantity, stop_price)` — STOP_MARKET, reduceOnly in one-way mode
-- `place_take_profit(symbol, side, quantity, price)` — TAKE_PROFIT_MARKET
+- `place_stop_loss(symbol, side, quantity, stop_price)` — STOP_MARKET, reduceOnly in one-way mode. **NOTE:** python-binance auto-routes STOP/TP to Binance's conditional/algo endpoint; the response has `algoId` (no `orderId`)
+- `place_take_profit(symbol, side, quantity, price)` — TAKE_PROFIT_MARKET (also a conditional/algo order)
+- `get_open_orders(symbol)` — **regular** open orders only (SL/TP are NOT here)
+- `get_conditional_orders(symbol)` — conditional/algo open orders (this is where SL/TP live; `conditional=True`)
 - `get_order(symbol, order_id)` / `get_trades_for_order(symbol, order_id)` — Fill data queries
-- `cancel_order()` / `cancel_all_orders()` — Order cancellation
+- `cancel_order()` / `cancel_all_orders()` — Order cancellation. `cancel_all_orders` clears **both** the regular and conditional/algo buckets
 - `get_klines(symbol, interval, limit)` → list of candle dicts
 - `start_kline_socket(symbols, interval, callback)` — Multiplex kline websocket
 - `start_user_socket(callback)` — User data stream (ORDER_TRADE_UPDATE events)

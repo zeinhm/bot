@@ -98,6 +98,19 @@ class BinanceExchange:
     async def get_open_orders(self, symbol: str) -> list[dict]:
         return await self.client.futures_get_open_orders(symbol=symbol)
 
+    async def get_conditional_orders(self, symbol: str) -> list[dict]:
+        """Open conditional/algo orders (STOP_MARKET / TAKE_PROFIT_MARKET).
+
+        python-binance auto-routes STOP/TP orders to Binance's algo endpoint,
+        so SL/TP live in this separate bucket — invisible to get_open_orders().
+        """
+        try:
+            res = await self.client.futures_get_open_orders(symbol=symbol, conditional=True)
+            return res or []
+        except Exception as e:
+            log.warning("Failed to get conditional orders on %s: %s", symbol, e)
+            return []
+
     async def place_market_order(self, symbol: str, side: str, quantity: float, position_side: str | None = None) -> dict:
         params = dict(
             symbol=symbol,
@@ -126,7 +139,8 @@ class BinanceExchange:
         else:
             params["reduceOnly"] = "true"
         order = await self.client.futures_create_order(**params)
-        log.info("SL %s %s @ %.2f — order %s", side, symbol, stop_price, order["orderId"])
+        # STOP_MARKET is routed to the algo endpoint, whose response has algoId (no orderId)
+        log.info("SL %s %s @ %.2f — order %s", side, symbol, stop_price, order.get("algoId") or order.get("orderId"))
         return order
 
     async def place_take_profit(self, symbol: str, side: str, quantity: float, price: float) -> dict:
@@ -142,7 +156,8 @@ class BinanceExchange:
         else:
             params["reduceOnly"] = "true"
         order = await self.client.futures_create_order(**params)
-        log.info("TP %s %s @ %.2f — order %s", side, symbol, price, order["orderId"])
+        # TAKE_PROFIT_MARKET is routed to the algo endpoint, whose response has algoId (no orderId)
+        log.info("TP %s %s @ %.2f — order %s", side, symbol, price, order.get("algoId") or order.get("orderId"))
         return order
 
     async def get_order(self, symbol: str, order_id: int) -> dict | None:
@@ -168,11 +183,18 @@ class BinanceExchange:
             log.warning("Failed to cancel order %s: %s", order_id, e)
 
     async def cancel_all_orders(self, symbol: str):
+        # Two separate Binance buckets: regular orders AND conditional/algo orders
+        # (SL/TP live in the algo bucket). Both must be cleared.
         try:
             await self.client.futures_cancel_all_open_orders(symbol=symbol)
-            log.info("Cancelled all open orders on %s", symbol)
         except Exception as e:
-            log.warning("Failed to cancel all orders on %s: %s", symbol, e)
+            log.warning("Failed to cancel regular orders on %s: %s", symbol, e)
+        try:
+            await self.client.futures_cancel_all_open_orders(symbol=symbol, conditional=True)
+        except Exception as e:
+            # Benign when there are no conditional orders to cancel
+            log.warning("Failed to cancel conditional orders on %s: %s", symbol, e)
+        log.info("Cancelled all open orders (regular + conditional) on %s", symbol)
 
     # --- Market data operations ---
 

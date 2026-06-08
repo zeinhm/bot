@@ -881,7 +881,9 @@
         renderMobileCards(positions);
     }
 
+    var currentMode = '{{ trading_mode }}';
     botWS.on('positions', function(msg) {
+        if (msg.mode !== currentMode) return;
         renderPositions(msg.positions || []);
     });
 
@@ -1067,6 +1069,7 @@
     })();
 
     botWS.on('heartbeat', function(msg) {
+        if (msg.mode && msg.mode !== currentMode) return;
         if (botRunLed && botRunText) {
             var s = msg.bot_status;
             if (s === 'running') {

@@ -8,6 +8,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 
 ## [2026-06-09]
 
+### Changed
+- **Position SL/TP display simplified**: Removed the SL/TP progress bars and the "% away" percentage from position cards — now shows just the SL and TP price under uppercase labels, matching the Entry/PnL cells. Applied across all three render paths: `base.html` mobile card, `position.html` Jinja-rendered card, and `position.html` JS-rendered card. Also dropped the now-unused price-distance recompute in the mobile-card `price` handler (SL/TP prices are static per trade)
+
+### Removed
+- **Dead `position` WebSocket handler (`base.html`)**: Removed the `botWS.on('position', …)` single-position panel handler — it targeted a `position-panel` element that exists in no template and listened for a singular `position` message the backend never sends (superseded by the `positions` plural multi-position payload). It also referenced an undefined `sl_distance_pct`/`tp_distance_pct` field
+
 ### Added
 - **Force-close safety net (SL breach with no stop order)**: If a live position ends up with **no STOP order** on the exchange AND the current price has already **breached the SL level**, the bot now market-closes it (a synthetic stop) instead of only alerting. Tightly gated to prevent false closes — it fires only when all hold: SL genuinely absent (confirmed by a *strict* conditional-orders fetch that raises on error rather than returning empty), the re-place attempt failed, a reliable live price (`get_latest_price`) is past `sl_price` in the trade's direction, and Binance's own `unrealized_pnl` is at the SL magnitude (≤ −0.9×`|entry−sl|×qty`, i.e. ~1R loss — not merely negative). `worker.py` → `_maybe_force_close_breach()` + `_force_close_breached()`; `exchange.py` → `get_conditional_orders(symbol, strict=True)`. Live-only (paper closes on breach via its own fill loop)
 

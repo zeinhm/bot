@@ -510,37 +510,6 @@ function updateSidebarStatus(status) {
 botWS.on('bot_status', function(msg) { updateSidebarStatus(msg.status); });
 botWS.on('heartbeat', function(msg) { if (msg.bot_status) updateSidebarStatus(msg.bot_status); });
 
-botWS.on('position', function(msg) {
-    var panel = document.getElementById('position-panel');
-    if (!panel) return;
-    if (!msg.active) {
-        panel.innerHTML = '<div class="muted">No open position</div>';
-        return;
-    }
-    var dirBadge = msg.direction === 'long' ? 'dir-badge long' : 'dir-badge short';
-    var pnlCls = msg.unrealised_pnl_usdt >= 0 ? 'pos' : 'neg';
-    var pnlSign = msg.unrealised_pnl_usdt >= 0 ? '+' : '';
-    var mins = Math.floor(msg.time_in_trade_secs / 60);
-    var secs = msg.time_in_trade_secs % 60;
-    panel.innerHTML =
-        '<div class="between" style="margin-bottom:12px"><div class="vcenter gap8">' +
-        '<span class="mono" style="font-size:13px;font-weight:600">' + msg.symbol + '</span>' +
-        '<span class="' + dirBadge + '">' + msg.direction.toUpperCase() + '</span></div>' +
-        '<span class="pill green"><span class="led green"></span>OPEN</span></div>' +
-        '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">' +
-        '<div><div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">Entry</div>' +
-        '<div class="mono" style="font-size:15px;font-weight:600">' + msg.entry_price.toLocaleString('en-US',{minimumFractionDigits:2}) + '</div></div>' +
-        '<div><div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">Unrealised P&L</div>' +
-        '<div class="mono ' + pnlCls + '" style="font-size:15px;font-weight:600">' + pnlSign + msg.unrealised_pnl_usdt.toFixed(2) + '</div>' +
-        '<div class="mono ' + pnlCls + '" style="font-size:11px">' + pnlSign + msg.unrealised_r.toFixed(1) + 'R</div></div>' +
-        '<div><div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">SL</div>' +
-        '<div class="mono neg" style="font-size:15px;font-weight:600">' + msg.sl_price.toFixed(2) + '</div>' +
-        '<div class="muted" style="font-size:11px">' + msg.sl_distance_pct.toFixed(1) + '% away</div></div>' +
-        '<div><div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">TP</div>' +
-        '<div class="mono pos" style="font-size:15px;font-weight:600">' + msg.tp_price.toFixed(2) + '</div>' +
-        '<div class="muted" style="font-size:11px">' + msg.tp_distance_pct.toFixed(1) + '% away</div></div></div>';
-});
-
 botWS.on('adaptive_sizing', function(msg) {
     var banner = document.getElementById('adaptive-banner');
     if (msg.active) {

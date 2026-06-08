@@ -230,22 +230,14 @@
                         Time in trade <span class="mono mc-time" style="color:var(--text-2)">{{ pos.time_in_trade|default('—') }}</span>
                     </div>
                     {% if pos.sl_price is defined and pos.sl_price %}
-                    {% set slp = pos.sl_away_pct|default(0) %}
-                    {% set tpp = pos.tp_away_pct|default(0) %}
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
                         <div>
-                            <div class="between" style="margin-bottom:5px">
-                                <span class="neg" style="font-size:11px;font-weight:600">SL · <span class="mc-sl-pct">{{ "%.1f"|format(slp) }}%</span> away</span>
-                            </div>
-                            <div class="pbar" style="background:#231a1d"><span class="mc-sl-bar" style="width:{{ [100 - slp * 14, 0]|max }}%;background:var(--red);margin-left:auto;display:block;height:100%"></span></div>
-                            <div class="mono muted" style="font-size:10.5px;margin-top:4px">{{ "%.2f"|format(pos.sl_price) }}</div>
+                            <div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">SL</div>
+                            <div class="mono neg" style="font-size:15px;font-weight:600">{{ "%.2f"|format(pos.sl_price) }}</div>
                         </div>
                         <div>
-                            <div class="between" style="margin-bottom:5px">
-                                <span class="pos" style="font-size:11px;font-weight:600">TP · <span class="mc-tp-pct">{{ "%.1f"|format(tpp) }}%</span> away</span>
-                            </div>
-                            <div class="pbar" style="background:#15241f"><span class="mc-tp-bar" style="width:{{ [100 - tpp * 11, 0]|max }}%;background:var(--green);display:block;height:100%"></span></div>
-                            <div class="mono muted" style="font-size:10.5px;margin-top:4px">{{ "%.2f"|format(pos.tp_price) }}</div>
+                            <div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">TP</div>
+                            <div class="mono pos" style="font-size:15px;font-weight:600">{{ "%.2f"|format(pos.tp_price) }}</div>
                         </div>
                     </div>
                     {% endif %}
@@ -783,7 +775,7 @@
             var changeCls = changeUsd >= 0 ? 'pos' : 'neg';
             var changeSign = changeUsd >= 0 ? '+' : '';
 
-            html += '<div class="card accent" style="display:flex;flex-direction:column;gap:12px" data-mc-symbol="' + p.symbol + '" data-mc-dir="' + p.direction + '" data-mc-entry="' + p.entry_price + '" data-mc-qty="' + p.quantity + '" data-mc-sl="' + (p.sl_price||'') + '" data-mc-tp="' + (p.tp_price||'') + '">';
+            html += '<div class="card accent" style="display:flex;flex-direction:column;gap:12px" data-mc-symbol="' + p.symbol + '" data-mc-dir="' + p.direction + '" data-mc-entry="' + p.entry_price + '" data-mc-qty="' + p.quantity + '">';
             html += '<div class="between"><div class="vcenter gap8">';
             html += '<span class="mono" style="font-size:13px;font-weight:600">' + p.symbol + '</span>';
             html += '<span style="font-size:10px;color:var(--muted);background:var(--card-3);padding:1px 5px;border-radius:3px">PERP</span>';
@@ -814,17 +806,11 @@
             html += 'Time in trade <span class="mono mc-time" style="color:var(--text-2)">' + fmtDur(p.time_in_trade_secs) + '</span></div>';
 
             if (p.sl_price) {
-                var slPct = Math.abs((cur - p.sl_price) / cur * 100);
-                var tpPct = Math.abs((p.tp_price - cur) / cur * 100);
-                var slBar = Math.min(100 - slPct * 14, 100);
-                var tpBar = Math.min(100 - tpPct * 11, 100);
                 html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
-                html += '<div><div class="between" style="margin-bottom:5px"><span class="neg" style="font-size:11px;font-weight:600">SL · <span class="mc-sl-pct">' + slPct.toFixed(1) + '%</span> away</span></div>';
-                html += '<div class="pbar" style="background:#231a1d"><span class="mc-sl-bar" style="width:' + Math.max(slBar, 0) + '%;background:var(--red);margin-left:auto;display:block;height:100%"></span></div>';
-                html += '<div class="mono muted" style="font-size:10.5px;margin-top:4px">' + fmt(p.sl_price) + '</div></div>';
-                html += '<div><div class="between" style="margin-bottom:5px"><span class="pos" style="font-size:11px;font-weight:600">TP · <span class="mc-tp-pct">' + tpPct.toFixed(1) + '%</span> away</span></div>';
-                html += '<div class="pbar" style="background:#15241f"><span class="mc-tp-bar" style="width:' + Math.max(tpBar, 0) + '%;background:var(--green);display:block;height:100%"></span></div>';
-                html += '<div class="mono muted" style="font-size:10.5px;margin-top:4px">' + fmt(p.tp_price) + '</div></div></div>';
+                html += '<div><div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">SL</div>';
+                html += '<div class="mono neg" style="font-size:15px;font-weight:600">' + fmt(p.sl_price) + '</div></div>';
+                html += '<div><div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">TP</div>';
+                html += '<div class="mono pos" style="font-size:15px;font-weight:600">' + fmt(p.tp_price) + '</div></div></div>';
             }
 
             html += '<div class="status-grid" style="margin-top:2px">';
@@ -918,8 +904,6 @@
             var entry = parseFloat(card.dataset.mcEntry);
             var qty = parseFloat(card.dataset.mcQty);
             var dir = card.dataset.mcDir;
-            var sl = parseFloat(card.dataset.mcSl);
-            var tp = parseFloat(card.dataset.mcTp);
             var cur = msg.price;
 
             var curEl = card.querySelector('.mc-current');
@@ -942,20 +926,6 @@
                 var rSign = roiVal >= 0 ? '+' : '';
                 roiEl.className = 'mono mc-roi ' + rCls;
                 roiEl.textContent = rSign + roiVal.toFixed(2) + '%';
-            }
-
-            if (sl && tp) {
-                var slPct = Math.abs((cur - sl) / cur * 100);
-                var tpPct = Math.abs((tp - cur) / cur * 100);
-                var slPctEl = card.querySelector('.mc-sl-pct');
-                var tpPctEl = card.querySelector('.mc-tp-pct');
-                if (slPctEl) slPctEl.textContent = slPct.toFixed(1) + '%';
-                if (tpPctEl) tpPctEl.textContent = tpPct.toFixed(1) + '%';
-
-                var slBarEl = card.querySelector('.mc-sl-bar');
-                var tpBarEl = card.querySelector('.mc-tp-bar');
-                if (slBarEl) slBarEl.style.width = Math.max(Math.min(100 - slPct * 14, 100), 0) + '%';
-                if (tpBarEl) tpBarEl.style.width = Math.max(Math.min(100 - tpPct * 11, 100), 0) + '%';
             }
         });
     });

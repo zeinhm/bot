@@ -50,6 +50,22 @@ async def _ensure_schema(eng):
             "ALTER TABLE bot_state ADD COLUMN IF NOT EXISTS is_paper BOOLEAN NOT NULL DEFAULT false"
         ))
 
+        # bot_state unique constraint (required by set_state upsert)
+        exists = await conn.execute(text(
+            "SELECT 1 FROM pg_constraint WHERE conname = 'uq_bot_state_scoped'"
+        ))
+        if not exists.scalar():
+            await conn.execute(text(
+                "DELETE FROM bot_state a USING bot_state b "
+                "WHERE a.id > b.id AND a.key = b.key "
+                "AND a.user_id IS NOT DISTINCT FROM b.user_id "
+                "AND a.is_paper = b.is_paper"
+            ))
+            await conn.execute(text(
+                "ALTER TABLE bot_state ADD CONSTRAINT uq_bot_state_scoped UNIQUE (key, user_id, is_paper)"
+            ))
+            log.info("Created missing constraint uq_bot_state_scoped")
+
     log.info("Schema columns ensured")
 
 

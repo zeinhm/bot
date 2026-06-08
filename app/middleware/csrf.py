@@ -10,12 +10,13 @@ EXEMPT_PATHS = {"/auth/callback"}
 
 class CSRFMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        if request.headers.get("upgrade", "").lower() == "websocket":
+            return await call_next(request)
+
         if "csrf_token" not in request.session:
             request.session["csrf_token"] = secrets.token_hex(32)
 
         if request.method in SAFE_METHODS:
-            return await call_next(request)
-        if request.headers.get("upgrade", "").lower() == "websocket":
             return await call_next(request)
         if request.url.path in EXEMPT_PATHS:
             return await call_next(request)

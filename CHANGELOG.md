@@ -10,6 +10,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 
 ### Fixed
 - **SL/TP false-positive alerts**: Replaced fragile `get_open_orders` type scan with direct order-ID lookup via `get_order()` for SL/TP verification; also checks `origType` field as fallback; handles Binance `-4045` error as confirmation that orders exist instead of alerting
+- **WebSocket 403 on new sessions**: Moved WebSocket upgrade check before session access in CSRF middleware — `BaseHTTPMiddleware` tried to set cookie on WS upgrade when session was new, causing 403
+- **`bot_state` upsert error**: Auto-create `uq_bot_state_scoped` constraint on startup if missing (migration wasn't applied on prod); deduplicates existing rows first
 - **Position page mode flickering**: Added WebSocket mode filter so live/paper position data doesn't cross-render
 
 ---

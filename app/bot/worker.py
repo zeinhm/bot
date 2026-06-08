@@ -448,10 +448,33 @@ class BotWorker:
 
         if trade.sl_order_id and trade.sl_order_id.isdigit():
             sl_info = await self.exchange.get_order(trade.symbol, int(trade.sl_order_id))
-            has_sl = sl_info is not None and sl_info.get("status") in ("NEW", "PARTIALLY_FILLED")
+            if sl_info is not None:
+                sl_status = sl_info.get("status")
+                has_sl = sl_status in ("NEW", "PARTIALLY_FILLED")
+                if not has_sl:
+                    log.warning("User %d: SL order %s has status=%s (not active)",
+                                self.user_id, trade.sl_order_id, sl_status)
+            else:
+                log.warning("User %d: SL order %s returned None from get_order",
+                            self.user_id, trade.sl_order_id)
+        else:
+            log.info("User %d: trade #%d has no SL order ID stored (sl_order_id=%r)",
+                     self.user_id, trade.id, trade.sl_order_id)
+
         if trade.tp_order_id and trade.tp_order_id.isdigit():
             tp_info = await self.exchange.get_order(trade.symbol, int(trade.tp_order_id))
-            has_tp = tp_info is not None and tp_info.get("status") in ("NEW", "PARTIALLY_FILLED")
+            if tp_info is not None:
+                tp_status = tp_info.get("status")
+                has_tp = tp_status in ("NEW", "PARTIALLY_FILLED")
+                if not has_tp:
+                    log.warning("User %d: TP order %s has status=%s (not active)",
+                                self.user_id, trade.tp_order_id, tp_status)
+            else:
+                log.warning("User %d: TP order %s returned None from get_order",
+                            self.user_id, trade.tp_order_id)
+        else:
+            log.info("User %d: trade #%d has no TP order ID stored (tp_order_id=%r)",
+                     self.user_id, trade.id, trade.tp_order_id)
 
         if (not trade.sl_order_id or not trade.tp_order_id) and (not has_sl or not has_tp):
             orders = await self.exchange.get_open_orders(trade.symbol)
@@ -465,6 +488,10 @@ class BotWorker:
                     has_sl = True
                 if not has_tp and (otype in ("TAKE_PROFIT_MARKET", "TAKE_PROFIT") or orig in ("TAKE_PROFIT_MARKET", "TAKE_PROFIT")):
                     has_tp = True
+            if not has_sl or not has_tp:
+                order_summary = [(o.get("type"), o.get("origType"), o.get("positionSide")) for o in orders]
+                log.warning("User %d: fallback scan found %d orders, has_sl=%s has_tp=%s, orders=%s",
+                            self.user_id, len(orders), has_sl, has_tp, order_summary)
 
         return has_sl, has_tp
 

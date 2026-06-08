@@ -57,8 +57,14 @@ ws_manager = ConnectionManager()
 
 @router.websocket("/ws/{user_id}")
 async def websocket_endpoint(ws: WebSocket, user_id: int):
-    session_user = ws.session.get("user_id") if hasattr(ws, "session") else None
+    has_session = "session" in ws.scope
+    session_data = dict(ws.scope.get("session", {})) if has_session else {}
+    session_user = session_data.get("user_id")
+    cookie_header = next((v.decode() for k, v in ws.scope.get("headers", []) if k == b"cookie"), "")
+    has_session_cookie = "session" in cookie_header.lower()
     if session_user is None or session_user != user_id:
+        log.warning("WS auth rejected: path=/ws/%d session_user=%s has_session_scope=%s has_cookie=%s session_keys=%s",
+                     user_id, session_user, has_session, has_session_cookie, list(session_data.keys()))
         await ws.close(code=4003)
         return
 

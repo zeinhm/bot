@@ -441,57 +441,28 @@ class BotWorker:
         if update:
             await db.update_trade(trade_id, update)
 
+        return sl_order is not None, tp_order is not None
+
     async def _check_sltp_orders(self, trade) -> tuple[bool, bool]:
-        """Check if SL/TP orders exist by querying individual order IDs (most reliable)."""
+        """Check if SL/TP orders are active by querying their stored order IDs.
+
+        Only trusts stored order IDs (get_order is the reliable endpoint). When
+        an ID is missing or its order is no longer active, the caller re-places
+        via _place_sl_tp, which cancels all open orders first — so any stray
+        duplicates are cleaned up rather than detected and left in place.
+        """
         has_sl = False
         has_tp = False
 
         if trade.sl_order_id and trade.sl_order_id.isdigit():
             sl_info = await self.exchange.get_order(trade.symbol, int(trade.sl_order_id))
             if sl_info is not None:
-                sl_status = sl_info.get("status")
-                has_sl = sl_status in ("NEW", "PARTIALLY_FILLED")
-                if not has_sl:
-                    log.warning("User %d: SL order %s has status=%s (not active)",
-                                self.user_id, trade.sl_order_id, sl_status)
-            else:
-                log.warning("User %d: SL order %s returned None from get_order",
-                            self.user_id, trade.sl_order_id)
-        else:
-            log.info("User %d: trade #%d has no SL order ID stored (sl_order_id=%r)",
-                     self.user_id, trade.id, trade.sl_order_id)
+                has_sl = sl_info.get("status") in ("NEW", "PARTIALLY_FILLED")
 
         if trade.tp_order_id and trade.tp_order_id.isdigit():
             tp_info = await self.exchange.get_order(trade.symbol, int(trade.tp_order_id))
             if tp_info is not None:
-                tp_status = tp_info.get("status")
-                has_tp = tp_status in ("NEW", "PARTIALLY_FILLED")
-                if not has_tp:
-                    log.warning("User %d: TP order %s has status=%s (not active)",
-                                self.user_id, trade.tp_order_id, tp_status)
-            else:
-                log.warning("User %d: TP order %s returned None from get_order",
-                            self.user_id, trade.tp_order_id)
-        else:
-            log.info("User %d: trade #%d has no TP order ID stored (tp_order_id=%r)",
-                     self.user_id, trade.id, trade.tp_order_id)
-
-        if (not trade.sl_order_id or not trade.tp_order_id) and (not has_sl or not has_tp):
-            orders = await self.exchange.get_open_orders(trade.symbol)
-            expected_ps = ("LONG" if trade.direction == "long" else "SHORT") if self.exchange.hedge_mode else None
-            for o in orders:
-                otype = o.get("type", "")
-                orig = o.get("origType", "")
-                if expected_ps and o.get("positionSide") != expected_ps:
-                    continue
-                if not has_sl and (otype in ("STOP_MARKET", "STOP") or orig in ("STOP_MARKET", "STOP")):
-                    has_sl = True
-                if not has_tp and (otype in ("TAKE_PROFIT_MARKET", "TAKE_PROFIT") or orig in ("TAKE_PROFIT_MARKET", "TAKE_PROFIT")):
-                    has_tp = True
-            if not has_sl or not has_tp:
-                order_summary = [(o.get("type"), o.get("origType"), o.get("positionSide")) for o in orders]
-                log.warning("User %d: fallback scan found %d orders, has_sl=%s has_tp=%s, orders=%s",
-                            self.user_id, len(orders), has_sl, has_tp, order_summary)
+                has_tp = tp_info.get("status") in ("NEW", "PARTIALLY_FILLED")
 
         return has_sl, has_tp
 
@@ -595,7 +566,6 @@ class BotWorker:
     async def _run_position_poll(self):
         self._sltp_missing_since: float | None = None
         self._sltp_last_alert: float = 0
-        self._sltp_confirmed_at: float = 0
 
         while self.running:
             has_active = self._active_trade_id is not None
@@ -604,14 +574,12 @@ class BotWorker:
             try:
                 if self._active_trade_id is None:
                     self._sltp_missing_since = None
-                    self._sltp_confirmed_at = 0
                     continue
 
                 trade = await db.get_open_trade(self.user_id, self.is_paper)
                 if trade is None:
                     self._active_trade_id = None
                     self._sltp_missing_since = None
-                    self._sltp_confirmed_at = 0
                     continue
 
                 pos = await self.exchange.get_position(trade.symbol)
@@ -709,57 +677,37 @@ class BotWorker:
                     self._sltp_missing_since = None
                 else:
                     if not self.is_paper:
-                        if time.time() - self._sltp_confirmed_at < 300:
-                            continue
-
                         has_sl, has_tp = await self._check_sltp_orders(trade)
 
-                        if not has_sl or not has_tp:
+                        if has_sl and has_tp:
+                            if self._sltp_missing_since is not None:
+                                log.info("Position poll: SL/TP confirmed for trade #%d", trade.id)
+                            self._sltp_missing_since = None
+                            self._sltp_last_alert = 0
+                        else:
                             now = time.time()
                             if self._sltp_missing_since is None:
                                 self._sltp_missing_since = now
 
-                            close_side = "SELL" if trade.direction == "long" else "BUY"
-                            confirmed_via_4045 = True
-                            if not has_sl:
-                                try:
-                                    sl_order = await self.exchange.place_stop_loss(trade.symbol, close_side, pos["quantity"], trade.sl_price)
-                                    await db.update_trade(trade.id, {"sl_order_id": str(sl_order.get("orderId", ""))})
-                                    has_sl = True
-                                    confirmed_via_4045 = False
-                                except Exception as e:
-                                    if "-4045" in str(e):
-                                        has_sl = True
-                                    else:
-                                        log.warning("Position poll: failed to re-place SL: %s", e)
-                                        confirmed_via_4045 = False
-                            if not has_tp:
-                                try:
-                                    tp_order = await self.exchange.place_take_profit(trade.symbol, close_side, pos["quantity"], trade.tp_price)
-                                    await db.update_trade(trade.id, {"tp_order_id": str(tp_order.get("orderId", ""))})
-                                    has_tp = True
-                                    confirmed_via_4045 = False
-                                except Exception as e:
-                                    if "-4045" in str(e):
-                                        has_tp = True
-                                    else:
-                                        log.warning("Position poll: failed to re-place TP: %s", e)
-                                        confirmed_via_4045 = False
+                            # Cancel all open orders, then place exactly one SL + one TP.
+                            # _place_sl_tp cancels first, so this can never accumulate
+                            # duplicate orders (the bug that hit Binance's order limit).
+                            sl_ok, tp_ok = await self._place_sl_tp(
+                                trade.symbol, trade.direction, pos["quantity"],
+                                trade.sl_price, trade.tp_price, trade.id,
+                            )
 
-                            if has_sl and has_tp and confirmed_via_4045:
-                                self._sltp_confirmed_at = now
-                                if self._sltp_missing_since is not None:
-                                    log.info("User %d: SL/TP confirmed via -4045 for trade #%d, backing off 5min",
-                                             self.user_id, trade.id)
+                            if sl_ok and tp_ok:
+                                log.info("Position poll: re-placed SL/TP for trade #%d", trade.id)
                                 self._sltp_missing_since = None
                                 self._sltp_last_alert = 0
-                            elif not has_sl or not has_tp:
+                            else:
                                 elapsed = now - self._sltp_missing_since
                                 if elapsed >= 60 and (now - self._sltp_last_alert) >= 60:
                                     missing = []
-                                    if not has_sl:
+                                    if not sl_ok:
                                         missing.append("SL")
-                                    if not has_tp:
+                                    if not tp_ok:
                                         missing.append("TP")
                                     user_info = await db.get_user(self.user_id)
                                     user_label = f"{user_info.name} (#{self.user_id})" if user_info and user_info.name else f"#{self.user_id}"
@@ -770,13 +718,6 @@ class BotWorker:
                                     log.error(msg)
                                     await send_private(msg)
                                     self._sltp_last_alert = now
-                            else:
-                                if self._sltp_missing_since is not None:
-                                    log.info("Position poll: SL/TP confirmed for trade #%d", trade.id)
-                                self._sltp_missing_since = None
-                                self._sltp_last_alert = 0
-                        else:
-                            self._sltp_missing_since = None
 
             except Exception as e:
                 log.error("Position poll error: %s", e)

@@ -9,7 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 ## [2026-06-09]
 
 ### Fixed
-- **SL/TP false-positive alerts**: Replaced fragile `get_open_orders` type scan with direct order-ID lookup via `get_order()` for SL/TP verification; also checks `origType` field as fallback; handles Binance `-4045` error as confirmation that orders exist instead of alerting; added 5-minute backoff after `-4045` confirmation to prevent log spam
+- **SL/TP duplicate-order accumulation (root cause of `-4045`)**: Position poll was placing a new SL + TP every cycle without cancelling existing ones whenever detection failed, accumulating up to Binance's order limit (observed 200 open orders on one position) and triggering `-4045 Reach max stop order limit`. Re-placement now always routes through `_place_sl_tp()`, which cancels all open orders first — so the bot can never hold more than one SL + one TP. Removed the `-4045` backoff workaround (no longer needed). `_check_sltp_orders` now trusts only stored order IDs via `get_order()`; a missing/inactive order triggers a clean cancel-and-replace, which also clears any stray duplicates
+- **SL/TP false-positive alerts**: Replaced fragile `get_open_orders` type scan with direct order-ID lookup via `get_order()` for SL/TP verification
 - **WebSocket 403 on new sessions**: Converted CSRF middleware from `BaseHTTPMiddleware` to pure ASGI middleware — `BaseHTTPMiddleware` wraps the ASGI lifecycle in a way that breaks WebSocket upgrades; pure ASGI skips non-HTTP scopes entirely
 - **`bot_state` upsert error**: Drop old `bot_state_key_key` single-column unique constraint before creating `uq_bot_state_scoped` (scoped by user_id + is_paper); deduplicates existing rows first
 - **Position page mode flickering**: Added WebSocket mode filter so live/paper position data doesn't cross-render

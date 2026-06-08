@@ -654,6 +654,9 @@ class BotWorker:
                         has_tp = any(o["type"] == "TAKE_PROFIT_MARKET" for o in orders)
 
                         if not has_sl or not has_tp:
+                            order_types = [o.get("type") for o in orders]
+                            log.warning("User %d: SL/TP check — has_sl=%s has_tp=%s, order_types=%s, total_orders=%d",
+                                        self.user_id, has_sl, has_tp, order_types, len(orders))
                             now = time.time()
                             if self._sltp_missing_since is None:
                                 self._sltp_missing_since = now
@@ -689,9 +692,11 @@ class BotWorker:
                                         missing.append("SL")
                                     if still_missing_tp:
                                         missing.append("TP")
+                                    user_info = await db.get_user(self.user_id)
+                                    user_label = f"{user_info.name} (#{self.user_id})" if user_info and user_info.name else f"#{self.user_id}"
                                     msg = (
                                         f"⚠️ Failed to place {'/'.join(missing)} for {trade.symbol} "
-                                        f"({trade.direction.upper()}) user #{self.user_id} — check position manually"
+                                        f"({trade.direction.upper()}) — {user_label}\nCheck position manually"
                                     )
                                     log.error(msg)
                                     await send_private(msg)

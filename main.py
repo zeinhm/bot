@@ -132,7 +132,7 @@ app.add_middleware(CSRFMiddleware)
 app.add_middleware(
     SessionMiddleware,
     secret_key=_session_secret,
-    max_age=86400,
+    max_age=604800,
     same_site="lax",
     https_only=SESSION_SECRET != "change-me-in-production",
 )

@@ -1,4 +1,5 @@
 import secrets
+import time
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -20,6 +21,8 @@ class CSRFMiddleware:
 
         if "csrf_token" not in request.session:
             request.session["csrf_token"] = secrets.token_hex(32)
+
+        request.session["_ts"] = int(time.time())
 
         if request.method in SAFE_METHODS:
             await self.app(scope, receive, send)

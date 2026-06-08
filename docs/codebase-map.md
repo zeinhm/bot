@@ -1,0 +1,526 @@
+# Codebase Map — Detailed Reference
+
+Function-level documentation for every source file in the ZENITH trading bot platform. For the concise overview, see `CLAUDE.md` in the project root.
+
+---
+
+## Core Engine
+
+### `config.py`
+Central configuration loaded from environment variables.
+
+| Constant | Value / Source | Purpose |
+|----------|---------------|---------|
+| `BINANCE_API_KEY/SECRET` | env | Legacy single-user Binance credentials |
+| `DATABASE_URL` | env | PostgreSQL connection string |
+| `TELEGRAM_BOT_TOKEN` | env | Telegram alert bot token |
+| `TELEGRAM_CHAT_ID` | env | Public channel for trade alerts |
+| `TELEGRAM_OWNER_ID` | env | Private chat for status alerts |
+| `GOOGLE_CLIENT_ID/SECRET` | env | Google OAuth (enables multi-user mode) |
+| `SESSION_SECRET` | env (default "change-me-in-production") | Starlette session signing |
+| `ENCRYPTION_KEY` | env | Fernet key for API key encryption |
+| `RESEND_API_KEY` | env | Resend email service |
+| `EMAIL_FROM` | env | Sender email address |
+| `SYMBOLS` | `["BTCUSDT","ETHUSDT","SOLUSDT"]` | Traded pairs |
+| `TICK_SIZE` | `{BTC:0.10, ETH:0.01, SOL:0.01}` | Price step per symbol |
+| `LOT_SIZE` | `{BTC:0.001, ETH:0.01, SOL:0.1}` | Quantity step per symbol |
+| `LEVERAGE` | `5` | Exchange leverage |
+| `COMMISSION_PCT` | `0.0004` | 0.04% taker fee |
+| `SLIPPAGE_TICKS` | `2` | Ticks of slippage applied on entry |
+| `CANDLE_BUFFER_SIZE` | `1000` | Max klines to fetch on startup |
+| `STRATEGY_PARAMS` | dict | Full strategy config (see below) |
+| `ACC_RANGE_MODE` | `{BTC:"body", ETH:"wick", SOL:"wick"}` | Per-asset accumulation mode |
+
+**STRATEGY_PARAMS** defaults: `tf_minutes=15`, `acc_len=60`, `acc_mode="atr"`, `atr_mult_acc=5`, `man_look=10`, `fvg_threshold=0.1`, `atr_len=14`, `atr_mult=1.5`, `rrr=2.0`, sessions=all four, `sweep_filter=True`, `sweep_len=5`, `sweep_max_bars=300`, `skip_months=[5]`, `skip_weeks={4:[2,4]}`, `manip_min_mode="atr"`, `manip_min_val=0.4`, `adx_filter=True`, `adx_period=42`, `adx_threshold=35`, `loss_streak_threshold=4`, `reduced_risk_pct=0.25`, `wins_to_recover=2`
+
+---
+
+### `main.py`
+FastAPI app entry point.
+
+- `lifespan(app)` — Async context manager: init DB → create SharedMarketData → load history + start kline stream → create BotManager → auto-start paper/live bots for all approved users → start WS push tasks. On shutdown: cancel tasks, stop all workers, close market.
+- Two modes: multi-user (Google OAuth) or single-user/legacy (env API keys)
+- Exception handlers: `AuthRequired` → `/login`, `PendingApproval` → `/pending`, `AccountRejected` → `/rejected`, `AdminNotFound` → 404
+- `landing_page()` — Serves static `landing-page/landing-page.html` at `/`
+- Mounts 12 route modules + static files at `/static` and `/landing`
+- Session middleware: `max_age=86400` (24 hours)
+
+---
+
+### `strategy.py`
+Live signal detector. Processes a candle buffer and returns a signal dict if the LAST bar triggers entry.
+
+- `check_signal(candles, params)` → `{direction, entry_price, sl, tp, sl_distance, atr, timestamp}` or `None`
+- `_in_session(ts_ms, sessions)` — Checks if timestamp is in active trading session (NY timezone)
+- `_in_skip_period(ts_ms, skip_months, skip_weeks)` — Checks for skip months/weeks
+- `_rolling_max(values, period)` / `_rolling_min(values, period)` — O(n) monotone deque
+- `_atr(highs, lows, closes, period)` — Wilder's ATR (RMA smoothing, matches Pine Script)
+- `_adx(highs, lows, closes, period)` — ADX with +DI/-DI, Wilder's smoothing
+- `_compute_sweep_zones(highs, lows, closes, sweep_len, sweep_max_bars)` — Liquidity sweep zone detection using pivot highs/lows
+
+State machine: Accumulation → Manipulation → FVG → Entry. Only fires on bar `i == n - 1`.
+
+Key details:
+- Candle timestamps are **milliseconds**
+- Smart SL: wider of ATR-based SL and manipulation extremum
+- Accumulation supports "atr" mode (range ≤ ATR * mult) and "fixed %" mode
+- `acc_range_mode` controls body-based vs wick-based range calculation
+- ADX filter skips counter-trend entries when ADX > threshold
+
+---
+
+### `amd_engine.py`
+Backtest/simulation engine. Runs strategy on historical data bar-by-bar.
+
+- `run(data, cfg)` → list of setup dicts. Takes candle list `{time, open, high, low, close}` (time in **seconds**) and config with **camelCase** keys
+- `compute_stats(setups, rrr, equity_cfg)` → stats dict (trades, wins, losses, win_rate, total_r)
+- `simulate_equity(setups, rrr, cfg)` → equity curve with adaptive sizing, commission, drawdown tracking
+- `_close_trade(trade, idx, time, price, result)` — Marks trade dict as closed
+- `_make_setup(...)` — Creates detailed setup dict with 18+ fields
+
+Config uses **camelCase** keys (e.g., `accLen`, `fvgThreshold`), while `config.py` uses **underscore** keys. `seed_trades.py` bridges this mapping.
+
+---
+
+### `exchange.py`
+Live Binance Futures API wrapper.
+
+- `BinanceExchange(api_key, api_secret)`
+- `connect()` — Creates AsyncClient + BinanceSocketManager, detects position mode, sets leverage
+- `_detect_position_mode()` — Queries hedge/one-way mode
+- `get_balance()` → USDT futures balance
+- `get_position(symbol)` → `{symbol, side, quantity, entry_price, unrealized_pnl}` or None
+- `get_all_positions()` → list of non-zero positions
+- `place_market_order(symbol, side, quantity, position_side)` — Hedge mode auto-sets positionSide
+- `place_stop_loss(symbol, side, quantity, stop_price)` — STOP_MARKET, reduceOnly in one-way mode
+- `place_take_profit(symbol, side, quantity, price)` — TAKE_PROFIT_MARKET
+- `get_order(symbol, order_id)` / `get_trades_for_order(symbol, order_id)` — Fill data queries
+- `cancel_order()` / `cancel_all_orders()` — Order cancellation
+- `get_klines(symbol, interval, limit)` → list of candle dicts
+- `start_kline_socket(symbols, interval, callback)` — Multiplex kline websocket
+- `start_user_socket(callback)` — User data stream (ORDER_TRADE_UPDATE events)
+- `_format_qty(symbol, qty)` / `_format_price(symbol, price)` — Precision formatting
+
+---
+
+### `paper_exchange.py`
+Paper trading exchange mimicking BinanceExchange interface. Uses SharedMarketData for real-time prices.
+
+- `PaperExchange(user_id, shared_market)`
+- `connect()` — Ensures paper account in DB
+- `get_balance()` → reads from DB
+- `place_market_order()` — Uses shared market price for fill, manages in-memory positions
+- `place_stop_loss()` / `place_take_profit()` — Creates PaperOrder in DB
+- `start_user_socket(callback)` — **Polling loop** (every 1s), checks pending orders against live prices. Fills orders, updates paper balance (PnL minus commission), emits synthetic ORDER_TRADE_UPDATE events.
+
+Trigger logic: STOP_MARKET SELL triggers when price ≤ stop_price; BUY when price ≥. TAKE_PROFIT_MARKET SELL when price ≥; BUY when price ≤.
+
+---
+
+### `telegram_alert.py`
+Telegram notifications via Bot API.
+
+- `send_alert(text)` — Sends to channel (TELEGRAM_CHAT_ID)
+- `send_private(text)` — Sends to owner (TELEGRAM_OWNER_ID)
+- `alert_entry(symbol, direction, entry_price, sl, tp, quantity, balance)` — Formatted entry notification
+- `alert_exit(symbol, direction, result, entry_price, exit_price, pnl, r_value, balance)` — Formatted exit notification
+- `alert_bot_started()` — No-op (disabled)
+- `alert_bot_stopped(reason)` — Private alert unless reason is "shutdown"
+
+---
+
+### `import_candles.py`
+CLI tool: imports 1m CSV → PostgreSQL, resamples to higher TFs.
+
+- `ensure_table(conn)` — Creates historical_candles table
+- `import_1m(conn, symbol)` — Reads `{symbol}_1m.csv` from `../data/`, converts ms→s timestamps, batch inserts 10k rows
+- `resample(conn, symbol, interval)` — Aggregates 1m → 5m/15m/30m/1h/4h/1d
+- Uses raw psycopg2 (not SQLAlchemy) for performance
+
+---
+
+### `seed_trades.py`
+CLI tool: runs strategy on historical candles → inserts as BacktestResult rows.
+
+- `_build_cfg(symbol)` — Converts underscore config keys to camelCase for amd_engine
+- `seed(symbols, clear)` — Loads 15m candles, runs amd_engine.run(), simulates equity with adaptive sizing, inserts results
+- INITIAL_CAPITAL=10000, RISK_PCT=0.02
+
+---
+
+## App Layer
+
+### `app/auth/service.py`
+Authentication, encryption, and session utilities.
+
+- `encrypt(plaintext)` / `decrypt(ciphertext)` — Fernet encryption for API keys
+- `require_auth(request)` → User or raises AuthRequired/PendingApproval/AccountRejected
+- `get_current_user(request)` → User from session, or `_LEGACY_USER` (id=1) if no Google OAuth
+- `get_trading_mode(request)` → "live" or "paper"
+- `get_admin_mode(request)` → bool
+
+---
+
+### `app/core/context.py`
+Shared template context builder.
+
+- `get_global_context(user_id, mode)` → `{bot_running, bot_status, bot_enabled, balance, trading_mode, is_paper}`
+
+---
+
+### `app/email.py`
+Transactional emails via Resend.
+
+- `send_approval_email(to, name)` — Branded HTML approval notification
+- `send_rejection_email(to, name)` — Branded HTML rejection notification
+
+---
+
+### `app/db/engine.py`
+Database initialization.
+
+- `init_db(database_url)` — Creates async engine, runs `_ensure_schema()`, then `create_all`
+- `_ensure_schema(eng)` — Idempotent `ALTER TABLE ADD COLUMN IF NOT EXISTS` for all user-scoping columns
+- `get_session()` → AsyncSession
+
+---
+
+### `app/db/models.py`
+12 SQLAlchemy ORM models. See CLAUDE.md for the table summary.
+
+Key relationships:
+- `Trade.user_id` → `User.id`
+- `UserConfig.user_id` → `User.id` (unique)
+- `PaperAccount.user_id` → `User.id` (unique)
+- `PaperOrder.user_id` → `User.id`, `PaperOrder.trade_id` → `Trade.id`
+- `RejectionLog.user_id` → `User.id`
+- `BotState` unique on `(key, user_id, is_paper)`
+- `HistoricalCandle` unique on `(symbol, interval, timestamp)`
+- `CandleBuffer` unique on `(symbol, timestamp)`
+
+---
+
+### `app/db/queries/trades.py`
+
+| Function | Returns | Notes |
+|----------|---------|-------|
+| `create_trade(trade_data)` | Trade | Insert new trade row |
+| `update_trade(trade_id, updates)` | — | Update specific fields |
+| `get_trade(trade_id)` | Trade or None | By ID |
+| `get_open_trade(user_id, is_paper)` | Trade or None | First trade with result="open" |
+| `get_recent_trades(limit, user_id, is_paper)` | list[Trade] | DESC by ID |
+| `get_all_trades(user_id, is_paper)` | list[Trade] | ASC by ID |
+| `get_trades_filtered(user_id, is_paper, symbol, direction, result_filter)` | list[Trade] | With optional filters |
+| `get_today_pnl(user_id, is_paper)` | float | Sum of pnl_usdt for today's closed trades |
+| `get_today_trade_count(user_id, is_paper)` | int | Trades entered today |
+
+### `app/db/queries/users.py`
+
+| Function | Returns | Notes |
+|----------|---------|-------|
+| `get_user(user_id)` | User | By ID |
+| `get_user_by_google_id(google_id)` | User | By Google OAuth ID |
+| `upsert_user_from_google(google_id, email, name, avatar_url)` | User | Create or update on login |
+| `get_user_config(user_id)` | UserConfig | Encrypted API keys |
+| `save_user_config(user_id, api_key_enc, api_secret_enc)` | — | Create or update |
+| `delete_user_api_keys(user_id)` | — | Nulls out encrypted key/secret fields |
+| `get_all_configured_users()` | list[(User, UserConfig)] | Users with API keys set |
+
+### `app/db/queries/candles.py`
+
+| Function | Returns | Notes |
+|----------|---------|-------|
+| `save_candles(symbol, candles)` | — | Bulk upsert with ON CONFLICT DO NOTHING |
+| `get_candles(symbol, limit)` | list | Recent live candles from buffer |
+| `trim_candle_buffer(symbol, keep)` | — | Delete old candles |
+| `get_historical_candles(symbol, interval, end, limit)` | (candles, has_more) | Paginated fetch |
+| `get_historical_candle_range(symbol, interval)` | (min_ts, max_ts) | Date range query |
+| `get_all_historical_candles(symbol, interval)` | list | All candles ASC (for backtester) |
+
+### `app/db/queries/state.py`
+
+| Function | Returns | Notes |
+|----------|---------|-------|
+| `get_state(key, default, user_id, is_paper)` | any | JSON-parsed value, falls back to global |
+| `set_state(key, value, user_id, is_paper)` | — | Atomic upsert (ON CONFLICT DO UPDATE) |
+
+### `app/db/queries/admin.py`
+
+| Function | Returns | Notes |
+|----------|---------|-------|
+| `get_all_approved_users()` | list[User] | Ordered by last login |
+| `get_pending_users()` | list[User] | Neither approved nor rejected |
+| `get_platform_today_pnl()` | float | Sum across all live trades today |
+| `get_platform_year_pnl()` | float | Sum across all live trades this year |
+| `get_platform_trade_count()` | int | All closed live trades |
+| `get_user_trade_summary(user_id, is_paper)` | dict | trades, wins, losses, win_rate, total_r, total_pnl, today_pnl |
+| `get_all_platform_trades(is_paper)` | list[Trade] | All closed trades across users |
+| `get_admin_events(limit, user_id, level, category, is_paper)` | list[(BotEvent, User)] | With optional filters |
+
+### `app/db/queries/events.py`
+
+| Function | Returns | Notes |
+|----------|---------|-------|
+| `log_event(message, level, category, details, user_id, is_paper)` | — | Insert BotEvent |
+| `get_recent_events(limit, user_id, is_paper)` | list[BotEvent] | DESC by ID |
+
+### `app/db/queries/paper.py`
+
+| Function | Returns | Notes |
+|----------|---------|-------|
+| `get_or_create_paper_account(user_id, default_balance)` | PaperAccount | Default $10,000 |
+| `update_paper_balance(user_id, new_balance)` | — | |
+| `get_paper_balance(user_id)` | float | |
+| `create_paper_order(order_data)` | PaperOrder | |
+| `get_pending_paper_orders(user_id, symbol)` | list[PaperOrder] | Status "NEW" |
+| `get_paper_orders_for_trade(trade_id)` | list[PaperOrder] | |
+| `fill_paper_order(order_id)` / `cancel_paper_order(order_id)` | — | |
+| `cancel_all_paper_orders(user_id, symbol)` | — | Cancels all NEW orders |
+
+### `app/db/queries/backtest.py`
+
+| Function | Returns | Notes |
+|----------|---------|-------|
+| `get_backtest_results(symbol)` | list[BacktestResult] | Optional symbol filter |
+| `save_backtest_results(results)` | — | Bulk insert |
+| `clear_backtest_results()` | — | Delete all |
+
+---
+
+## Bot Layer
+
+### `app/bot/__init__.py`
+Bot accessors and config builders.
+
+- `set_bot_manager(manager)` — Stores global reference
+- `make_broadcast_fn(user_id, mode)` → closure that broadcasts to specific user/mode via ws_manager
+- `get_bot()` → BotWorker for user 1 (legacy)
+- `get_bot_for_user(user_id, mode)` → BotWorker for any user/mode
+- `build_user_config(api_key, api_secret)` → BotConfig for live trading
+- `build_paper_config(paper_balance)` → BotConfig with is_paper=True
+
+### `app/bot/worker.py`
+Core trading loop for a single user/mode.
+
+**BotConfig** (dataclass): api_key, api_secret, symbols, strategy_params, leverage, commission, slippage, tick_sizes, lot_sizes, buffer_size, telegram_*, is_paper, paper_balance, loss_streak_threshold, reduced_risk_pct, wins_to_recover
+
+**BotWorker methods**:
+- `start()` — Connect exchange → crash recovery → register candle callback → start user stream + position poll
+- `stop()` — Remove callback, cancel tasks, close exchange
+- `_crash_recovery()` — Reconcile DB vs exchange: close orphan trades, re-place missing SL/TP, close orphan positions
+- `_process_candle(symbol)` — Check skip periods, bot_enabled, active symbols, max trades → call `check_signal()` → execute if signal
+- `_execute_trade(symbol, signal)` — Calculate quantity (static/dynamic risk + adaptive sizing) → market order → record in DB → place SL/TP → broadcast → Telegram alert
+- `_place_sl_tp(symbol, direction, quantity, sl, tp, trade_id)` — 3 retries, 1s between, cancels existing orders first
+- `_on_user_event(data)` — Handle ORDER_TRADE_UPDATE: calculate PnL, close trade, cancel remaining orders, update adaptive sizing, broadcast, alert, self-heal
+- `_run_position_poll()` — Every 10-30s safety net: detect missed fills, re-place missing SL/TP, Telegram alert after 60s failure
+- `_self_heal_trade(trade_id)` — Post-close: verify against actual Binance fill data, correct prices/quantities/PnL
+- `_get_effective_risk()` → reduced risk % if adaptive sizing active, else None
+- `_on_trade_result(won)` — Adaptive sizing state machine: track loss streak → activate reduced risk → track recovery wins → deactivate
+
+### `app/bot/manager.py`
+Multi-user bot lifecycle.
+
+- `BotManager.start_bot(user_id, mode, config, broadcast_fn, shared_market)` — Create + start BotWorker as asyncio task
+- `stop_bot(user_id, mode)` — Stop worker, cancel task
+- `get_worker(user_id, mode)` / `get_any_worker(user_id)` → BotWorker or None
+- `get_status(user_id, mode)` → status string
+- `get_all_bot_info()` → list of dicts with full bot info
+
+### `app/bot/shared_market.py`
+Shared public Binance connection (no API key needed).
+
+- `connect()` — Creates anonymous AsyncClient
+- `load_history(symbols, interval, limit)` — Fetches klines, populates candle buffers (drops last incomplete candle)
+- `start_kline_stream(symbols, interval)` — Background multiplex kline WebSocket
+- `_on_kline(data)` — On closed candle: append to buffer (max 400), save to DB, trim, fire callbacks
+- `get_candles(symbol)` → copy of candle buffer
+- `on_candle_close(callback)` / `remove_candle_callback(callback)` — Register/unregister
+
+### `app/bot/websocket.py`
+WebSocket connection manager + 7 background push tasks.
+
+- `ConnectionManager` — Per-user WebSocket connections: `connect`, `disconnect`, `send_to_user`, `broadcast_all`
+- `websocket_endpoint(ws, user_id)` — `/ws/{user_id}` route, validates session ownership
+- `start_ws_tasks(bot_manager, shared_market)` → 7 asyncio tasks:
+  1. `_price_stream` — Real-time ticker prices → all clients
+  2. `_heartbeat_loop` — Every 15s: bot status, risk, session, candle age, uptime
+  3. `_position_poll` — Every 2s: positions with unrealized PnL/R, SL/TP distance
+  4. `_balance_poll` — Every 30s: USDT balance, persists to DB state
+  5. `_orderbook_stream` — Top-20 depth at max 2Hz per symbol
+  6. `_agg_trade_stream` — Aggregated trades (price, qty, side)
+  7. `_trade_anomaly_scanner` — Every 5min: verify all trades from last 24h against Binance fills
+
+---
+
+## Routes
+
+### `routes/auth.py`
+| Method | Path | Template | Purpose |
+|--------|------|----------|---------|
+| GET | `/login` | `login.html` | Google sign-in page |
+| GET | `/auth/google` | — | Initiate OAuth redirect |
+| GET | `/auth/callback` | — | OAuth callback, upsert user, redirect |
+| GET | `/logout` | — | Clear session |
+| GET | `/setup` | `setup.html` | First-run API key form |
+| POST | `/setup` | — | Save API keys, start bot |
+| GET | `/pending` | `pending.html` | Awaiting approval page |
+| GET | `/rejected` | `rejected.html` | Access declined page |
+
+### `routes/dashboard.py`
+| Method | Path | Template | Purpose |
+|--------|------|----------|---------|
+| GET | `/dashboard` | `dashboard.html` | Main dashboard with stats, equity curve, recent trades |
+| GET | `/api/live-candles` | — | JSON OHLCV candles (Binance API → fallback to DB buffer) |
+
+### `routes/position.py`
+| Method | Path | Template | Purpose |
+|--------|------|----------|---------|
+| GET | `/position` | `position.html` | Live positions from exchange, SL/TP for bot trades |
+
+### `routes/trades.py`
+| Method | Path | Template | Purpose |
+|--------|------|----------|---------|
+| GET | `/trades` | `trades.html` | Filtered trade history (symbol, direction, result) |
+
+### `routes/settings.py`
+| Method | Path | Template | Purpose |
+|--------|------|----------|---------|
+| GET | `/settings` | `settings.html` | Bot settings, API key status |
+| POST | `/settings` | — | Save bot settings |
+| POST | `/settings/api-keys` | — | Save new API keys, restart bot |
+| POST | `/settings/api-keys/delete` | — | Delete API keys, stop live bot |
+| POST | `/api/emergency-close` | — | Close all positions, mark trades as loss |
+
+### `routes/bot_control.py`
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/bot/start` | Start live bot |
+| POST | `/bot/stop` | Stop live bot |
+| POST | `/bot/start-paper` | Start paper bot, mark user opted-in |
+| GET | `/bot/status` | Current bot status JSON |
+| POST | `/api/switch-mode` | Switch live/paper mode in session |
+
+### `routes/analytics.py`
+| Method | Path | Template | Purpose |
+|--------|------|----------|---------|
+| GET | `/analytics` | `analytics.html` | Win rate, profit factor, drawdown, session/day/monthly PnL, hold times |
+
+### `routes/backtester.py`
+| Method | Path | Template | Purpose |
+|--------|------|----------|---------|
+| GET | `/backtester` | `backtester.html` | Backtester page with strategy description |
+| GET | `/api/candles` | — | Paginated historical candles from DB |
+| GET | `/api/backtest` | — | Run backtest for single symbol |
+| GET | `/api/backtest/combined` | — | Run backtest across all 3 symbols, combined equity |
+
+### `routes/alerts.py`
+| Method | Path | Template | Purpose |
+|--------|------|----------|---------|
+| GET | `/alerts` | `alerts.html` | Telegram link, bot events (currently commented out) |
+
+### `routes/track_record.py`
+| Method | Path | Template | Purpose |
+|--------|------|----------|---------|
+| GET | `/track-record` | `track_record.html` | Public verified track record (no auth, standalone) |
+
+### `routes/admin/__init__.py`
+- `require_admin(request)` — Auth + admin check
+- `POST /admin/toggle` — Toggle admin mode in session
+
+### `routes/admin/dashboard.py`
+| Method | Path | Template | Purpose |
+|--------|------|----------|---------|
+| GET | `/admin` | `admin_dashboard.html` | Platform overview: users, bots, equity, PnL |
+
+### `routes/admin/users.py`
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/admin/users` | User management page (pending/approved/rejected tabs) |
+| POST | `/admin/users/approve/{id}` | Approve user + send email |
+| POST | `/admin/users/reject/{id}` | Reject user + create log + send email |
+| POST | `/admin/users/disable/{id}` | Disable approved user, stop bots |
+| POST | `/admin/users/toggle-admin/{id}` | Toggle admin status |
+| POST | `/admin/users/allow-reregister/{id}` | Allow rejected user to re-register |
+
+### `routes/admin/user_detail.py`
+| Method | Path | Template | Purpose |
+|--------|------|----------|---------|
+| GET | `/admin/user/{id}` | `admin_user_detail.html` | Detailed user view with stats, equity, trades, events |
+| POST | `/admin/user/{id}/reconcile` | — | Reconcile trades against Binance fill data |
+
+Helper functions: `compute_stats(trades)`, `_get_order()`, `_get_fills()`, `_get_all_fills()`
+
+### `routes/admin/bots.py`
+| Method | Path | Template | Purpose |
+|--------|------|----------|---------|
+| GET | `/admin/bots` | `admin_bots.html` | All bot instances with status/uptime/errors |
+
+### `routes/admin/analytics.py`
+| Method | Path | Template | Purpose |
+|--------|------|----------|---------|
+| GET | `/admin/analytics` | `admin_analytics.html` | Platform win rate, leaderboard, monthly PnL |
+
+### `routes/admin/logs.py`
+| Method | Path | Template | Purpose |
+|--------|------|----------|---------|
+| GET | `/admin/logs` | `admin_logs.html` | Filterable event log (user, level, category, mode) |
+
+---
+
+## Templates
+
+### Inheritance
+- **Extends base.html**: dashboard, position, trades, settings, analytics, backtester, alerts, all admin_* templates
+- **Standalone** (own layout): login, setup, pending, rejected, 404, track_record
+
+### base.html — Key blocks
+- `{% block title_suffix %}` — appended to `<title>ZENITH...`
+- `{% block head %}` — extra head content
+- `{% block content_class %}` — extra CSS class on #page-content
+- `{% block content %}` — main content area
+- `{% block scripts %}` — scripts before </body>
+
+### base.html — Context variables
+All pages receive via `get_global_context()`: `user`, `admin_mode`, `page`, `is_paper`, `balance`, `bot_status`, `bot_enabled`, `trading_mode`
+
+### base.html — JavaScript handlers
+WebSocket message types: `price`, `balance`, `heartbeat`, `bot_status`, `position`, `adaptive_sizing`, `trade_opened`, `trade_closed`
+Functions: `toggleAdminMode()`, `switchMode()`, `closePaperModal()`, `toggleProfileMenu()`, `toggleMorePanel()`, `formatLocalTimes()`, `updateNavActive()`
+HTMX hooks: `beforeRequest` (progress bar), `afterSettle` (time format), `afterSwap` (title update), `pushedIntoHistory` (nav active state), `confirm` (prevent re-navigation)
+
+### Template-specific heavy JS
+- **position.html** (~800 lines): Chart with timeframe management, order book, market trades, position price lines, infinite scroll history
+- **backtester.html** (~500 lines): Combined equity, per-asset chart with setup box visualization, trade log pagination
+- **analytics.html**: Drawdown chart, monthly bars, session/day progress bars, hold time bars
+
+---
+
+## Static Assets
+
+### `static/css/app.css`
+Design system with CSS custom properties:
+- Surfaces: `--bg` (#0F1117), `--card`, `--card-2`, `--card-3`, `--border`
+- Colors: `--green` (#00C896), `--red` (#FF4D4D), `--amber`, `--blue`
+- Fonts: `--sans` (Inter), `--mono` (JetBrains Mono)
+- Layout: `--rail` (56px), `--header-h` (48px)
+
+Responsive breakpoints: `768px` (hide sidebar, show bottom nav), `767px` (full mobile), `479px` (single-column stats)
+
+### `static/js/websocket.js`
+`BotWebSocket` class: auto-reconnect with exponential backoff (1s→30s), client-side ping every 30s, event-based `.on(type, handler)`.
+
+---
+
+## Alembic Migrations
+
+| Version | Description |
+|---------|-------------|
+| `18cd39afc223` | Add is_approved, is_admin to users; drop historical candle index |
+| `8adeceee7bf1` | Paper trading tables, user scoping on trades/events/state, backtest_results |
+| `b1267890df2e` | Add is_rejected to users |
+| `673da50d8570` | Create rejection_log table |
+| `a2f1c3d5e7b9` | Add paper_bot_started to users, backfill approved users |
+
+Chain: `None → 18cd → 8ade → b126 → 673d → a2f1`
+
+Note: `_ensure_schema()` in `engine.py` also runs idempotent ALTER TABLE statements on startup, so schema changes are applied even without running Alembic.

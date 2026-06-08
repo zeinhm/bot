@@ -160,7 +160,7 @@
                             </td>
                             <td class="mono" style="padding:10px 12px;text-align:right">
                                 {% if pos.sl_price is defined and pos.sl_price %}
-                                <span class="neg">{{ "%.2f"|format(pos.sl_price) }}</span> / <span class="pos">{{ "%.2f"|format(pos.tp_price) }}</span>
+                                {{ "%.2f"|format(pos.sl_price) }} / {{ "%.2f"|format(pos.tp_price) }}
                                 {% else %}
                                 <span class="muted">—</span>
                                 {% endif %}
@@ -230,15 +230,9 @@
                         Time in trade <span class="mono mc-time" style="color:var(--text-2)">{{ pos.time_in_trade|default('—') }}</span>
                     </div>
                     {% if pos.sl_price is defined and pos.sl_price %}
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-                        <div>
-                            <div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">SL</div>
-                            <div class="mono neg" style="font-size:15px;font-weight:600">{{ "%.2f"|format(pos.sl_price) }}</div>
-                        </div>
-                        <div>
-                            <div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">TP</div>
-                            <div class="mono pos" style="font-size:15px;font-weight:600">{{ "%.2f"|format(pos.tp_price) }}</div>
-                        </div>
+                    <div class="status-grid">
+                        <div class="status-cell"><div class="k">SL</div><div class="v">{{ "%.2f"|format(pos.sl_price) }}</div></div>
+                        <div class="status-cell"><div class="k">TP</div><div class="v">{{ "%.2f"|format(pos.tp_price) }}</div></div>
                     </div>
                     {% endif %}
                     <div class="status-grid" style="margin-top:2px">
@@ -806,11 +800,9 @@
             html += 'Time in trade <span class="mono mc-time" style="color:var(--text-2)">' + fmtDur(p.time_in_trade_secs) + '</span></div>';
 
             if (p.sl_price) {
-                html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
-                html += '<div><div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">SL</div>';
-                html += '<div class="mono neg" style="font-size:15px;font-weight:600">' + fmt(p.sl_price) + '</div></div>';
-                html += '<div><div class="muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">TP</div>';
-                html += '<div class="mono pos" style="font-size:15px;font-weight:600">' + fmt(p.tp_price) + '</div></div></div>';
+                html += '<div class="status-grid">';
+                html += '<div class="status-cell"><div class="k">SL</div><div class="v">' + fmt(p.sl_price) + '</div></div>';
+                html += '<div class="status-cell"><div class="k">TP</div><div class="v">' + fmt(p.tp_price) + '</div></div></div>';
             }
 
             html += '<div class="status-grid" style="margin-top:2px">';
@@ -848,7 +840,7 @@
             var pnlCls = pnl >= 0 ? 'pos' : 'neg';
             var pnlSign = pnl >= 0 ? '+' : '';
             var srcPill = p.source === 'bot' ? '<span class="pill green" style="font-size:9px;padding:2px 6px">Bot</span>' : '<span class="pill amber" style="font-size:9px;padding:2px 6px">Manual</span>';
-            var sltp = p.sl_price ? '<span class="neg">' + fmt(p.sl_price) + '</span> / <span class="pos">' + fmt(p.tp_price) + '</span>' : '<span class="muted">—</span>';
+            var sltp = p.sl_price ? fmt(p.sl_price) + ' / ' + fmt(p.tp_price) : '<span class="muted">—</span>';
             html += '<tr style="border-bottom:1px solid var(--border)" data-pos-symbol="' + p.symbol + '" data-pos-dir="' + p.direction + '" data-pos-entry="' + p.entry_price + '" data-pos-qty="' + p.quantity + '">' +
                 '<td style="padding:10px 16px"><div class="vcenter gap6"><span class="mono" style="font-weight:600">' + p.symbol + '</span><span class="dir-badge ' + dirCls + '" style="font-size:9px;padding:1px 5px">' + p.direction.toUpperCase() + '</span></div></td>' +
                 '<td class="mono" style="padding:10px 12px;text-align:right">' + p.quantity.toFixed(4) + '</td>' +

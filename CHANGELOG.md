@@ -9,7 +9,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 ## [2026-06-09]
 
 ### Changed
-- **Position SL/TP display simplified**: Removed the SL/TP progress bars and the "% away" percentage from position cards — now shows just the SL and TP price under uppercase labels, matching the Entry/PnL cells. Applied across all three render paths: `base.html` mobile card, `position.html` Jinja-rendered card, and `position.html` JS-rendered card. Also dropped the now-unused price-distance recompute in the mobile-card `price` handler (SL/TP prices are static per trade)
+- **Position SL/TP display simplified**: Removed the SL/TP progress bars and the "% away" percentage from position cards. Mobile cards now render SL/TP as neutral `status-cell`s (same small-label + mono-value format as Size/Leverage, no red/green); the desktop table shows SL/TP as plain neutral text instead of red/green spans. Applied across all render paths: `base.html` mobile card, `position.html` Jinja + JS mobile cards, and the desktop table (Jinja + JS). Also dropped the now-unused price-distance recompute in the mobile-card `price` handler (SL/TP prices are static per trade)
 
 ### Removed
 - **Dead `position` WebSocket handler (`base.html`)**: Removed the `botWS.on('position', …)` single-position panel handler — it targeted a `position-panel` element that exists in no template and listened for a singular `position` message the backend never sends (superseded by the `positions` plural multi-position payload). It also referenced an undefined `sl_distance_pct`/`tp_distance_pct` field

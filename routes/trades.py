@@ -12,6 +12,17 @@ router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
 
+def _num(value, decimals: int = 2, sign: bool = False) -> str:
+    """Format a number with comma thousand separators (— if None)."""
+    if value is None:
+        return "—"
+    fmt = "{:+,.%df}" % decimals if sign else "{:,.%df}" % decimals
+    return fmt.format(value)
+
+
+templates.env.filters["num"] = _num
+
+
 @router.get("/trades")
 async def trades_page(
     request: Request,

@@ -43,7 +43,7 @@
     </div>
     <div class="stat">
         <div class="lbl">Total P&L</div>
-        <div class="val mono {{ 'pos' if total_pnl >= 0 else 'neg' }}">{{ "+" if total_pnl > 0 else "" }}${{ "%.2f"|format(total_pnl|abs) }}</div>
+        <div class="val mono {{ 'pos' if total_pnl >= 0 else 'neg' }}">{{ "+" if total_pnl > 0 else "" }}{{ "%.2f"|format(total_pnl|abs) }}</div>
     </div>
 </div>
 
@@ -52,22 +52,25 @@
     <div class="tbl-wrap">
     <table class="tbl">
         <thead><tr>
-            <th>#</th>
-            <th>Date</th>
             <th>Pair</th>
+            <th>Date</th>
             <th>Dir</th>
             <th class="num">Entry</th>
             <th class="num">Exit</th>
             <th>Result</th>
             <th class="num">R</th>
+            <th class="num">ROI</th>
             <th class="num">P&L</th>
         </tr></thead>
         <tbody>
             {% for t in trades %}
-            <tr class="{{ 'row-win' if t.result == 'win' else ('row-loss' if t.result == 'loss' else '') }}">
-                <td class="mono muted">{{ t.id }}</td>
-                <td class="mono local-time" data-utc="{{ t.entry_time.strftime('%Y-%m-%dT%H:%M:%SZ') if t.entry_time else '' }}" data-fmt="full">{{ t.entry_time.strftime('%Y-%m-%d %H:%M') if t.entry_time else '—' }}</td>
+            {% set roi = (t.pnl_usdt * leverage / (t.entry_price * t.quantity) * 100) if (t.pnl_usdt is not none and t.entry_price and t.quantity) else none %}
+            <tr>
                 <td class="mono">{{ t.symbol }}</td>
+                <td class="mono" style="font-size:11px;line-height:1.6">
+                    <div><span class="muted" style="display:inline-block;min-width:52px">Open:</span><span class="local-time" data-utc="{{ t.entry_time.strftime('%Y-%m-%dT%H:%M:%SZ') if t.entry_time else '' }}" data-fmt="fullsec">{{ t.entry_time.strftime('%Y-%m-%d %H:%M:%S') if t.entry_time else '—' }}</span></div>
+                    <div><span class="muted" style="display:inline-block;min-width:52px">Closed:</span><span class="local-time" data-utc="{{ t.exit_time.strftime('%Y-%m-%dT%H:%M:%SZ') if t.exit_time else '' }}" data-fmt="fullsec">{{ t.exit_time.strftime('%Y-%m-%d %H:%M:%S') if t.exit_time else '—' }}</span></div>
+                </td>
                 <td><span class="dir-badge {{ 'long' if t.direction == 'long' else 'short' }}">{{ t.direction|upper }}</span></td>
                 <td class="num mono">{{ "%.2f"|format(t.entry_price) if t.entry_price else '—' }}</td>
                 <td class="num mono">{{ "%.2f"|format(t.exit_price) if t.exit_price else '—' }}</td>
@@ -83,8 +86,23 @@
                 <td class="num mono {{ 'pos' if (t.r_value or 0) >= 0 else 'neg' }}">
                     {{ "%.1f"|format(t.r_value) if t.r_value is not none else '—' }}R
                 </td>
+                <td class="num mono {{ 'pos' if (roi or 0) >= 0 else 'neg' }}">
+                    {{ "%+.2f"|format(roi) ~ "%" if roi is not none else '—' }}
+                </td>
                 <td class="num mono {{ 'pos' if (t.pnl_usdt or 0) >= 0 else 'neg' }}">
-                    {{ "%.2f"|format(t.pnl_usdt) if t.pnl_usdt is not none else '—' }}
+                    {% if t.pnl_usdt is not none and t.funding_fee is not none %}
+                    {% set fee = t.commission or 0 %}
+                    {% set fund = t.funding_fee or 0 %}
+                    {% set gross = t.pnl_usdt - fund + fee %}
+                    <span class="pnl-wrap">{{ "%+.2f"|format(t.pnl_usdt) }}<span class="pnl-bd">
+                        <div class="r"><span class="k">Closing PnL</span><span class="mono">{{ "%+.4f"|format(gross) }}</span></div>
+                        <div class="r"><span class="k">Funding Fee</span><span class="mono">{{ "%+.4f"|format(fund) }}</span></div>
+                        <div class="r"><span class="k">Trading Fee</span><span class="mono neg">{{ "%.4f"|format(-fee) }}</span></div>
+                        <div class="r net"><span class="k">Net PnL (USDT)</span><span class="mono {{ 'pos' if t.pnl_usdt >= 0 else 'neg' }}">{{ "%+.2f"|format(t.pnl_usdt) }}</span></div>
+                    </span></span>
+                    {% elif t.pnl_usdt is not none %}
+                    {{ "%+.2f"|format(t.pnl_usdt) }}
+                    {% else %}—{% endif %}
                 </td>
             </tr>
             {% endfor %}

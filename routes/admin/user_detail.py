@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import decrypt
-from exchange import resolve_trade_exit, r_value_for_exit
+from exchange import resolve_trade_exit, r_value_for_exit, position_pnl_breakdown, fills_time
 import app.db as db
 
 log = logging.getLogger(__name__)
@@ -157,13 +157,13 @@ async def reconcile_trades(request: Request, user_id: int):
                 if entry_fills:
                     total_qty = sum(float(f["qty"]) for f in entry_fills)
                     avg_price = sum(float(f["price"]) * float(f["qty"]) for f in entry_fills) / total_qty if total_qty else 0
-                    entry_comm = sum(float(f.get("commission", 0)) for f in entry_fills)
                     if avg_price > 0 and abs((trade.entry_price or 0) - avg_price) > 0.01:
                         update["entry_price"] = avg_price
                     if total_qty > 0 and abs((trade.quantity or 0) - total_qty) > 0.0001:
                         update["quantity"] = total_qty
-                    if entry_comm > 0:
-                        update["commission"] = entry_comm
+                    et = fills_time(entry_fills)
+                    if et and (trade.entry_time is None or abs((trade.entry_time - et).total_seconds()) > 2):
+                        update["entry_time"] = et
 
             # Resolve the real exit from account fills. SL/TP are conditional/algo
             # orders whose ids can't be resolved with futures_get_order, so verify
@@ -183,19 +183,19 @@ async def reconcile_trades(request: Request, user_id: int):
                 if trade.result != correct_result:
                     update["result"] = correct_result
                     update["r_value"] = r_value_for_exit(exit_info["is_sl"], entry_p, trade.sl_price, trade.tp_price, trade.r_value)
+                xt = exit_info.get("exit_time")
+                if xt and (trade.exit_time is None or abs((trade.exit_time - xt).total_seconds()) > 2):
+                    update["exit_time"] = xt
 
-                qty = update.get("quantity", trade.quantity) or 0
-                entry_c = update.get("commission", trade.commission) or 0
-                if entry_p > 0 and qty > 0:
-                    if trade.direction == "long":
-                        raw_pnl = (exit_p - entry_p) * qty
-                    else:
-                        raw_pnl = (entry_p - exit_p) * qty
-                    total_comm = entry_c + exit_info["exit_commission"]
-                    correct_pnl = raw_pnl - total_comm
-                    if trade.pnl_usdt is None or abs((trade.pnl_usdt or 0) - correct_pnl) > 0.01:
-                        update["pnl_usdt"] = correct_pnl
-                        update["commission"] = total_comm
+            # Net PnL + fees from Binance's income ledger (verified numbers).
+            breakdown = await position_pnl_breakdown(client, trade.symbol, trade.entry_time, trade.exit_time)
+            if breakdown is not None:
+                if trade.pnl_usdt is None or abs((trade.pnl_usdt or 0) - breakdown["net_pnl"]) > 0.005:
+                    update["pnl_usdt"] = breakdown["net_pnl"]
+                if abs((trade.commission or 0) - breakdown["commission"]) > 0.0001:
+                    update["commission"] = breakdown["commission"]
+                if abs((trade.funding_fee or 0) - breakdown["funding_fee"]) > 0.0001:
+                    update["funding_fee"] = breakdown["funding_fee"]
 
             if update:
                 await db.update_trade(trade.id, update)

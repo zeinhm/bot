@@ -30,8 +30,9 @@ class Trade(Base):
     quantity = Column(Float)
     result = Column(String(10), default="open")
     r_value = Column(Float)
-    pnl_usdt = Column(Float)
-    commission = Column(Float)
+    pnl_usdt = Column(Float)         # net realized PnL (matches Binance Position History)
+    commission = Column(Float)       # trading fee, positive USDT cost
+    funding_fee = Column(Float)      # funding over the position's life, signed USDT
     sl_order_id = Column(String(50))
     tp_order_id = Column(String(50))
     entry_order_id = Column(String(50))

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+from datetime import datetime, timezone
 from binance import AsyncClient, BinanceSocketManager
 
 from config import SYMBOLS, LEVERAGE, LOT_SIZE
@@ -356,6 +357,7 @@ async def resolve_trade_exit(
     exit_price = sum(float(f["price"]) * float(f["qty"]) for f in selected) / total_qty
     exit_comm = sum(float(f.get("commission", 0)) for f in selected)
     realized = sum(float(f.get("realizedPnl", 0)) for f in selected)
+    exit_ms = max((int(f.get("time", 0)) for f in selected), default=0)
 
     # Decide SL vs TP by which target the real exit price is closest to. This
     # matches the strategy's semantics (TP hit = win) even if fees nudge a
@@ -371,4 +373,111 @@ async def resolve_trade_exit(
         "realized_pnl": realized,
         "is_sl": is_sl,
         "exit_qty": total_qty,
+        # Actual close moment on Binance (last closing fill), for an exact exit_time.
+        "exit_time": datetime.fromtimestamp(exit_ms / 1000, timezone.utc) if exit_ms else None,
+    }
+
+
+def fills_time(fills) -> "datetime | None":
+    """The actual fill moment (latest fill timestamp) as a tz-aware datetime, or None."""
+    ms = max((int(f.get("time", 0)) for f in (fills or [])), default=0)
+    return datetime.fromtimestamp(ms / 1000, timezone.utc) if ms else None
+
+
+async def _asset_usdt_price(client: "AsyncClient", asset: str, time_ms: int, cache: dict) -> float:
+    """Price of `asset` in USDT at `time_ms` (1m kline close), cached per asset+minute.
+
+    Used to convert fees paid in a non-USDT asset (e.g. BNB fee discount) into the
+    USDT value Binance shows — at the fee's own timestamp, so it matches the ledger.
+    """
+    if asset == "USDT":
+        return 1.0
+    bucket = (asset, time_ms // 60000)
+    if bucket in cache:
+        return cache[bucket]
+    px = 0.0
+    try:
+        kl = await client.futures_klines(
+            symbol=f"{asset}USDT", interval="1m",
+            startTime=time_ms - 60000, endTime=time_ms + 60000, limit=2,
+        )
+        if kl:
+            px = float(kl[-1][4])
+    except Exception as e:
+        log.warning("_asset_usdt_price: %sUSDT price fetch failed: %s", asset, e)
+    cache[bucket] = px
+    return px
+
+
+async def position_pnl_breakdown(
+    client: "AsyncClient",
+    symbol: str,
+    entry_time,
+    exit_time,
+) -> dict | None:
+    """Net realized PnL + breakdown straight from Binance's income ledger.
+
+    This is exactly what Binance's *Position History* shows — never computed from
+    prices. Sums the income entries over the position's lifetime:
+
+        net = REALIZED_PNL + FUNDING_FEE + COMMISSION
+
+    COMMISSION is a cost (negative income); when it's paid in a non-USDT asset
+    (BNB fee discount) it's converted to USDT via that asset's price at the fee
+    time, matching Binance's display to the cent.
+
+    Returns ``{realized_pnl, funding_fee, commission, net_pnl}`` (``commission`` is
+    a positive USDT cost) or ``None`` if the ledger couldn't be read or is empty.
+    """
+    if not entry_time:
+        return None
+    # This position's income is all at/before exit_time (a close is detected after
+    # the fill), so a tight window avoids catching the next same-symbol trade's fees.
+    start_ms = int(entry_time.timestamp() * 1000) - 1000
+    end_dt = exit_time or datetime.now(timezone.utc)
+    end_ms = int(end_dt.timestamp() * 1000) + 5000
+    try:
+        rows = await client.futures_income_history(symbol=symbol, startTime=start_ms, endTime=end_ms, limit=1000)
+    except Exception as e:
+        log.warning("position_pnl_breakdown: income fetch failed for %s: %s", symbol, e)
+        return None
+    if not rows:
+        return None
+
+    realized = 0.0
+    funding = 0.0
+    commission = 0.0  # positive USDT cost
+    price_cache: dict = {}
+    saw_realized = False
+    for r in rows:
+        itype = r.get("incomeType")
+        amt = float(r.get("income", 0) or 0)
+        asset = r.get("asset") or "USDT"
+        if itype == "REALIZED_PNL":
+            realized += amt
+            saw_realized = True
+        elif itype == "FUNDING_FEE":
+            funding += amt
+        elif itype == "COMMISSION":
+            if asset == "USDT":
+                commission += -amt
+            else:
+                px = await _asset_usdt_price(client, asset, int(r.get("time", 0)), price_cache)
+                if px <= 0:
+                    # Can't convert the fee to USDT — don't store an inaccurate net;
+                    # the scanner re-runs and will fix it once the price is readable.
+                    log.warning("position_pnl_breakdown: no %s/USDT price for %s — skipping", asset, symbol)
+                    return None
+                commission += -amt * px
+
+    # Only commission/funding and no realized PnL = not a resolved close; let the
+    # caller keep its value rather than store a partial.
+    if not saw_realized:
+        return None
+
+    return {
+        "realized_pnl": realized,
+        "funding_fee": funding,
+        "commission": commission,
+        "net_pnl": realized + funding - commission,
     }

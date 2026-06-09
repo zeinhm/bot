@@ -558,9 +558,12 @@ function formatLocalTimes() {
         var dd = String(d.getDate()).padStart(2, '0');
         var hh = String(d.getHours()).padStart(2, '0');
         var mi = String(d.getMinutes()).padStart(2, '0');
+        var ss = String(d.getSeconds()).padStart(2, '0');
         var fmt = el.dataset.fmt;
         if (fmt === 'date') {
             el.textContent = d.getFullYear() + '-' + mm + '-' + dd;
+        } else if (fmt === 'fullsec') {
+            el.textContent = d.getFullYear() + '-' + mm + '-' + dd + ' ' + hh + ':' + mi + ':' + ss;
         } else if (fmt === 'full') {
             el.textContent = d.getFullYear() + '-' + mm + '-' + dd + ' ' + hh + ':' + mi;
         } else {

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
 
 from app.auth import require_auth, get_trading_mode
+from config import LEVERAGE
 import app.db as db
 from app.core.context import get_global_context
 
@@ -47,6 +48,7 @@ async def trades_page(
         "win_rate": win_rate,
         "total_r": total_r,
         "total_pnl": total_pnl,
+        "leverage": LEVERAGE,
         "filter_symbol": symbol or "",
         "filter_direction": direction or "",
         "filter_result": result or "",

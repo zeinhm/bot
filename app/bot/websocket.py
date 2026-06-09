@@ -440,7 +440,7 @@ async def _trade_anomaly_scanner(bot_manager):
             from datetime import timedelta
             from binance import AsyncClient
             from app.auth import decrypt
-            from exchange import resolve_trade_exit, r_value_for_exit
+            from exchange import resolve_trade_exit, r_value_for_exit, position_pnl_breakdown, fills_time
 
             cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
             all_users = await db.get_all_approved_users()
@@ -469,7 +469,6 @@ async def _trade_anomaly_scanner(bot_manager):
                             update = {}
                             binance_entry_price = None
                             binance_qty = None
-                            binance_entry_comm = 0.0
 
                             if trade.entry_order_id:
                                 fills = await client.futures_account_trades(symbol=trade.symbol)
@@ -477,15 +476,16 @@ async def _trade_anomaly_scanner(bot_manager):
                                 if entry_fills:
                                     binance_qty = sum(float(f["qty"]) for f in entry_fills)
                                     binance_entry_price = sum(float(f["price"]) * float(f["qty"]) for f in entry_fills) / binance_qty if binance_qty else 0
-                                    binance_entry_comm = sum(float(f.get("commission", 0)) for f in entry_fills)
 
                                     if binance_entry_price > 0 and abs((trade.entry_price or 0) - binance_entry_price) > 0.01:
                                         update["entry_price"] = binance_entry_price
                                     if binance_qty > 0 and abs((trade.quantity or 0) - binance_qty) > 0.0001:
                                         update["quantity"] = binance_qty
+                                    et = fills_time(entry_fills)
+                                    if et and (trade.entry_time is None or abs((trade.entry_time - et).total_seconds()) > 2):
+                                        update["entry_time"] = et
 
                             binance_exit_price = None
-                            binance_exit_comm = 0.0
                             binance_is_sl = None
 
                             # SL/TP are conditional/algo orders, so their stored ids
@@ -499,8 +499,10 @@ async def _trade_anomaly_scanner(bot_manager):
                             )
                             if exit_info:
                                 binance_exit_price = exit_info["exit_price"]
-                                binance_exit_comm = exit_info["exit_commission"]
                                 binance_is_sl = exit_info["is_sl"]
+                                xt = exit_info.get("exit_time")
+                                if xt and (trade.exit_time is None or abs((trade.exit_time - xt).total_seconds()) > 2):
+                                    update["exit_time"] = xt
 
                             if binance_exit_price and binance_exit_price > 0:
                                 if abs((trade.exit_price or 0) - binance_exit_price) > 0.01:
@@ -514,19 +516,17 @@ async def _trade_anomaly_scanner(bot_manager):
                                         trade.sl_price, trade.tp_price, trade.r_value,
                                     )
 
-                            entry_p = update.get("entry_price", trade.entry_price) or (binance_entry_price or 0)
-                            exit_p = update.get("exit_price", trade.exit_price) or (binance_exit_price or 0)
-                            qty = update.get("quantity", trade.quantity) or (binance_qty or 0)
-                            if entry_p > 0 and exit_p > 0 and qty > 0:
-                                if trade.direction == "long":
-                                    raw_pnl = (exit_p - entry_p) * qty
-                                else:
-                                    raw_pnl = (entry_p - exit_p) * qty
-                                total_comm = (binance_entry_comm or trade.commission or 0) + binance_exit_comm
-                                correct_pnl = raw_pnl - total_comm
-                                if trade.pnl_usdt is None or abs((trade.pnl_usdt or 0) - correct_pnl) > 0.01:
-                                    update["pnl_usdt"] = correct_pnl
-                                    update["commission"] = total_comm
+                            # Net PnL + fees from Binance's income ledger (verified numbers).
+                            breakdown = await position_pnl_breakdown(
+                                client, trade.symbol, trade.entry_time, trade.exit_time,
+                            )
+                            if breakdown is not None:
+                                if trade.pnl_usdt is None or abs((trade.pnl_usdt or 0) - breakdown["net_pnl"]) > 0.005:
+                                    update["pnl_usdt"] = breakdown["net_pnl"]
+                                if abs((trade.commission or 0) - breakdown["commission"]) > 0.0001:
+                                    update["commission"] = breakdown["commission"]
+                                if abs((trade.funding_fee or 0) - breakdown["funding_fee"]) > 0.0001:
+                                    update["funding_fee"] = breakdown["funding_fee"]
 
                             if update:
                                 await db.update_trade(trade.id, update)

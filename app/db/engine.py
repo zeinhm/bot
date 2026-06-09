@@ -33,6 +33,10 @@ async def _ensure_schema(eng):
             await conn.execute(text(
                 f"ALTER TABLE trades ADD COLUMN IF NOT EXISTS {col} {typ} DEFAULT {default}"
             ))
+        # nullable funding-fee column (income-based PnL breakdown)
+        await conn.execute(text(
+            "ALTER TABLE trades ADD COLUMN IF NOT EXISTS funding_fee DOUBLE PRECISION"
+        ))
 
         # bot_events columns
         await conn.execute(text(

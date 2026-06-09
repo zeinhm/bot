@@ -129,6 +129,20 @@ body {
   box-shadow: 0 6px 18px rgba(0,0,0,.5);
 }
 
+/* P&L breakdown tooltip (Trade History) */
+.pnl-wrap { position: relative; display: inline-block; cursor: help; border-bottom: 1px dotted var(--border); }
+.pnl-wrap .pnl-bd {
+  display: none; position: absolute; right: 0; top: calc(100% + 6px);
+  background: #060709; border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 10px; white-space: nowrap; z-index: 60; text-align: left;
+  font-family: var(--sans); min-width: 168px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.5);
+}
+.pnl-wrap:hover .pnl-bd { display: block; }
+.pnl-bd .r { display: flex; justify-content: space-between; gap: 18px; padding: 2.5px 0; font-size: 11px; }
+.pnl-bd .r .k { color: var(--muted); }
+.pnl-bd .r.net { border-top: 1px solid var(--border); margin-top: 3px; padding-top: 5px; font-weight: 600; }
+
 /* ---- main column ---- */
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 

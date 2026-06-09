@@ -201,7 +201,7 @@ bot/
 |-------|-------|------------|
 | `User` | `users` | google_id, email, name, is_approved, is_rejected, is_admin, paper_bot_started |
 | `UserConfig` | `user_configs` | user_id (FK), binance_api_key_enc, binance_api_secret_enc |
-| `Trade` | `trades` | user_id (FK), is_paper, symbol, direction, entry/exit price/time, result, r_value, pnl_usdt |
+| `Trade` | `trades` | user_id (FK), is_paper, symbol, direction, entry/exit price/time, result, r_value, pnl_usdt (net), commission (USDT fee), funding_fee |
 | `BotState` | `bot_state` | key, value, user_id, is_paper — unique on (key, user_id, is_paper) |
 | `BotEvent` | `bot_events` | user_id, is_paper, level, category, message, details |
 | `HistoricalCandle` | `historical_candles` | symbol, interval, timestamp, OHLCV |

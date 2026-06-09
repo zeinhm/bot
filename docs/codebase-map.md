@@ -105,6 +105,10 @@ Live Binance Futures API wrapper.
 - `start_user_socket(callback)` — User data stream (ORDER_TRADE_UPDATE events)
 - `_format_qty(symbol, qty)` / `_format_price(symbol, price)` — Precision formatting
 
+**Module-level helpers (shared by worker, anomaly scanner, and reconcile):**
+- `resolve_trade_exit(client, symbol, direction, entry_order_id, entry_time, entry_quantity, sl_price, tp_price)` → `{exit_price, exit_commission, realized_pnl, is_sl, exit_qty}` or None. Determines how a *closed* position actually exited by reading the account's real closing fills (`futures_account_trades` / `/fapi/v1/userTrades`, which carries `realizedPnl`), isolating this trade's exit fills (opposite side, after entry, accumulated up to entry qty). Decides SL vs TP by the real exit price's proximity to each level. Sidesteps the `-2013` trap where `futures_get_order(algoId)` can't resolve conditional/algo SL/TP orders. Takes a python-binance `AsyncClient` (use `BinanceExchange.client`)
+- `r_value_for_exit(is_sl, entry_price, sl_price, tp_price, fallback_r)` → R multiple. Loss = −1; win = level-implied `|tp-entry|/|entry-sl|` (falls back to `fallback_r` or 2.0). Guards the `-1.0 or 2.0` truthiness trap
+
 ---
 
 ### `paper_exchange.py`

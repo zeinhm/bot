@@ -213,24 +213,23 @@ class BotWorker:
         if pos is None:
             log.warning("Trade #%d is open in DB but no position — marking closed", open_trade.id)
 
+            from exchange import resolve_trade_exit, r_value_for_exit
+
             exit_price = 0.0
             exit_comm = 0.0
             is_sl = True
             if not self.is_paper:
-                for oid_str in [open_trade.sl_order_id, open_trade.tp_order_id]:
-                    if not oid_str:
-                        continue
-                    order_info = await self.exchange.get_order(symbol, int(oid_str))
-                    if order_info and order_info.get("status") == "FILLED":
-                        exit_price = float(order_info.get("avgPrice", 0))
-                        is_sl = order_info.get("type") == "STOP_MARKET"
-                        exit_trades = await self.exchange.get_trades_for_order(symbol, int(oid_str))
-                        if exit_trades:
-                            total_qty = sum(float(t["qty"]) for t in exit_trades)
-                            if total_qty > 0:
-                                exit_price = sum(float(t["price"]) * float(t["qty"]) for t in exit_trades) / total_qty
-                            exit_comm = sum(float(t.get("commission", 0)) for t in exit_trades)
-                        break
+                # SL/TP are conditional/algo orders whose ids can't be looked up
+                # directly; read the real closing fills (with realizedPnl) instead.
+                exit_info = await resolve_trade_exit(
+                    self.exchange.client, symbol, open_trade.direction,
+                    open_trade.entry_order_id, open_trade.entry_time, open_trade.quantity,
+                    open_trade.sl_price, open_trade.tp_price,
+                )
+                if exit_info:
+                    exit_price = exit_info["exit_price"]
+                    exit_comm = exit_info["exit_commission"]
+                    is_sl = exit_info["is_sl"]
             else:
                 paper_orders = await db.get_paper_orders_for_trade(open_trade.id)
                 for po in paper_orders:
@@ -242,7 +241,7 @@ class BotWorker:
 
             result = "loss" if is_sl else "win"
             rr = self.config.strategy_params.get("rrr", 2.0)
-            r_value = -1.0 if is_sl else rr
+            r_value = r_value_for_exit(is_sl, open_trade.entry_price, open_trade.sl_price, open_trade.tp_price, rr)
             total_comm = (open_trade.commission or 0) + exit_comm
 
             if exit_price > 0:
@@ -630,27 +629,24 @@ class BotWorker:
         pos = await self.exchange.get_position(symbol)
         if pos is None:
             log.info("Position poll: no position found for trade #%d — checking orders", trade.id)
+            from exchange import resolve_trade_exit, r_value_for_exit
 
             exit_price = None
             exit_comm = 0.0
-            exit_order_id = None
+            is_sl = None
 
             if not self.is_paper:
-                for oid_str in [trade.sl_order_id, trade.tp_order_id]:
-                    if not oid_str:
-                        continue
-                    order_info = await self.exchange.get_order(symbol, int(oid_str))
-                    if order_info and order_info.get("status") == "FILLED":
-                        exit_order_id = int(oid_str)
-                        exit_price = float(order_info.get("avgPrice", 0))
-                        exit_trades = await self.exchange.get_trades_for_order(symbol, exit_order_id)
-                        if exit_trades:
-                            total_qty = sum(float(t["qty"]) for t in exit_trades)
-                            if total_qty > 0:
-                                exit_price = sum(float(t["price"]) * float(t["qty"]) for t in exit_trades) / total_qty
-                            exit_comm = sum(float(t.get("commission", 0)) for t in exit_trades)
-                        is_sl = order_info.get("type") == "STOP_MARKET"
-                        break
+                # SL/TP are conditional/algo orders whose ids can't be looked up
+                # directly; read the real closing fills (with realizedPnl) instead.
+                exit_info = await resolve_trade_exit(
+                    self.exchange.client, symbol, trade.direction,
+                    trade.entry_order_id, trade.entry_time, trade.quantity,
+                    trade.sl_price, trade.tp_price,
+                )
+                if exit_info:
+                    exit_price = exit_info["exit_price"]
+                    exit_comm = exit_info["exit_commission"]
+                    is_sl = exit_info["is_sl"]
             else:
                 paper_orders = await db.get_paper_orders_for_trade(trade.id)
                 for po in paper_orders:
@@ -661,24 +657,21 @@ class BotWorker:
                         break
 
             if exit_price is None or exit_price == 0:
+                # Last resort (fills unavailable): infer from price proximity to
+                # SL vs TP — de-biased, never assume SL.
                 sm_candles = self._shared_market.get_candles(symbol) if self._shared_market else []
                 recent = sm_candles[-3:] if sm_candles else []
                 if not recent:
                     return
-                if trade.direction == "long":
-                    sl_hit = any(c["low"] <= trade.sl_price for c in recent)
-                    tp_hit = any(c["high"] >= trade.tp_price for c in recent)
-                else:
-                    sl_hit = any(c["high"] >= trade.sl_price for c in recent)
-                    tp_hit = any(c["low"] <= trade.tp_price for c in recent)
-                is_sl = sl_hit or not tp_hit
+                last_close = recent[-1]["close"]
+                is_sl = abs(last_close - trade.sl_price) <= abs(last_close - trade.tp_price)
                 exit_price = trade.sl_price if is_sl else trade.tp_price
                 exit_comm = exit_price * trade.quantity * self.config.commission_pct
 
             result = "loss" if is_sl else "win"
             rr = await db.get_state("rr_ratio", self.config.strategy_params["rrr"],
                                     user_id=self.user_id, is_paper=self.is_paper)
-            r_value = -1.0 if is_sl else rr
+            r_value = r_value_for_exit(is_sl, trade.entry_price, trade.sl_price, trade.tp_price, rr)
 
             total_comm = (trade.commission or 0) + exit_comm
 
@@ -888,6 +881,8 @@ class BotWorker:
         if self.is_paper:
             return
         try:
+            from exchange import resolve_trade_exit, r_value_for_exit
+
             trade = await db.get_trade(trade_id)
             if not trade or trade.result not in ("win", "loss"):
                 return
@@ -913,28 +908,29 @@ class BotWorker:
             binance_exit_comm = 0.0
             binance_is_sl = None
 
-            for oid_str, is_sl in [(trade.sl_order_id, True), (trade.tp_order_id, False)]:
-                if not oid_str:
-                    continue
-                order_info = await self.exchange.get_order(trade.symbol, int(oid_str))
-                if order_info and order_info.get("status") == "FILLED":
-                    exit_fills = await self.exchange.get_trades_for_order(trade.symbol, int(oid_str))
-                    if exit_fills:
-                        total_qty = sum(float(f["qty"]) for f in exit_fills)
-                        binance_exit_price = sum(float(f["price"]) * float(f["qty"]) for f in exit_fills) / total_qty if total_qty else 0
-                        binance_exit_comm = sum(float(f.get("commission", 0)) for f in exit_fills)
-                        binance_is_sl = is_sl
-                    break
+            # SL/TP are conditional/algo orders whose ids can't be looked up
+            # directly; read the real closing fills (with realizedPnl) instead.
+            exit_info = await resolve_trade_exit(
+                self.exchange.client, trade.symbol, trade.direction,
+                trade.entry_order_id, trade.entry_time,
+                binance_qty or trade.quantity,
+                trade.sl_price, trade.tp_price,
+            )
+            if exit_info:
+                binance_exit_price = exit_info["exit_price"]
+                binance_exit_comm = exit_info["exit_commission"]
+                binance_is_sl = exit_info["is_sl"]
 
             if binance_exit_price and binance_exit_price > 0:
                 if abs((trade.exit_price or 0) - binance_exit_price) > 0.01:
                     update["exit_price"] = binance_exit_price
                 correct_result = "loss" if binance_is_sl else "win"
                 if trade.result != correct_result:
-                    update["result"] = correct_result
                     rr = await db.get_state("rr_ratio", self.config.strategy_params["rrr"],
                                             user_id=self.user_id, is_paper=self.is_paper)
-                    update["r_value"] = -1.0 if binance_is_sl else rr
+                    update["result"] = correct_result
+                    update["r_value"] = r_value_for_exit(binance_is_sl, update.get("entry_price", trade.entry_price),
+                                                         trade.sl_price, trade.tp_price, rr)
 
             entry_p = update.get("entry_price", trade.entry_price) or (binance_entry_price or 0)
             exit_p = update.get("exit_price", trade.exit_price) or (binance_exit_price or 0)

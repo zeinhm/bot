@@ -249,3 +249,126 @@ class BinanceExchange:
         if tick >= 0.1:
             return f"{rounded:.1f}"
         return f"{rounded:.2f}"
+
+
+def r_value_for_exit(
+    is_sl: bool,
+    entry_price: float | None,
+    sl_price: float | None,
+    tp_price: float | None,
+    fallback_r: float | None = None,
+) -> float:
+    """R multiple for a resolved trade.
+
+    Loss = -1R. Win = the actual reward:risk implied by the price levels
+    (``|tp-entry| / |entry-sl|``) — which recovers the configured RRR since TP
+    is placed at that multiple. Falls back to ``fallback_r`` (if positive) or 2.0
+    when levels are missing. Guards against the ``-1.0 or 2.0`` truthiness trap.
+    """
+    if is_sl:
+        return -1.0
+    try:
+        sl_dist = abs((entry_price or 0) - (sl_price or 0))
+        tp_dist = abs((tp_price or 0) - (entry_price or 0))
+        if sl_dist > 0 and tp_dist > 0:
+            return round(tp_dist / sl_dist, 2)
+    except Exception:
+        pass
+    if fallback_r and fallback_r > 0:
+        return float(fallback_r)
+    return 2.0
+
+
+async def resolve_trade_exit(
+    client: "AsyncClient",
+    symbol: str,
+    direction: str,
+    entry_order_id: str | int | None,
+    entry_time,
+    entry_quantity: float | None,
+    sl_price: float | None,
+    tp_price: float | None,
+) -> dict | None:
+    """Determine how a closed position actually exited, straight from Binance fills.
+
+    SL/TP are placed on Binance's conditional/algo endpoint, so the stored
+    sl_order_id / tp_order_id are ``algoId``s. When such an order triggers it
+    produces a brand-new *regular* order/trade with its own orderId — so a
+    ``futures_get_order(algoId)`` lookup fails with ``-2013`` and the bot never
+    learns the real outcome. This reads the account's own trade fills
+    (``/fapi/v1/userTrades``, which carries ``realizedPnl``) and isolates the
+    closing fills for this position, independent of any order id.
+
+    Returns ``{exit_price, exit_commission, realized_pnl, is_sl, exit_qty}`` or
+    ``None`` if the closing fills could not be found (caller should fall back).
+    """
+    if not entry_time:
+        return None
+    start_ms = int(entry_time.timestamp() * 1000) - 1000  # small buffer
+    try:
+        fills = await client.futures_account_trades(symbol=symbol, startTime=start_ms, limit=1000)
+    except Exception as e:
+        log.warning("resolve_trade_exit: could not fetch fills for %s: %s", symbol, e)
+        return None
+    if not fills:
+        return None
+
+    entry_oid = int(entry_order_id) if entry_order_id else None
+    # Entry side is the side that opened the position; the exit is the opposite.
+    exit_side = "BUY" if direction == "short" else "SELL"
+    # In hedge mode the closing fill carries the position's own side; tolerate
+    # one-way mode ("BOTH") and any account where it's absent.
+    expected_ps = "SHORT" if direction == "short" else "LONG"
+
+    def _ps_ok(f) -> bool:
+        ps = f.get("positionSide")
+        return ps is None or ps in ("BOTH", expected_ps)
+
+    # Closing fills: opposite side, this position's side, not the entry order,
+    # in chronological order.
+    candidates = sorted(
+        (
+            f for f in fills
+            if f.get("side") == exit_side
+            and _ps_ok(f)
+            and (entry_oid is None or int(f.get("orderId", 0)) != entry_oid)
+        ),
+        key=lambda f: f.get("time", 0),
+    )
+    if not candidates:
+        return None
+
+    # Accumulate only up to this position's size so we don't absorb a later
+    # trade's fills on the same symbol (one trade per asset at a time).
+    target_qty = float(entry_quantity) if entry_quantity else None
+    selected = []
+    acc = 0.0
+    for f in candidates:
+        selected.append(f)
+        acc += float(f["qty"])
+        if target_qty and acc >= target_qty - 1e-9:
+            break
+
+    total_qty = sum(float(f["qty"]) for f in selected)
+    if total_qty <= 0:
+        return None
+
+    exit_price = sum(float(f["price"]) * float(f["qty"]) for f in selected) / total_qty
+    exit_comm = sum(float(f.get("commission", 0)) for f in selected)
+    realized = sum(float(f.get("realizedPnl", 0)) for f in selected)
+
+    # Decide SL vs TP by which target the real exit price is closest to. This
+    # matches the strategy's semantics (TP hit = win) even if fees nudge a
+    # marginal win negative. Fall back to realized-PnL sign if a level is unset.
+    if sl_price and tp_price:
+        is_sl = abs(exit_price - sl_price) <= abs(exit_price - tp_price)
+    else:
+        is_sl = realized < 0
+
+    return {
+        "exit_price": exit_price,
+        "exit_commission": exit_comm,
+        "realized_pnl": realized,
+        "is_sl": is_sl,
+        "exit_qty": total_qty,
+    }

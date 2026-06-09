@@ -440,7 +440,7 @@ async def _trade_anomaly_scanner(bot_manager):
             from datetime import timedelta
             from binance import AsyncClient
             from app.auth import decrypt
-            from config import COMMISSION_PCT
+            from exchange import resolve_trade_exit, r_value_for_exit
 
             cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
             all_users = await db.get_all_approved_users()
@@ -488,19 +488,19 @@ async def _trade_anomaly_scanner(bot_manager):
                             binance_exit_comm = 0.0
                             binance_is_sl = None
 
-                            for oid_str, is_sl in [(trade.sl_order_id, True), (trade.tp_order_id, False)]:
-                                if not oid_str:
-                                    continue
-                                order_info = await client.futures_get_order(symbol=trade.symbol, orderId=int(oid_str))
-                                if order_info and order_info.get("status") == "FILLED":
-                                    exit_fills = await client.futures_account_trades(symbol=trade.symbol)
-                                    exit_fills = [f for f in exit_fills if int(f.get("orderId", 0)) == int(oid_str)]
-                                    if exit_fills:
-                                        total_qty = sum(float(f["qty"]) for f in exit_fills)
-                                        binance_exit_price = sum(float(f["price"]) * float(f["qty"]) for f in exit_fills) / total_qty if total_qty else 0
-                                        binance_exit_comm = sum(float(f.get("commission", 0)) for f in exit_fills)
-                                        binance_is_sl = is_sl
-                                    break
+                            # SL/TP are conditional/algo orders, so their stored ids
+                            # are algoIds that futures_get_order can't resolve. Read
+                            # the real closing fills (with realizedPnl) instead.
+                            exit_info = await resolve_trade_exit(
+                                client, trade.symbol, trade.direction,
+                                trade.entry_order_id, trade.entry_time,
+                                binance_qty or trade.quantity,
+                                trade.sl_price, trade.tp_price,
+                            )
+                            if exit_info:
+                                binance_exit_price = exit_info["exit_price"]
+                                binance_exit_comm = exit_info["exit_commission"]
+                                binance_is_sl = exit_info["is_sl"]
 
                             if binance_exit_price and binance_exit_price > 0:
                                 if abs((trade.exit_price or 0) - binance_exit_price) > 0.01:
@@ -508,7 +508,11 @@ async def _trade_anomaly_scanner(bot_manager):
                                 correct_result = "loss" if binance_is_sl else "win"
                                 if trade.result != correct_result:
                                     update["result"] = correct_result
-                                    update["r_value"] = -1.0 if binance_is_sl else (trade.r_value or 2.0)
+                                    update["r_value"] = r_value_for_exit(
+                                        binance_is_sl,
+                                        update.get("entry_price", trade.entry_price),
+                                        trade.sl_price, trade.tp_price, trade.r_value,
+                                    )
 
                             entry_p = update.get("entry_price", trade.entry_price) or (binance_entry_price or 0)
                             exit_p = update.get("exit_price", trade.exit_price) or (binance_exit_price or 0)

@@ -5,7 +5,7 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
-from app.bot.worker import BotWorker, BotConfig
+from app.bot.worker import BotWorker, BotConfig, make_worker
 
 if TYPE_CHECKING:
     from app.bot.shared_market import SharedMarketData
@@ -32,7 +32,8 @@ class BotManager:
         if key in self.workers and self.workers[key].running:
             raise RuntimeError(f"Bot already running for user {user_id} mode {mode}")
 
-        worker = BotWorker(user_id, config, broadcast_fn=broadcast_fn, shared_market=shared_market)
+        # Build the right worker for the mode (LiveWorker / PaperWorker).
+        worker = make_worker(user_id, config, broadcast_fn=broadcast_fn, shared_market=shared_market)
         self.workers[key] = worker
         task = asyncio.create_task(worker.start())
         task.add_done_callback(lambda t: self._on_worker_done(key, t))

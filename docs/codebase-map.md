@@ -315,30 +315,32 @@ Bot accessors and config builders.
 - `build_user_config(api_key, api_secret)` → BotConfig for live trading
 - `build_paper_config(paper_balance)` → BotConfig with is_paper=True
 
-### `app/bot/worker.py`
-Core trading loop for a single user/mode.
+### `app/bot/worker.py` — `BaseWorker`
+Mode-agnostic trading loop for a single user/mode. **No `is_paper` branching** — every mode difference goes through a hook overridden by `LiveWorker` / `PaperWorker`.
 
 **BotConfig** (dataclass): api_key, api_secret, symbols, strategy_params, leverage, commission, slippage, tick_sizes, lot_sizes, buffer_size, telegram_*, is_paper, paper_balance, loss_streak_threshold, reduced_risk_pct, wins_to_recover
 
-**BotWorker methods**:
-- `start()` — Connect exchange → crash recovery → register candle callback → start user stream + position poll
-- `stop()` — Remove callback, cancel tasks, close exchange
-- `_crash_recovery()` — Reconcile DB vs exchange across **all** open trades (`_recover_one_trade`), then close orphan positions on untracked symbols (uses the original DB snapshot so a transient `get_position` miss can't wrongly close a live position)
-- `_process_candle(symbol)` — Check skip periods, bot_enabled, active symbols → per-asset guard (block only if this symbol has an open trade, DB-confirmed) → `check_signal()` → execute. No daily cap
-- `_execute_trade(symbol, signal)` — Calculate quantity (static/dynamic risk + adaptive sizing) → market order → record in DB → place SL/TP → broadcast → Telegram alert
-- `_place_sl_tp(symbol, direction, quantity, sl, tp, trade_id)` — 3 retries, 1s between, cancels both order buckets first; returns `(sl_ok, tp_ok)`
-- `_count_sltp_orders(trade)` → `(sl_count, tp_count)` from the conditional/algo bucket (matched by type + hedge positionSide)
-- `_on_user_event(data)` — Handle ORDER_TRADE_UPDATE: resolve the trade **by symbol**, calculate PnL, close, cancel orders, adaptive sizing, broadcast, alert, self-heal
-- `_run_position_poll()` — Every 10-30s safety net; loops **all** open trades (`_poll_one_trade`): detect missed fills, keep exactly 1 SL + 1 TP, force-close on SL breach, Telegram alert after 60s
-- `_poll_one_trade(trade)` — Per-trade poll body (close-on-missing-position or verify/replace SL/TP)
-- `_maybe_force_close_breach(trade, pos)` → bool — Safety net: force-close only when SL genuinely absent (strict fetch) AND price breached `sl_price` (direction-aware) AND Binance `unrealized_pnl` ≈ ≤ −1R
-- `_force_close_breached(trade, pos, price)` — Market-close the position, record as loss, broadcast, Telegram alert
-- `_self_heal_trade(trade_id)` — Post-close: verify against actual Binance fill data, correct prices/quantities/PnL
-- `_get_effective_risk()` → reduced risk % if adaptive sizing active, else None
-- `_on_trade_result(won)` — Adaptive sizing state machine: track loss streak → activate reduced risk → track recovery wins → deactivate
+**Module helpers**: `make_worker(user_id, config, ...)` builds `LiveWorker` or `PaperWorker` by `config.is_paper`. `BotWorker` is an alias of `BaseWorker` (back-compat).
+
+**Shared methods (BaseWorker)**:
+- `start()` / `stop()` — Connect exchange (`_create_exchange`) → crash recovery → candle callback → user stream + poll; alerts via `_alert_started`/`_alert_stopped`
+- `_crash_recovery()` / `_recover_one_trade(trade)` — Reconcile DB vs exchange across all open trades, then `_sweep_orphan_positions()` (hook). Closed-trade exits resolved via `_resolve_exit()` (hook); open-trade SL/TP via `_count_active_sltp()` (hook)
+- `_process_candle(symbol)` — skip periods, bot_enabled, active symbols, per-asset DB guard → `check_signal()` → `_execute_trade`
+- `_execute_trade(symbol, signal)` — sizing (static/dynamic + adaptive) → `_prepare_entry()` (hook) → market order → `_entry_commission()` (hook) → record → `_place_sl_tp` → broadcast → `_alert_entry()` (hook)
+- `_place_sl_tp(...)` — `_before_place_sl_tp()` (hook) then 3-retry place; returns `(sl_ok, tp_ok)`
+- `_on_user_event(data)` — ORDER_TRADE_UPDATE: resolve trade by symbol, `_exit_fill()` (hook) for price/comm, close, adaptive, broadcast, `_on_trade_closed()` (hook)
+- `_run_position_poll()` / `_poll_one_trade(trade)` — safety-net poll; closed → `_resolve_exit()` + de-biased fallback; still-open → `_poll_open_position()` (hook)
+- `_get_effective_risk()` / `_on_trade_result(won)` — adaptive-sizing state machine
+- **Hooks** (defaults in base): data hooks `_create_exchange`, `_resolve_exit`, `_count_active_sltp` (abstract); value hooks `_entry_commission`, `_exit_fill` (computed default); side-effect hooks `_alert_started/_alert_stopped/_alert_entry`, `_on_trade_closed`, `_sweep_orphan_positions`, `_prepare_entry`, `_before_place_sl_tp`, `_poll_open_position` (no-op default)
+
+### `app/bot/worker_live.py` — `LiveWorker(BaseWorker)`
+Real-money Binance implementation of the hooks. Overrides: `_create_exchange` → BinanceExchange; `_resolve_exit` → `resolve_trade_exit` (account fills); `_entry_commission`/`_exit_fill` → real fills; all alert hooks → Telegram; `_sweep_orphan_positions`, `_prepare_entry`, `_before_place_sl_tp` (cancel both buckets), `_poll_open_position` (verify 1 SL+1 TP + force-close). Live-only methods: `_count_sltp_orders` (conditional/algo bucket), `_maybe_force_close_breach`, `_force_close_breached`, `_self_heal_trade`.
+
+### `app/bot/worker_paper.py` — `PaperWorker(BaseWorker)`
+Simulated implementation. Overrides only the data hooks: `_create_exchange` → DB-backed PaperExchange; `_resolve_exit` → first FILLED `PaperOrder`; `_count_active_sltp` → pending paper orders. Inherits computed commissions and all no-op side-effect hooks (no alerts/sweep/self-heal/force-close).
 
 ### `app/bot/manager.py`
-Multi-user bot lifecycle.
+Multi-user bot lifecycle. `start_bot()` builds the worker via `make_worker()` (Live/Paper by mode).
 
 - `BotManager.start_bot(user_id, mode, config, broadcast_fn, shared_market)` — Create + start BotWorker as asyncio task
 - `stop_bot(user_id, mode)` — Stop worker, cancel task

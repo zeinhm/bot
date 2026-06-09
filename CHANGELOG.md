@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 
 ---
 
+## [2026-06-10]
+
+### Changed
+- **Paper trading fully separated from live (worker refactor)**: Split the 950-line `BotWorker` (which forked on `if self.is_paper` in ~14 places) into a mode-agnostic `BaseWorker` (`worker.py`) plus `LiveWorker` (`worker_live.py`) and `PaperWorker` (`worker_paper.py`). All mode-specific behavior now goes through ~12 hook methods (`_create_exchange`, `_resolve_exit`, `_count_active_sltp`, `_entry_commission`, `_exit_fill`, `_alert_started/_alert_stopped/_alert_entry`, `_on_trade_closed`, `_sweep_orphan_positions`, `_prepare_entry`, `_before_place_sl_tp`, `_poll_open_position`) that the subclasses override — the shared loop has **zero** `is_paper` branches. Live-only logic (conditional/algo SL/TP counting, Telegram alerts, post-close self-heal, orphan sweep, force-close-breach) lives entirely in `LiveWorker`; the real-money path can no longer be affected by a paper change and vice-versa. `manager.py` builds the right class via `make_worker()`; `BotWorker` kept as an alias to `BaseWorker` for compatibility. Behavior-preserving (methods moved verbatim).
+- **Paper positions are now DB-backed (persist across restarts)**: `PaperExchange` previously held open positions in an in-memory dict that was wiped on every restart, so the worker's recovery/poll force-closed paper trades (usually as losses) on restart and the position page showed nothing. `get_position`/`get_all_positions` now derive from the open paper `Trade` row (mirroring how Binance is the source of truth for live); `place_market_order` just simulates the fill; the SL/TP fill loop settles balance from the `Trade`. Paper positions now survive restarts and render live like real ones.
+
 ## [2026-06-09]
 
 ### Fixed

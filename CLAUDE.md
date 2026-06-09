@@ -65,8 +65,10 @@ bot/
 │   │   └── csrf.py            # CSRF protection middleware (session-based token)
 │   └── bot/
 │       ├── __init__.py        # Bot accessors, broadcast factory, config builders
-│       ├── worker.py          # Core trading loop: candle → signal → execute → monitor
-│       ├── manager.py         # Multi-user BotWorker lifecycle (start/stop/status)
+│       ├── worker.py          # BaseWorker: shared loop (candle → signal → execute → monitor) + mode hooks + make_worker()
+│       ├── worker_live.py     # LiveWorker: Binance hooks (real orders, conditional SL/TP, alerts, self-heal, force-close)
+│       ├── worker_paper.py    # PaperWorker: simulated hooks (DB-backed PaperExchange, paper orders)
+│       ├── manager.py         # Multi-user worker lifecycle (start/stop/status); builds Live/Paper via make_worker()
 │       ├── shared_market.py   # Shared Binance connection for candle data (no API key)
 │       └── websocket.py       # WS connection manager + 7 background push tasks (authenticated)
 │
@@ -147,9 +149,11 @@ bot/
 |-------------------------------------|---------------------------------------------------------------|
 | **Strategy logic / signal detection** | `strategy.py` (live), `amd_engine.py` (backtest)             |
 | **Strategy parameters / defaults**  | `config.py` → `STRATEGY_PARAMS`, `ACC_RANGE_MODE`            |
-| **Trade execution (live)**          | `app/bot/worker.py` → `_execute_trade()`, `_place_sl_tp()`   |
-| **Trade execution (paper)**         | `paper_exchange.py` → `place_market_order()`, `start_user_socket()` |
-| **Crash recovery / self-heal**      | `app/bot/worker.py` → `_crash_recovery()`, `_self_heal_trade()` |
+| **Shared trade loop / signal→execute** | `app/bot/worker.py` (`BaseWorker`) → `_process_candle()`, `_execute_trade()`, `_place_sl_tp()` |
+| **Live-only execution behavior**    | `app/bot/worker_live.py` (`LiveWorker`) → real orders, conditional SL/TP, alerts, `_self_heal_trade()`, force-close |
+| **Paper-only execution behavior**   | `app/bot/worker_paper.py` (`PaperWorker`) → `_resolve_exit()`, `_count_active_sltp()`; `paper_exchange.py` (DB-backed) |
+| **Add/change a mode difference**    | Add/override a hook in `BaseWorker` (default), then `LiveWorker` / `PaperWorker` — do NOT add `if self.is_paper` |
+| **Crash recovery**                  | `app/bot/worker.py` → `_crash_recovery()`, `_recover_one_trade()` (delegates to mode hooks) |
 | **Adaptive position sizing**        | `app/bot/worker.py` → `_get_effective_risk()`, `_on_trade_result()` |
 | **Add a new page**                  | 1. `routes/newpage.py` 2. `templates/newpage.html` 3. `main.py` (mount router) 4. `templates/base.html` (add nav link) |
 | **Add an admin page**               | 1. `routes/admin/newpage.py` 2. `templates/admin_newpage.html` 3. `routes/admin/__init__.py` (include router) 4. `templates/base.html` (add admin nav link) |

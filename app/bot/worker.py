@@ -3,13 +3,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Awaitable, TYPE_CHECKING
 
 from config import ACC_RANGE_MODE
 from strategy import check_signal
-from telegram_alert import alert_entry, alert_exit, alert_bot_started, alert_bot_stopped, send_private
+from exchange import r_value_for_exit
 import app.db as db
 
 if TYPE_CHECKING:
@@ -39,7 +39,17 @@ class BotConfig:
     paper_balance: float = 10000.0
 
 
-class BotWorker:
+class BaseWorker:
+    """Mode-agnostic trading worker: candle → signal → execute → monitor.
+
+    Everything mode-specific (Binance vs paper) is delegated to hook methods that
+    LiveWorker / PaperWorker override, so the live (real-money) path and the paper
+    path are fully separated with no `is_paper` branching in the shared logic.
+    """
+
+    # Overridden by subclasses; drives _mode_label and the is_paper flag.
+    MODE: str = "live"
+
     def __init__(
         self,
         user_id: int,
@@ -49,19 +59,11 @@ class BotWorker:
     ):
         self.user_id = user_id
         self.config = config
-        self.is_paper = config.is_paper
+        self.is_paper = self.MODE == "paper"
 
         self._shared_market = shared_market
 
-        if config.is_paper:
-            from paper_exchange import PaperExchange
-            self.exchange = PaperExchange(user_id, shared_market)
-        else:
-            from exchange import BinanceExchange
-            self.exchange = BinanceExchange(
-                api_key=config.api_key,
-                api_secret=config.api_secret,
-            )
+        self.exchange = self._create_exchange()
         self.running = False
         self.status: str = "stopped"
         self.started_at: float | None = None
@@ -82,7 +84,7 @@ class BotWorker:
         self._tasks: list[asyncio.Task] = []
 
     def _mode_label(self) -> str:
-        return "paper" if self.is_paper else "live"
+        return self.MODE
 
     async def start(self):
         self.status = "starting"
@@ -102,8 +104,7 @@ class BotWorker:
         self.last_error_time = None
         log.info("BotWorker[user=%d/%s] started — listening for candles", self.user_id, self._mode_label())
         await db.log_event("Bot started", category="system", user_id=self.user_id, is_paper=self.is_paper)
-        if not self.is_paper:
-            await alert_bot_started()
+        await self._alert_started()
 
         if self._shared_market:
             self._shared_market.on_candle_close(self._on_shared_candle)
@@ -123,8 +124,7 @@ class BotWorker:
             t.cancel()
         self._tasks.clear()
         await db.log_event("Bot stopped", category="system", user_id=self.user_id, is_paper=self.is_paper)
-        if not self.is_paper:
-            await alert_bot_stopped("shutdown")
+        await self._alert_stopped("shutdown")
         await self.exchange.close()
         log.info("BotWorker[user=%d/%s] stopped", self.user_id, self._mode_label())
 
@@ -172,6 +172,51 @@ class BotWorker:
         if self._broadcast_fn:
             await self._broadcast_fn(data)
 
+    # --- Mode hooks (overridden by LiveWorker / PaperWorker) ---
+    # Data hooks: each subclass MUST implement these.
+    def _create_exchange(self):
+        raise NotImplementedError
+
+    async def _resolve_exit(self, trade) -> tuple[float, bool, float] | None:
+        """How a closed position exited: (exit_price, is_sl, exit_commission) or None."""
+        raise NotImplementedError
+
+    async def _count_active_sltp(self, trade) -> tuple[int, int] | None:
+        """(sl_count, tp_count) of live SL/TP orders, or None if unreadable."""
+        raise NotImplementedError
+
+    # Value hooks: default = simple computed values (paper); live reads real fills.
+    async def _entry_commission(self, symbol, order, fill_price, fill_qty) -> float:
+        return fill_price * fill_qty * self.config.commission_pct
+
+    async def _exit_fill(self, symbol, order_id, fill_price, qty) -> tuple[float, float]:
+        return fill_price, fill_price * qty * self.config.commission_pct
+
+    # Side-effect hooks: default = no-op (paper); live overrides with the real work.
+    async def _alert_started(self):
+        pass
+
+    async def _alert_stopped(self, reason: str):
+        pass
+
+    async def _alert_entry(self, symbol, signal, fill_price, fill_qty, balance):
+        pass
+
+    async def _on_trade_closed(self, trade, result, exit_price, pnl, r_value, balance):
+        pass
+
+    async def _sweep_orphan_positions(self, open_trades):
+        pass
+
+    async def _prepare_entry(self, symbol):
+        pass
+
+    async def _before_place_sl_tp(self, symbol):
+        pass
+
+    async def _poll_open_position(self, trade, pos):
+        pass
+
     # --- Startup ---
 
     async def _crash_recovery(self):
@@ -191,19 +236,7 @@ class BotWorker:
         # Use the original open-trades snapshot (NOT self._active_trades, which
         # _recover_one_trade may have popped on a transient get_position miss) —
         # otherwise a glitchy read could wrongly orphan-close a live position.
-        if not self.is_paper:
-            tracked = {t.symbol for t in open_trades}
-            positions = await self.exchange.get_all_positions()
-            for pos in positions:
-                if pos["symbol"] in self.config.symbols and pos["symbol"] not in tracked:
-                    log.warning(
-                        "Found orphan position: %s %s qty=%.4f — closing it",
-                        pos["symbol"], pos["side"], pos["quantity"],
-                    )
-                    close_side = "SELL" if pos["side"] == "long" else "BUY"
-                    pos_side = "LONG" if pos["side"] == "long" else "SHORT"
-                    await self.exchange.place_market_order(pos["symbol"], close_side, pos["quantity"], position_side=pos_side)
-                    await self.exchange.cancel_all_orders(pos["symbol"])
+        await self._sweep_orphan_positions(open_trades)
 
         log.info("Crash recovery complete — %d open trade(s) recovered", len(self._active_trades))
 
@@ -213,31 +246,11 @@ class BotWorker:
         if pos is None:
             log.warning("Trade #%d is open in DB but no position — marking closed", open_trade.id)
 
-            from exchange import resolve_trade_exit, r_value_for_exit
-
-            exit_price = 0.0
-            exit_comm = 0.0
-            is_sl = True
-            if not self.is_paper:
-                # SL/TP are conditional/algo orders whose ids can't be looked up
-                # directly; read the real closing fills (with realizedPnl) instead.
-                exit_info = await resolve_trade_exit(
-                    self.exchange.client, symbol, open_trade.direction,
-                    open_trade.entry_order_id, open_trade.entry_time, open_trade.quantity,
-                    open_trade.sl_price, open_trade.tp_price,
-                )
-                if exit_info:
-                    exit_price = exit_info["exit_price"]
-                    exit_comm = exit_info["exit_commission"]
-                    is_sl = exit_info["is_sl"]
+            exit_info = await self._resolve_exit(open_trade)
+            if exit_info is not None:
+                exit_price, is_sl, exit_comm = exit_info
             else:
-                paper_orders = await db.get_paper_orders_for_trade(open_trade.id)
-                for po in paper_orders:
-                    if po.status == "FILLED":
-                        exit_price = po.stop_price
-                        is_sl = po.order_type == "STOP_MARKET"
-                        exit_comm = exit_price * open_trade.quantity * self.config.commission_pct
-                        break
+                exit_price, is_sl, exit_comm = 0.0, True, 0.0
 
             result = "loss" if is_sl else "win"
             rr = self.config.strategy_params.get("rrr", 2.0)
@@ -268,16 +281,11 @@ class BotWorker:
             })
             self._active_trades.pop(symbol, None)
         else:
-            if not self.is_paper:
-                counts = await self._count_sltp_orders(open_trade)
-                if counts is None:
-                    log.warning("Crash recovery: could not read orders for #%d — leaving as-is", open_trade.id)
-                    return
-                sl_count, tp_count = counts
-            else:
-                orders = await self.exchange.get_open_orders(symbol)
-                sl_count = sum(1 for o in orders if o.get("type") == "STOP_MARKET")
-                tp_count = sum(1 for o in orders if o.get("type") == "TAKE_PROFIT_MARKET")
+            counts = await self._count_active_sltp(open_trade)
+            if counts is None:
+                log.warning("Crash recovery: could not read orders for #%d — leaving as-is", open_trade.id)
+                return
+            sl_count, tp_count = counts
             if sl_count != 1 or tp_count != 1:
                 log.warning("Trade #%d has %d SL / %d TP orders (need 1/1) — cancelling all and re-placing",
                             open_trade.id, sl_count, tp_count)
@@ -370,13 +378,7 @@ class BotWorker:
             min_qty = self.config.lot_size.get(symbol, 0.01)
             quantity = max(quantity, min_qty)
 
-            if not self.is_paper:
-                existing_orders = await self.exchange.get_open_orders(symbol)
-                existing_cond = await self.exchange.get_conditional_orders(symbol)
-                if existing_orders or existing_cond:
-                    log.warning("Cleaning %d regular + %d conditional stale orders on %s before entry",
-                                len(existing_orders), len(existing_cond), symbol)
-                    await self.exchange.cancel_all_orders(symbol)
+            await self._prepare_entry(symbol)
 
             side = "BUY" if signal["direction"] == "long" else "SELL"
             order = await self.exchange.place_market_order(symbol, side, quantity)
@@ -384,11 +386,7 @@ class BotWorker:
             fill_price = float(order.get("avgPrice") or 0) or signal["entry_price"]
             fill_qty = float(order.get("executedQty") or 0) or quantity
 
-            entry_comm = fill_price * fill_qty * self.config.commission_pct
-            if not self.is_paper:
-                trades = await self.exchange.get_trades_for_order(symbol, int(order.get("orderId", 0)))
-                if trades:
-                    entry_comm = sum(float(t.get("commission", 0)) for t in trades)
+            entry_comm = await self._entry_commission(symbol, order, fill_price, fill_qty)
 
             trade = await db.create_trade({
                 "user_id": self.user_id,
@@ -429,8 +427,7 @@ class BotWorker:
                 details=f"SL: ${signal['sl']:.2f} | TP: ${signal['tp']:.2f} | Qty: {fill_qty}",
                 user_id=self.user_id, is_paper=self.is_paper,
             )
-            if not self.is_paper:
-                await alert_entry(symbol, signal["direction"], fill_price, signal["sl"], signal["tp"], fill_qty, balance)
+            await self._alert_entry(symbol, signal, fill_price, fill_qty, balance)
 
         except Exception as e:
             log.error("Failed to execute trade: %s", e, exc_info=True)
@@ -440,8 +437,7 @@ class BotWorker:
     async def _place_sl_tp(self, symbol: str, direction: str, quantity: float, sl: float, tp: float, trade_id: int):
         close_side = "SELL" if direction == "long" else "BUY"
 
-        if not self.is_paper:
-            await self.exchange.cancel_all_orders(symbol)
+        await self._before_place_sl_tp(symbol)
 
         sl_order = None
         tp_order = None
@@ -466,39 +462,6 @@ class BotWorker:
             await db.update_trade(trade_id, update)
 
         return sl_order is not None, tp_order is not None
-
-    async def _count_sltp_orders(self, trade) -> tuple[int, int] | None:
-        """Count active SL/TP orders in the conditional/algo bucket.
-
-        Binance routes STOP_MARKET / TAKE_PROFIT_MARKET to its conditional (algo)
-        order system, so SL/TP never appear in regular open orders and have no
-        regular orderId pre-trigger. Match by order type and, in hedge mode,
-        position side. A healthy position has exactly one of each; any other
-        count (missing OR duplicated) makes the caller cancel both buckets and
-        re-place exactly one SL + one TP — which also clears stray duplicates.
-
-        Returns None if the orders couldn't be read (strict fetch raised). Callers
-        MUST NOT cancel/replace on None — acting on a failed read could disturb a
-        healthy position's SL/TP.
-        """
-        try:
-            orders = await self.exchange.get_conditional_orders(trade.symbol, strict=True)
-        except Exception as e:
-            log.warning("Could not read conditional orders for %s (#%d): %s — skipping SL/TP check",
-                        trade.symbol, trade.id, e)
-            return None
-        expected_ps = ("LONG" if trade.direction == "long" else "SHORT") if self.exchange.hedge_mode else None
-        sl_count = 0
-        tp_count = 0
-        for o in orders:
-            if expected_ps and o.get("positionSide") != expected_ps:
-                continue
-            otype = o.get("orderType") or o.get("type")
-            if otype == "STOP_MARKET":
-                sl_count += 1
-            elif otype == "TAKE_PROFIT_MARKET":
-                tp_count += 1
-        return sl_count, tp_count
 
     # --- Order Fill Monitoring ---
 
@@ -537,14 +500,7 @@ class BotWorker:
                                 user_id=self.user_id, is_paper=self.is_paper)
         r_value = -1.0 if is_sl else rr
 
-        exit_comm = fill_price * trade.quantity * self.config.commission_pct
-        if not self.is_paper and order_id:
-            exit_trades = await self.exchange.get_trades_for_order(symbol, int(order_id))
-            if exit_trades:
-                total_qty = sum(float(t["qty"]) for t in exit_trades)
-                if total_qty > 0:
-                    fill_price = sum(float(t["price"]) * float(t["qty"]) for t in exit_trades) / total_qty
-                exit_comm = sum(float(t.get("commission", 0)) for t in exit_trades)
+        fill_price, exit_comm = await self._exit_fill(symbol, order_id, fill_price, trade.quantity)
 
         total_comm = (trade.commission or 0) + exit_comm
 
@@ -593,9 +549,7 @@ class BotWorker:
         })
 
         balance = await self.exchange.get_balance()
-        if not self.is_paper:
-            await alert_exit(symbol, trade.direction, result, trade.entry_price, fill_price, pnl, r_value, balance)
-            await self._self_heal_trade(trade.id)
+        await self._on_trade_closed(trade, result, fill_price, pnl, r_value, balance)
 
     # --- Fallback Position Poll ---
 
@@ -629,32 +583,12 @@ class BotWorker:
         pos = await self.exchange.get_position(symbol)
         if pos is None:
             log.info("Position poll: no position found for trade #%d — checking orders", trade.id)
-            from exchange import resolve_trade_exit, r_value_for_exit
 
-            exit_price = None
-            exit_comm = 0.0
-            is_sl = None
-
-            if not self.is_paper:
-                # SL/TP are conditional/algo orders whose ids can't be looked up
-                # directly; read the real closing fills (with realizedPnl) instead.
-                exit_info = await resolve_trade_exit(
-                    self.exchange.client, symbol, trade.direction,
-                    trade.entry_order_id, trade.entry_time, trade.quantity,
-                    trade.sl_price, trade.tp_price,
-                )
-                if exit_info:
-                    exit_price = exit_info["exit_price"]
-                    exit_comm = exit_info["exit_commission"]
-                    is_sl = exit_info["is_sl"]
+            exit_info = await self._resolve_exit(trade)
+            if exit_info is not None:
+                exit_price, is_sl, exit_comm = exit_info
             else:
-                paper_orders = await db.get_paper_orders_for_trade(trade.id)
-                for po in paper_orders:
-                    if po.status == "FILLED":
-                        exit_price = po.stop_price
-                        is_sl = po.order_type == "STOP_MARKET"
-                        exit_comm = exit_price * trade.quantity * self.config.commission_pct
-                        break
+                exit_price, is_sl, exit_comm = None, None, 0.0
 
             if exit_price is None or exit_price == 0:
                 # Last resort (fills unavailable): infer from price proximity to
@@ -710,249 +644,27 @@ class BotWorker:
             })
 
             balance = await self.exchange.get_balance()
-            if not self.is_paper:
-                await alert_exit(symbol, trade.direction, result, trade.entry_price, exit_price, pnl, r_value, balance)
-                await self._self_heal_trade(trade.id)
+            await self._on_trade_closed(trade, result, exit_price, pnl, r_value, balance)
             return
 
-        # Position still open — verify exactly one SL + one TP (live only)
-        if self.is_paper:
-            return
+        # Position still open — mode-specific verification (live verifies SL/TP and
+        # runs the force-close-breach safety net; paper is a no-op).
+        await self._poll_open_position(trade, pos)
 
-        counts = await self._count_sltp_orders(trade)
-        if counts is None:
-            return  # couldn't read orders — do nothing this cycle (never act on a failed read)
-        sl_count, tp_count = counts
 
-        if sl_count == 1 and tp_count == 1:
-            if symbol in self._sltp_missing_since:
-                log.info("Position poll: SL/TP confirmed for trade #%d", trade.id)
-            self._sltp_missing_since.pop(symbol, None)
-            self._sltp_last_alert.pop(symbol, None)
-            return
 
-        if sl_count > 1 or tp_count > 1:
-            log.warning("Position poll: trade #%d has %d SL / %d TP (need 1/1) — cleaning duplicates",
-                        trade.id, sl_count, tp_count)
-        now = time.time()
-        self._sltp_missing_since.setdefault(symbol, now)
+# Backwards-compatible alias for type hints / legacy imports. Concrete workers
+# are LiveWorker (worker_live.py) and PaperWorker (worker_paper.py); construct
+# them via make_worker() below or the manager.
+BotWorker = BaseWorker
 
-        # Cancel all open orders (both buckets), then place exactly one SL + one TP.
-        # _place_sl_tp cancels first, so this can never accumulate duplicate orders.
-        sl_ok, tp_ok = await self._place_sl_tp(
-            symbol, trade.direction, pos["quantity"],
-            trade.sl_price, trade.tp_price, trade.id,
-        )
 
-        if sl_ok and tp_ok:
-            log.info("Position poll: re-placed SL/TP for trade #%d", trade.id)
-            self._sltp_missing_since.pop(symbol, None)
-            self._sltp_last_alert.pop(symbol, None)
-        else:
-            # Safety net: SL could not be established AND it was genuinely absent
-            # (sl_count == 0 — not a real SL we just cancelled). If price has also
-            # breached the stop, force-close so the position isn't left unprotected.
-            if not sl_ok and sl_count == 0:
-                if await self._maybe_force_close_breach(trade, pos):
-                    return
-
-            elapsed = now - self._sltp_missing_since[symbol]
-            if elapsed >= 60 and (now - self._sltp_last_alert.get(symbol, 0)) >= 60:
-                missing = []
-                if not sl_ok:
-                    missing.append("SL")
-                if not tp_ok:
-                    missing.append("TP")
-                user_info = await db.get_user(self.user_id)
-                user_label = f"{user_info.name} (#{self.user_id})" if user_info and user_info.name else f"#{self.user_id}"
-                msg = (
-                    f"⚠️ Failed to place {'/'.join(missing)} for {symbol} "
-                    f"({trade.direction.upper()}) — {user_label}\nCheck position manually"
-                )
-                log.error(msg)
-                await send_private(msg)
-                self._sltp_last_alert[symbol] = now
-
-    async def _maybe_force_close_breach(self, trade, pos) -> bool:
-        """Force-close a live position ONLY when there is genuinely no stop order
-        AND price has already breached the SL level. Every gate must independently
-        confirm a real breach — a data/fetch error must never cause a close.
-        Returns True if the position was force-closed.
-        """
-        symbol = trade.symbol
-
-        # Gate 5: authoritatively re-confirm there is no STOP order (strict fetch).
-        # A fetch error -> unknown state -> do NOT close.
-        try:
-            cond = await self.exchange.get_conditional_orders(symbol, strict=True)
-        except Exception as e:
-            log.warning("Force-close check: conditional fetch failed for %s — skipping: %s", symbol, e)
-            return False
-        expected_ps = ("LONG" if trade.direction == "long" else "SHORT") if self.exchange.hedge_mode else None
-        for o in cond:
-            if expected_ps and o.get("positionSide") != expected_ps:
-                continue
-            if (o.get("orderType") or o.get("type")) == "STOP_MARKET":
-                return False  # an SL exists after all — never force-close
-
-        # Gate 6: reliable current price, direction-aware breach of the SL level
-        price = self._shared_market.get_latest_price(symbol) if self._shared_market else 0.0
-        if price <= 0:
-            return False
-        if trade.direction == "long":
-            breached = price <= trade.sl_price
-        else:
-            breached = price >= trade.sl_price
-        if not breached:
-            return False
-
-        # Gate 7: Binance's own position PnL confirms the loss is at SL magnitude (~1R),
-        # not merely negative. Rejects a single bad price tick.
-        expected_loss_at_sl = abs(trade.entry_price - trade.sl_price) * trade.quantity
-        if expected_loss_at_sl <= 0:
-            return False
-        if pos.get("unrealized_pnl", 0.0) > -(expected_loss_at_sl * 0.9):
-            return False
-
-        await self._force_close_breached(trade, pos, price)
-        return True
-
-    async def _force_close_breached(self, trade, pos, price: float):
-        symbol = trade.symbol
-        log.error("FORCE-CLOSE: %s %s has no stop order and price %.4f breached SL %.4f — market-closing",
-                  symbol, trade.direction, price, trade.sl_price)
-
-        close_side = "SELL" if trade.direction == "long" else "BUY"
-        pos_side = "LONG" if trade.direction == "long" else "SHORT"
-        try:
-            order = await self.exchange.place_market_order(symbol, close_side, pos["quantity"], position_side=pos_side)
-        except Exception as e:
-            log.error("Force-close market order FAILED for %s: %s", symbol, e)
-            await send_private(
-                f"🛑 Force-close FAILED for {symbol} ({trade.direction.upper()}) — price {price} past SL "
-                f"{trade.sl_price} with no stop order. CLOSE MANUALLY NOW."
-            )
-            return
-
-        await self.exchange.cancel_all_orders(symbol)
-
-        exit_price = float(order.get("avgPrice") or 0) or price or trade.sl_price
-        exit_comm = exit_price * trade.quantity * self.config.commission_pct
-        total_comm = (trade.commission or 0) + exit_comm
-        if trade.direction == "long":
-            raw_pnl = (exit_price - trade.entry_price) * trade.quantity
-        else:
-            raw_pnl = (trade.entry_price - exit_price) * trade.quantity
-        pnl = raw_pnl - total_comm
-
-        await db.update_trade(trade.id, {
-            "exit_time": datetime.now(timezone.utc),
-            "exit_price": exit_price,
-            "result": "loss",
-            "r_value": -1.0,
-            "pnl_usdt": pnl,
-            "commission": total_comm,
-        })
-
-        self._active_trades.pop(symbol, None)
-        self._sltp_missing_since.pop(symbol, None)
-        self._sltp_last_alert.pop(symbol, None)
-        self._on_trade_result(False)
-
-        await db.log_event(
-            f"Force-closed {symbol}: price breached SL with no stop order on exchange",
-            level="error", category="trade",
-            user_id=self.user_id, is_paper=self.is_paper,
-        )
-        await self._broadcast({
-            "type": "trade_closed",
-            "trade": {"id": trade.id, "symbol": symbol, "result": "loss", "pnl": pnl},
-        })
-
-        balance = await self.exchange.get_balance()
-        await alert_exit(symbol, trade.direction, "loss", trade.entry_price, exit_price, pnl, -1.0, balance)
-        await send_private(
-            f"🛑 Force-closed {symbol} ({trade.direction.upper()}) @ {exit_price:.4f} — price breached SL "
-            f"{trade.sl_price} with no stop order on the exchange"
-        )
-        await self._self_heal_trade(trade.id)
-
-    async def _self_heal_trade(self, trade_id: int):
-        if self.is_paper:
-            return
-        try:
-            from exchange import resolve_trade_exit, r_value_for_exit
-
-            trade = await db.get_trade(trade_id)
-            if not trade or trade.result not in ("win", "loss"):
-                return
-
-            update = {}
-            binance_entry_price = None
-            binance_qty = None
-            binance_entry_comm = 0.0
-
-            if trade.entry_order_id:
-                entry_fills = await self.exchange.get_trades_for_order(trade.symbol, int(trade.entry_order_id))
-                if entry_fills:
-                    binance_qty = sum(float(f["qty"]) for f in entry_fills)
-                    binance_entry_price = sum(float(f["price"]) * float(f["qty"]) for f in entry_fills) / binance_qty if binance_qty else 0
-                    binance_entry_comm = sum(float(f.get("commission", 0)) for f in entry_fills)
-
-                    if binance_entry_price > 0 and abs((trade.entry_price or 0) - binance_entry_price) > 0.01:
-                        update["entry_price"] = binance_entry_price
-                    if binance_qty > 0 and abs((trade.quantity or 0) - binance_qty) > 0.0001:
-                        update["quantity"] = binance_qty
-
-            binance_exit_price = None
-            binance_exit_comm = 0.0
-            binance_is_sl = None
-
-            # SL/TP are conditional/algo orders whose ids can't be looked up
-            # directly; read the real closing fills (with realizedPnl) instead.
-            exit_info = await resolve_trade_exit(
-                self.exchange.client, trade.symbol, trade.direction,
-                trade.entry_order_id, trade.entry_time,
-                binance_qty or trade.quantity,
-                trade.sl_price, trade.tp_price,
-            )
-            if exit_info:
-                binance_exit_price = exit_info["exit_price"]
-                binance_exit_comm = exit_info["exit_commission"]
-                binance_is_sl = exit_info["is_sl"]
-
-            if binance_exit_price and binance_exit_price > 0:
-                if abs((trade.exit_price or 0) - binance_exit_price) > 0.01:
-                    update["exit_price"] = binance_exit_price
-                correct_result = "loss" if binance_is_sl else "win"
-                if trade.result != correct_result:
-                    rr = await db.get_state("rr_ratio", self.config.strategy_params["rrr"],
-                                            user_id=self.user_id, is_paper=self.is_paper)
-                    update["result"] = correct_result
-                    update["r_value"] = r_value_for_exit(binance_is_sl, update.get("entry_price", trade.entry_price),
-                                                         trade.sl_price, trade.tp_price, rr)
-
-            entry_p = update.get("entry_price", trade.entry_price) or (binance_entry_price or 0)
-            exit_p = update.get("exit_price", trade.exit_price) or (binance_exit_price or 0)
-            qty = update.get("quantity", trade.quantity) or (binance_qty or 0)
-            if entry_p > 0 and exit_p > 0 and qty > 0:
-                if trade.direction == "long":
-                    raw_pnl = (exit_p - entry_p) * qty
-                else:
-                    raw_pnl = (entry_p - exit_p) * qty
-                total_comm = (binance_entry_comm or trade.commission or 0) + binance_exit_comm
-                correct_pnl = raw_pnl - total_comm
-                if trade.pnl_usdt is None or abs((trade.pnl_usdt or 0) - correct_pnl) > 0.01:
-                    update["pnl_usdt"] = correct_pnl
-                    update["commission"] = total_comm
-
-            if update:
-                await db.update_trade(trade_id, update)
-                log.warning("Self-heal: fixed trade #%d — %s", trade_id, update)
-                await db.log_event(
-                    f"Self-healed trade #{trade_id}: {', '.join(update.keys())}",
-                    level="warn", category="system",
-                    user_id=self.user_id, is_paper=False,
-                )
-        except Exception as e:
-            log.error("Self-heal failed for trade #%d: %s", trade_id, e)
+def make_worker(user_id, config, broadcast_fn=None, shared_market=None):
+    """Build the right worker for the config's mode."""
+    if config.is_paper:
+        from app.bot.worker_paper import PaperWorker
+        cls = PaperWorker
+    else:
+        from app.bot.worker_live import LiveWorker
+        cls = LiveWorker
+    return cls(user_id, config, broadcast_fn=broadcast_fn, shared_market=shared_market)

@@ -54,6 +54,12 @@ class PaperExchange:
         trade = await db.get_open_trade_for_symbol(self.user_id, symbol, is_paper=True)
         if trade is None:
             return None
+        # Once an SL/TP order has filled the position is closed (the worker finalizes
+        # the Trade row right after). Report it gone now so recovery resolves it as a
+        # normal close instead of re-placing orders — avoids a double balance settle.
+        for po in await db.get_paper_orders_for_trade(trade.id):
+            if po.status == "FILLED":
+                return None
         current_price = self._shared.get_latest_price(symbol) or trade.entry_price
         amt = trade.quantity
         if trade.direction == "long":

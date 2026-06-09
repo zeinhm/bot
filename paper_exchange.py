@@ -28,7 +28,6 @@ class PaperExchange:
         self._shared = shared_market
         self.client = True
         self._order_counter = 0
-        self._positions: dict[str, dict] = {}
 
     @property
     def market_client(self):
@@ -50,27 +49,29 @@ class PaperExchange:
         return await db.get_paper_balance(self.user_id)
 
     async def get_position(self, symbol: str) -> dict | None:
-        pos = self._positions.get(symbol)
-        if pos is None:
+        # Source of truth is the open paper Trade row (survives restarts), mirroring
+        # how Binance is the source of truth for live positions.
+        trade = await db.get_open_trade_for_symbol(self.user_id, symbol, is_paper=True)
+        if trade is None:
             return None
-        current_price = self._shared.get_latest_price(symbol) or pos["entry_price"]
-        amt = pos["quantity"]
-        if pos["side"] == "long":
-            pnl = (current_price - pos["entry_price"]) * amt
+        current_price = self._shared.get_latest_price(symbol) or trade.entry_price
+        amt = trade.quantity
+        if trade.direction == "long":
+            pnl = (current_price - trade.entry_price) * amt
         else:
-            pnl = (pos["entry_price"] - current_price) * amt
+            pnl = (trade.entry_price - current_price) * amt
         return {
             "symbol": symbol,
-            "side": pos["side"],
+            "side": trade.direction,
             "quantity": amt,
-            "entry_price": pos["entry_price"],
+            "entry_price": trade.entry_price,
             "unrealized_pnl": round(pnl, 4),
         }
 
     async def get_all_positions(self) -> list[dict]:
         result = []
-        for symbol in list(self._positions):
-            pos = await self.get_position(symbol)
+        for trade in await db.get_open_trades(self.user_id, is_paper=True):
+            pos = await self.get_position(trade.symbol)
             if pos:
                 result.append(pos)
         return result
@@ -98,25 +99,8 @@ class PaperExchange:
         self._order_counter += 1
         order_id = self._order_counter
 
-        if side.upper() == "BUY":
-            if symbol in self._positions and self._positions[symbol]["side"] == "short":
-                del self._positions[symbol]
-            else:
-                self._positions[symbol] = {
-                    "side": "long",
-                    "quantity": quantity,
-                    "entry_price": price,
-                }
-        else:
-            if symbol in self._positions and self._positions[symbol]["side"] == "long":
-                del self._positions[symbol]
-            else:
-                self._positions[symbol] = {
-                    "side": "short",
-                    "quantity": quantity,
-                    "entry_price": price,
-                }
-
+        # Position state lives in the Trade row (created/closed by the worker), not
+        # here — this just simulates the fill and returns it.
         log.info("PaperExchange: market %s %s %.4f @ %.2f", side, symbol, quantity, price)
         return {
             "orderId": order_id,
@@ -219,19 +203,20 @@ class PaperExchange:
                     await db.fill_paper_order(order.id)
                     fill_price = order.stop_price
 
-                    if order.symbol in self._positions:
-                        pos = self._positions[order.symbol]
+                    # Settle the paper balance from the open Trade (source of truth).
+                    # The worker's _on_user_event closes the Trade row itself.
+                    trade = await db.get_open_trade_for_symbol(self.user_id, order.symbol, is_paper=True)
+                    if trade is not None:
                         balance = await db.get_paper_balance(self.user_id)
-                        qty = pos["quantity"]
-                        if pos["side"] == "long":
-                            pnl = (fill_price - pos["entry_price"]) * qty
+                        qty = trade.quantity
+                        if trade.direction == "long":
+                            pnl = (fill_price - trade.entry_price) * qty
                         else:
-                            pnl = (pos["entry_price"] - fill_price) * qty
+                            pnl = (trade.entry_price - fill_price) * qty
                         from config import COMMISSION_PCT
                         comm = fill_price * qty * COMMISSION_PCT
                         pnl -= comm
                         await db.update_paper_balance(self.user_id, balance + pnl)
-                        del self._positions[order.symbol]
 
                     event = {
                         "e": "ORDER_TRADE_UPDATE",

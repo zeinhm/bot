@@ -8,6 +8,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 
 ## [2026-06-10]
 
+### Fixed
+- **Mobile: page header overlapped by content**: the sticky topbar and the position page's `.ticker-bar` were both `z-index: 50`, so on scroll the ticker-bar painted over the topbar. Bumped the mobile topbar to `z-index: 100` (still below modals/nav-progress)
+
+### Added
+- **Tooltips on R**: hover explainer on the R column header and the Total R stat card (reusable `[data-tip]` on `th`/`.lbl`); lighter tooltip background (`--card-2`)
+
 ### Added
 - **Income-based net PnL (matches Binance Position History to the cent)**: Trade PnL is now sourced from Binance's **income ledger** instead of being computed from prices. New `exchange.position_pnl_breakdown(client, symbol, entry_time, exit_time)` sums `REALIZED_PNL + FUNDING_FEE + COMMISSION` over the position window, converting BNB-paid commission to USDT via the BNB price at the fee time (matching how Binance displays it). Verified against the live account: position #782 → net **2.64** / ROI **10.40%**, exact match. Wired into `LiveWorker._self_heal_trade`, the `websocket.py` anomaly scanner, and admin reconcile, so `pnl_usdt` becomes the **net** realized PnL, `commission` the USDT trading fee, and the new `funding_fee` column the funding. The previous price-derived PnL (which also mishandled BNB fees) is removed. **`entry_time`/`exit_time` are now also sourced from the actual Binance fills** (`resolve_trade_exit` returns the close-fill time; `exchange.fills_time()` reads the entry-fill time) — previously they recorded when the *bot* acted/detected the close (~10s late), now they match Binance's fill timestamps to the second. Trade History shows the net P&L plus visible **Commission**, **Funding Fee**, and **ROI** columns. New `trades.funding_fee` column (migration `c3e8a1f2b4d6` + `_ensure_schema`)
 

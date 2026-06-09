@@ -123,11 +123,26 @@ body {
 .rail-btn[data-tip]:hover::after {
   content: attr(data-tip);
   position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%);
-  background: #060709; color: var(--text); border: 1px solid var(--border);
+  background: var(--card-2); color: var(--text); border: 1px solid var(--border);
   padding: 4px 8px; border-radius: 5px; font-size: 11px; white-space: nowrap;
   font-family: var(--sans); z-index: 60; pointer-events: none;
   box-shadow: 0 6px 18px rgba(0,0,0,.5);
 }
+
+/* header / stat-label tooltip (e.g. R explainer) */
+th[data-tip], .lbl[data-tip] { position: relative; cursor: help; }
+th[data-tip]:hover::after, .lbl[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute; top: calc(100% + 6px);
+  background: var(--card-2); color: var(--text); border: 1px solid var(--border);
+  padding: 7px 9px; border-radius: 6px; font-size: 11px; line-height: 1.45;
+  font-weight: 400; white-space: normal; width: 230px; text-align: left;
+  text-transform: none; letter-spacing: normal; font-family: var(--sans);
+  z-index: 60; pointer-events: none; box-shadow: 0 6px 18px rgba(0,0,0,.5);
+}
+th[data-tip]:hover::after { right: 0; }
+.lbl[data-tip]:hover::after { left: 0; }
+.stat.tip-card { overflow: visible; }
 
 /* ---- main column ---- */
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -571,7 +586,7 @@ input[type=range]::-moz-range-thumb { width: 15px; height: 15px; border: none; b
   .main { min-height: 0; }
   .content { overflow-y: visible !important; padding: 12px 10px calc(68px + env(safe-area-inset-bottom)) !important; }
   .content.content-flush { padding: 6px 6px calc(68px + env(safe-area-inset-bottom)) !important; }
-  .topbar { position: sticky; top: 0; z-index: 50; }
+  .topbar { position: sticky; top: 0; z-index: 100; }
   .rail { display: none; }
   .btm-nav { display: flex; }
 

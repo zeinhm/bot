@@ -130,8 +130,8 @@ body {
 }
 
 /* header / stat-label tooltip (e.g. R explainer) */
-th[data-tip], .lbl[data-tip] { position: relative; cursor: help; }
-th[data-tip]:hover::after, .lbl[data-tip]:hover::after {
+th[data-tip], .lbl[data-tip], .card-title[data-tip] { position: relative; cursor: help; }
+th[data-tip]:hover::after, .lbl[data-tip]:hover::after, .card-title[data-tip]:hover::after {
   content: attr(data-tip);
   position: absolute; top: calc(100% + 6px);
   background: var(--card-2); color: var(--text); border: 1px solid var(--border);
@@ -141,7 +141,8 @@ th[data-tip]:hover::after, .lbl[data-tip]:hover::after {
   z-index: 60; pointer-events: none; box-shadow: 0 6px 18px rgba(0,0,0,.5);
 }
 th[data-tip]:hover::after { right: 0; }
-.lbl[data-tip]:hover::after { left: 0; }
+.lbl[data-tip]:hover::after, .card-title[data-tip]:hover::after { left: 0; }
+.card-title[data-tip] { display: inline-block; }
 .stat.tip-card { overflow: visible; }
 
 /* ---- main column ---- */
@@ -191,6 +192,7 @@ th[data-tip]:hover::after { right: 0; }
 /* grids */
 .grid { display: grid; gap: 12px; }
 .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.stat-row-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
 
 /* stat card */
 .stat { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 13px 14px; position: relative; overflow: hidden; }
@@ -437,6 +439,7 @@ input[type=range]::-moz-range-thumb { width: 15px; height: 15px; border: none; b
 @media (max-width: 768px) {
   .rail { display: none; }
   .stat-row { grid-template-columns: repeat(2, 1fr); }
+  .stat-row-5 { grid-template-columns: repeat(2, 1fr); }
   .hero-stats { grid-template-columns: repeat(2, 1fr); }
   .hero-stat:nth-child(2) { border-right: none; }
   .topbar { padding: 0 12px; }

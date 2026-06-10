@@ -140,15 +140,14 @@
     <div class="tbl-wrap">
     <table class="tbl" id="tl-table">
         <thead><tr>
-            <th>Symbol</th>
-            <th>Direction</th>
-            <th>Entry</th>
-            <th>Exit</th>
-            <th class="num">Entry $</th>
-            <th class="num">Exit $</th>
-            <th class="num">Result</th>
-            <th class="num">R</th>
-            <th class="num">PnL</th>
+            <th>Pair</th>
+            <th>Date</th>
+            <th>Dir</th>
+            <th class="num">Entry</th>
+            <th class="num">Closed</th>
+            <th>Result</th>
+            <th class="num" data-tip="R = reward-to-risk multiple. A win banks the configured reward:risk (e.g. +2R = 2× the amount risked); a loss is −1R (the amount risked — the entry-to-SL distance).">R</th>
+            <th class="num">Nett PnL</th>
             <th class="num">Equity</th>
         </tr></thead>
         <tbody id="tl-body"></tbody>
@@ -161,10 +160,11 @@
 </div>
 <script>
 (function() {
+    var LEVERAGE = {{ leverage }};
     var allRows = [
         {% for t in bt_results %}
         {
-            sym: "{{ t.symbol.replace('USDT', '') }}",
+            sym: "{{ t.symbol }}",
             dir: "{{ t.direction }}",
             entryUtc: "{{ t.entry_time.strftime('%Y-%m-%dT%H:%M:%SZ') if t.entry_time else '' }}",
             exitUtc: "{{ t.exit_time.strftime('%Y-%m-%dT%H:%M:%SZ') if t.exit_time else '' }}",
@@ -204,24 +204,26 @@
         var rows = allRows.slice(start, end);
 
         var html = '';
+        var money = function(v) { return v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); };
         rows.forEach(function(t) {
-            var cls = t.result === 'win' ? 'row-win' : 'row-loss';
-            var resCls = t.result === 'win' ? 'pos' : 'neg';
             var rVal = t.r !== null ? (t.r >= 0 ? '+' : '') + t.r.toFixed(1) + 'R' : '—';
             var rCls = t.r !== null && t.r >= 0 ? 'pos' : 'neg';
-            var pnlVal = t.pnl !== null ? (t.pnl >= 0 ? '+' : '') + t.pnl.toFixed(2) : '—';
+            var pnlVal = t.pnl !== null ? (t.pnl >= 0 ? '+' : '') + money(t.pnl) : '—';
             var pnlCls = t.pnl !== null && t.pnl >= 0 ? 'pos' : 'neg';
-            html += '<tr class="'+cls+'">'
-                + '<td class="mono">'+t.sym+'</td>'
+            var resPill = t.result === 'win' ? '<span class="pill green">WIN</span>' : '<span class="pill red">LOSS</span>';
+            html += '<tr>'
+                + '<td class="mono">'+t.sym+'<span style="font-size:10px;color:var(--muted);background:var(--card-3);padding:1px 5px;border-radius:3px;margin-left:6px">'+LEVERAGE+'x</span></td>'
+                + '<td class="mono" style="font-size:11px;line-height:1.6">'
+                    + '<div><span class="muted" style="display:inline-block;min-width:52px">Open:</span>'+fmtDate(t.entryUtc)+'</div>'
+                    + '<div><span class="muted" style="display:inline-block;min-width:52px">Closed:</span>'+fmtDate(t.exitUtc)+'</div>'
+                  + '</td>'
                 + '<td><span class="dir-badge '+t.dir+'">'+t.dir.toUpperCase()+'</span></td>'
-                + '<td class="mono">'+fmtDate(t.entryUtc)+'</td>'
-                + '<td class="mono">'+fmtDate(t.exitUtc)+'</td>'
-                + '<td class="num mono">'+t.entryP.toFixed(2)+'</td>'
-                + '<td class="num mono">'+t.exitP.toFixed(2)+'</td>'
-                + '<td class="num"><span class="'+resCls+'">'+t.result.toUpperCase()+'</span></td>'
+                + '<td class="num mono">'+money(t.entryP)+'</td>'
+                + '<td class="num mono">'+money(t.exitP)+'</td>'
+                + '<td>'+resPill+'</td>'
                 + '<td class="num mono '+rCls+'">'+rVal+'</td>'
                 + '<td class="num mono '+pnlCls+'">'+pnlVal+'</td>'
-                + '<td class="num mono">'+t.equity.toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0})+'</td>'
+                + '<td class="num mono">'+money(t.equity)+'</td>'
                 + '</tr>';
         });
         document.getElementById('tl-body').innerHTML = html;

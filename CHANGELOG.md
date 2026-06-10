@@ -6,6 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 
 ---
 
+## [2026-06-11]
+
+### Changed
+- **Analytics page overhaul**:
+  - Removed the left accent border on the stat cards; P&L numbers (Monthly net, P&L by Session) use comma separators + 2 decimals (were rounded to whole numbers on prod)
+  - **Monthly P&L** bars no longer print a value label on top — hovering a bar shows a tooltip with the month's P&L, total trades, and W/L
+  - **Removed P&L by Day** (low signal / curve-fit risk) and added **Longest Streak** (longest consecutive win and loss runs, chronological by close) as a 5th card in the top stat row (`9W / 8L`)
+  - **Hold Time Analysis** now shows Average / Fastest / Longest split by Winners & Losers (neutral colors, no progress bars; the "held N× longer" insight line was removed)
+  - **P&L by Session** always lists every session (NY, London, Sydney, Tokyo) even with 0 trades; "NY" renders uppercase; the card title has a tooltip noting trades are grouped by the session they were **opened** in (entry time). Session + Hold Time sit side-by-side below
+- **Equity curve anchored to the real balance**: the dashboard equity curve no longer starts at a hardcoded `$10,000` — it's anchored so the curve **ends at the user's actual balance** (start = balance − all trade PnL; falls back to `last_balance`, then a flat baseline). Drawdown % uses the same real-balance equity. Chart hover/header use the first data point as the baseline (not a fixed 10k), show 2-decimal precision, and default to the current equity + total %. Title simplified to just **"Equity Curve"**. This Year P&L shows `+7,671.94 USDT` (no `$`, comma separators, USDT unit)
+- **Shared trade table**: extracted the Trade History table into a partial `templates/_trade_table.html` (Pair + leverage pill, Open/Closed dates, Entry/Closed/Size, R/ROI/Commission/Funding Fee/Nett PnL, comma separators) used by both Trade History and the dashboard's Recent Trades so they can't drift. Shared `num` Jinja filter moved to `app/core/template_filters.py`. The **backtester Trade Log** now matches the same look (Pair + pill, Open/Closed dates, result pills, comma separators, R tooltip), keeping its Equity column and omitting Commission/Funding/Size/ROI (no backtest data for those)
+
 ## [2026-06-10]
 
 ### Fixed

@@ -48,6 +48,7 @@ bot/
 ├── app/
 │   ├── auth/service.py        # Fernet encrypt/decrypt, require_auth, session helpers
 │   ├── core/context.py        # get_global_context() for template rendering
+│   ├── core/template_filters.py # Shared Jinja filters (num: comma+decimals); register_filters()
 │   ├── email.py               # send_approval_email(), send_rejection_email() via Resend
 │   ├── db/
 │   │   ├── engine.py          # init_db(), get_session(), _ensure_schema() auto-migration
@@ -92,8 +93,9 @@ bot/
 │       ├── analytics.py       # GET /admin/analytics (platform-wide)
 │       └── logs.py            # GET /admin/logs (filterable event log)
 │
-├── templates/                 # 21 Jinja2 templates
+├── templates/                 # 22 Jinja2 templates
 │   ├── base.html              # Master layout: sidebar, topbar, bottom nav, WS handlers
+│   ├── _trade_table.html      # Shared trade table partial (Trade History + dashboard Recent Trades)
 │   ├── dashboard.html         # Stats, equity curve, recent trades
 │   ├── position.html          # Chart, order book, positions, market trades (~800 lines JS)
 │   ├── trades.html            # Filtered trade history table

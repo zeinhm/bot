@@ -8,19 +8,11 @@ from config import LEVERAGE
 import app.db as db
 from app.core.context import get_global_context
 
+from app.core.template_filters import register_filters
+
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
-
-
-def _num(value, decimals: int = 2, sign: bool = False) -> str:
-    """Format a number with comma thousand separators (— if None)."""
-    if value is None:
-        return "—"
-    fmt = "{:+,.%df}" % decimals if sign else "{:,.%df}" % decimals
-    return fmt.format(value)
-
-
-templates.env.filters["num"] = _num
+register_filters(templates)
 
 
 @router.get("/trades")

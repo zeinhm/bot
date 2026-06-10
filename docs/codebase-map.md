@@ -177,6 +177,19 @@ Shared template context builder.
 
 ---
 
+### `app/core/template_filters.py`
+Shared Jinja filters registered onto a route's `Jinja2Templates` env.
+
+- `_num(value, decimals=2, sign=False)` — comma thousand separators + fixed decimals; `—` for `None`; optional leading `+`
+- `register_filters(templates)` — registers `num` on `templates.env.filters` (used by `trades.py`, `dashboard.py`, `analytics.py`)
+
+---
+
+### `templates/_trade_table.html`
+Shared trade-table partial. Expects `rows` (list of Trade) + `leverage` in context and the `num` filter. Columns: Pair (+leverage pill), Date (Open/Closed), Dir, Entry, Closed, Size, Result, R (tooltip), ROI, Commission, Funding Fee, Nett PnL. Included by `trades.html` and `dashboard.html` (Recent Trades) via `{% set rows = ... %}{% include %}`.
+
+---
+
 ### `app/email.py`
 Transactional emails via Resend.
 

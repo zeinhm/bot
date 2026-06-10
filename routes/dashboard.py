@@ -9,9 +9,11 @@ from app.auth import require_auth, get_trading_mode
 from config import SYMBOLS, LEVERAGE
 import app.db as db
 from app.core.context import get_global_context
+from app.core.template_filters import register_filters
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
+register_filters(templates)
 
 
 @router.get("/dashboard")
@@ -35,11 +37,29 @@ async def dashboard(request: Request):
     year_pnl = sum(t.pnl_usdt or 0 for t in year_trades)
     year_trade_count = len(year_trades)
 
-    equity = 10000.0
+    # Anchor the equity curve to the user's real balance: start so the curve ends
+    # at the current balance (= balance − all trade PnL). Falls back to the last
+    # known balance, then to a flat baseline if we have no reading yet.
+    real_balance = ctx.get("balance") or 0.0
+    if real_balance <= 0:
+        real_balance = await db.get_state("last_balance", 0.0, user_id=user.id, is_paper=is_paper) or 0.0
+    total_pnl_all = sum(t.pnl_usdt or 0 for t in closed)
+    start_equity = (real_balance - total_pnl_all) if real_balance > 0 else 10000.0
+
+    by_exit = sorted(closed, key=lambda t: t.exit_time or t.entry_time)
+    equity = start_equity
     peak_equity = equity
     max_dd_pct = 0.0
     max_dd_date = None
-    for t in closed:
+    eq_map = {}
+    # Seed the curve with the starting equity (at the first trade's entry) so it
+    # shows the rise from the start, and the % baseline is the real start balance.
+    if by_exit:
+        first = by_exit[0]
+        seed_t = first.entry_time or first.exit_time
+        if seed_t:
+            eq_map[int(seed_t.timestamp())] = round(start_equity, 2)
+    for t in by_exit:
         equity += t.pnl_usdt or 0
         if equity > peak_equity:
             peak_equity = equity
@@ -47,15 +67,8 @@ async def dashboard(request: Request):
         if dd_pct > max_dd_pct:
             max_dd_pct = dd_pct
             max_dd_date = t.exit_time
-
-    by_exit = sorted(closed, key=lambda t: t.exit_time or t.entry_time)
-    eq_map = {}
-    equity = 10000.0
-    for t in by_exit:
-        equity += t.pnl_usdt or 0
         if t.exit_time:
-            ts = int(t.exit_time.timestamp())
-            eq_map[ts] = round(equity, 2)
+            eq_map[int(t.exit_time.timestamp())] = round(equity, 2)
     equity_data = [{"time": k, "value": v} for k, v in sorted(eq_map.items())]
 
     risk_mode = await db.get_state("risk_mode", "static", user_id=user.id, is_paper=is_paper)

@@ -8,6 +8,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 
 ## [2026-06-11]
 
+### Fixed
+- **Railway build failure (not a code issue)**: Railway's railpack builder began defaulting to Python `3.13.14`, which has no precompiled mise binary (`no precompiled python found for core:python@3.13.14`), so the build died before `pip install`/migrations ever ran. Pinned `.python-version` to `3.12.7` (stable, has a binary, deps + app code all compatible)
+
 ### Added
 - **Backtester result cache + lazy setup pagination** (`docs/backtest-cache-plan.md`):
   - **Step 1 — cache.** `amd_engine.run` used to re-simulate ~210k bars on **every** `/api/backtest` call and **3×** on every `/api/backtest/combined` call (≈4 full sims per page load). Results are now cached by a `(strategy, params, candle-data fingerprint)` signature — two new tables `backtest_runs` + `backtest_setups` (migration `d4f9b2c1a8e3`) + an in-memory hot layer. The engine runs **once** per combo, persists (survives Railway redeploys), and the data fingerprint (`first_ts, last_ts, count`) auto-invalidates on candle import. `/combined` is itself a cached `symbol="COMBINED"` row. New queries: `get_backtest_run`, `save_backtest_run` (concurrency-safe on the unique signature), `get_run_setups_all/page/range`, `get_historical_candle_count`. Builds are serialized per signature with an `asyncio.Lock` so the page's concurrent `/api/backtest` + `/combined` + `/setups` requests don't each run the engine or race on the write (old runs are not pruned — deleting a `run_id` still referenced elsewhere dropped its setups and corrupted the combined total).

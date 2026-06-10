@@ -1,3 +1,6 @@
+import asyncio
+import hashlib
+import json
 import logging
 from typing import Optional
 
@@ -126,43 +129,145 @@ def _equity_cfg() -> dict:
     }
 
 
+# ── Result cache (run the engine once per strategy+params+data signature) ──────
+_STRATEGY_ID = "amd_fvg_v1"
+_CACHE_VERSION = "2"                     # bump to invalidate all cached runs
+_run_cache: dict[str, dict] = {}        # signature -> {run_id, stats, total, signature}
+_combined_cache: dict[str, dict] = {}   # combo signature -> {stats, perAsset}
+_build_locks: dict[str, asyncio.Lock] = {}  # signature -> lock (one builder per combo)
+
+
+def _params_hash(cfg: dict) -> str:
+    return hashlib.sha256(json.dumps(cfg, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def _signature(symbol: str, interval: str, params_hash: str,
+               first_ts, last_ts, count) -> str:
+    raw = f"{_CACHE_VERSION}|{_STRATEGY_ID}|{symbol}|{interval}|{params_hash}|{first_ts}|{last_ts}|{count}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+async def _get_or_build_run(symbol: str, interval: str) -> dict:
+    """Return cached metadata {run_id, stats, total, signature} for this
+    (strategy, params, data) combo — running amd_engine only on a cache miss.
+    Setups are NOT held in memory; fetch them by page/range from the DB."""
+    cfg = _build_cfg(symbol)
+    params_hash = _params_hash(cfg)
+    first_ts, last_ts = await db.get_historical_candle_range(symbol, interval)
+    count = await db.get_historical_candle_count(symbol, interval)
+    sig = _signature(symbol, interval, params_hash, first_ts, last_ts, count)
+
+    # 1) hot in-memory (metadata only)
+    if sig in _run_cache:
+        return _run_cache[sig]
+
+    # Serialize builds for this signature so concurrent requests (the page fires
+    # /api/backtest, /combined and /setups at once) don't each run the engine and
+    # race on the DB write.
+    lock = _build_locks.setdefault(sig, asyncio.Lock())
+    async with lock:
+        if sig in _run_cache:                      # built while we waited
+            return _run_cache[sig]
+
+        # 2) persisted (survives redeploys)
+        run = await db.get_backtest_run(sig)
+        if run is not None:
+            meta = {"run_id": run.id, "stats": json.loads(run.stats or "{}"),
+                    "total": run.total_setups, "signature": sig}
+            _run_cache[sig] = meta
+            return meta
+
+        # 3) miss — run the engine once, persist
+        data = await _load_candles(symbol, interval)
+        if not data:
+            return {"run_id": None, "stats": {}, "total": 0, "signature": sig}
+        setups = amd_engine.run(data, cfg)
+        stats = amd_engine.compute_stats(setups, cfg["rrr"])
+        run_id = await db.save_backtest_run({
+            "signature": sig, "strategy": _STRATEGY_ID, "symbol": symbol, "interval": interval,
+            "params_hash": params_hash, "data_first_ts": first_ts, "data_last_ts": last_ts,
+            "candle_count": count, "total_setups": len(setups), "stats": json.dumps(stats),
+        }, setups)
+        meta = {"run_id": run_id, "stats": stats, "total": len(setups), "signature": sig}
+        _run_cache[sig] = meta
+        log.info("Backtest computed + cached: %s (%d setups)", symbol, len(setups))
+        return meta
+
+
 @router.get("/api/backtest")
 async def run_backtest(
     request: Request,
     symbol: str = Query("BTCUSDT"),
     interval: str = Query("15m"),
 ):
+    """Stats + total setup count only. Setups are loaded lazily via /api/backtest/setups."""
     await require_auth(request)
-    data = await _load_candles(symbol, interval)
-    if not data:
-        return JSONResponse({"stats": {}, "setups": []})
+    meta = await _get_or_build_run(symbol, interval)
+    return JSONResponse({"stats": meta["stats"], "total": meta["total"]})
 
-    cfg = _build_cfg(symbol)
-    setups = amd_engine.run(data, cfg)
-    stats = amd_engine.compute_stats(setups, cfg["rrr"])
 
-    return JSONResponse({"stats": stats, "setups": setups})
+@router.get("/api/backtest/setups")
+async def backtest_setups(
+    request: Request,
+    symbol: str = Query("BTCUSDT"),
+    interval: str = Query("15m"),
+    from_ts: Optional[int] = Query(None, alias="from"),
+    to_ts: Optional[int] = Query(None, alias="to"),
+    limit: int = Query(10, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
+    """Setups for a run, by time range (from/to, for the chart) or newest-first
+    page (limit/offset, for nav). Each setup carries its `_ordinal` (global index)."""
+    await require_auth(request)
+    meta = await _get_or_build_run(symbol, interval)
+    if meta["run_id"] is None:
+        return JSONResponse({"setups": [], "total": 0})
+    if from_ts is not None and to_ts is not None:
+        setups = await db.get_run_setups_range(meta["run_id"], from_ts, to_ts)
+    else:
+        setups = await db.get_run_setups_page(meta["run_id"], limit, offset)
+    return JSONResponse({"setups": setups, "total": meta["total"]})
 
 
 @router.get("/api/backtest/combined")
 async def run_backtest_combined(request: Request):
     await require_auth(request)
 
-    all_setups = []
-    per_asset = {}
-    for symbol in SYMBOLS:
-        data = await _load_candles(symbol, "15m")
-        if not data:
-            continue
-        cfg = _build_cfg(symbol)
-        setups = amd_engine.run(data, cfg)
-        stats = amd_engine.compute_stats(setups, cfg["rrr"])
-        short = symbol.replace("USDT", "")
-        per_asset[short] = stats
-        all_setups.extend(setups)
+    metas = {symbol: await _get_or_build_run(symbol, "15m") for symbol in SYMBOLS}
+    combo_sig = hashlib.sha256(
+        ("|".join(metas[s]["signature"] for s in SYMBOLS)
+         + "|" + _params_hash(_equity_cfg())).encode()
+    ).hexdigest()
 
-    all_setups.sort(key=lambda s: s["entryTime"])
-    rrr = STRATEGY_PARAMS["rrr"]
-    combined_stats = amd_engine.compute_stats(all_setups, rrr, _equity_cfg())
+    # combined result is itself cached (mem → persisted COMBINED run row)
+    if combo_sig in _combined_cache:
+        return JSONResponse(_combined_cache[combo_sig])
 
-    return JSONResponse({"stats": combined_stats, "perAsset": per_asset})
+    lock = _build_locks.setdefault(combo_sig, asyncio.Lock())
+    async with lock:
+        if combo_sig in _combined_cache:
+            return JSONResponse(_combined_cache[combo_sig])
+        run = await db.get_backtest_run(combo_sig)
+        if run is not None:
+            payload = json.loads(run.stats or "{}")
+            _combined_cache[combo_sig] = payload
+            return JSONResponse(payload)
+
+        all_setups = []
+        per_asset = {}
+        for symbol in SYMBOLS:
+            m = metas[symbol]
+            per_asset[symbol.replace("USDT", "")] = m["stats"]
+            if m["run_id"] is not None:
+                all_setups.extend(await db.get_run_setups_all(m["run_id"]))
+        all_setups.sort(key=lambda s: s["entryTime"])
+        combined_stats = amd_engine.compute_stats(all_setups, STRATEGY_PARAMS["rrr"], _equity_cfg())
+        payload = {"stats": combined_stats, "perAsset": per_asset}
+
+        await db.save_backtest_run({
+            "signature": combo_sig, "strategy": _STRATEGY_ID, "symbol": "COMBINED", "interval": "15m",
+            "params_hash": _params_hash(_equity_cfg()), "data_first_ts": None, "data_last_ts": None,
+            "candle_count": None, "total_setups": 0, "stats": json.dumps(payload),
+        }, [])
+        _combined_cache[combo_sig] = payload
+        return JSONResponse(payload)

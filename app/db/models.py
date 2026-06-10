@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     Column, Integer, Float, String, DateTime, Text, Boolean, UniqueConstraint,
-    ForeignKey,
+    ForeignKey, Index,
 )
 from sqlalchemy.orm import DeclarativeBase
 
@@ -183,3 +183,43 @@ class PaperOrder(Base):
     status = Column(String(20), nullable=False, default="NEW")
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     filled_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class BacktestRun(Base):
+    """Cached result of one amd_engine run, keyed by (strategy, params, data) signature.
+
+    Lets the backtester skip re-simulating ~210k bars on every call. A row with
+    symbol="COMBINED" stores the multi-asset combined stats (no setup rows).
+    """
+    __tablename__ = "backtest_runs"
+    __table_args__ = (
+        UniqueConstraint("signature", name="uq_backtest_run_sig"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    signature = Column(String(64), nullable=False, index=True)  # sha256 hex
+    strategy = Column(String(50), nullable=False, default="amd_fvg_v1")
+    symbol = Column(String(20), nullable=False)
+    interval = Column(String(5), nullable=False)
+    params_hash = Column(String(64), nullable=False)
+    data_first_ts = Column(Integer)
+    data_last_ts = Column(Integer)
+    candle_count = Column(Integer)
+    total_setups = Column(Integer, nullable=False, default=0)
+    stats = Column(Text)  # json.dumps of the stats dict
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class BacktestSetup(Base):
+    """One setup of a cached BacktestRun. Indexed for nav (ordinal) and chart (entry_time)."""
+    __tablename__ = "backtest_setups"
+    __table_args__ = (
+        Index("ix_bt_setup_run_ordinal", "run_id", "ordinal"),
+        Index("ix_bt_setup_run_entry", "run_id", "entry_time"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("backtest_runs.id", ondelete="CASCADE"), nullable=False)
+    ordinal = Column(Integer, nullable=False)      # 0..N-1 in time order
+    entry_time = Column(Integer, nullable=False)   # seconds UTC — range queries
+    data = Column(Text, nullable=False)            # json.dumps of the full setup dict

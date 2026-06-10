@@ -305,9 +305,16 @@ Key relationships:
 
 | Function | Returns | Notes |
 |----------|---------|-------|
-| `get_backtest_results(symbol)` | list[BacktestResult] | Optional symbol filter |
+| `get_backtest_results(symbol)` | list[BacktestResult] | Optional symbol filter (Trade Log) |
 | `save_backtest_results(results)` | — | Bulk insert |
 | `clear_backtest_results()` | — | Delete all |
+| `get_backtest_run(signature)` | BacktestRun \| None | Cache lookup by signature |
+| `save_backtest_run(run, setups)` | run_id | Prunes stale versions for (strategy,symbol,interval); concurrency-safe on unique signature; bulk-inserts setups |
+| `get_run_setups_all(run_id)` | list[dict] | All setups, ordinal asc (Step 1 same-shape) |
+| `get_run_setups_page(run_id, limit, offset)` | list[dict] | Newest-first page → ascending (Step 2 nav) |
+| `get_run_setups_range(run_id, from_ts, to_ts)` | list[dict] | Setups in a time window (Step 2 chart) |
+
+**Backtester result cache** (`routes/backtester.py`): `_get_or_build_run(symbol, interval)` builds a `sha256(strategy + symbol + interval + params_hash + (first_ts,last_ts,count))` signature, checks in-memory `_run_cache` → DB `BacktestRun` → else runs `amd_engine.run` once and persists. `/api/backtest` + `/api/backtest/combined` return the same shape as before, now from cache. Models: `BacktestRun` (one cached run; `symbol="COMBINED"` row holds combined stats) + `BacktestSetup` (one row per setup, indexed for nav + chart-range).
 
 ---
 

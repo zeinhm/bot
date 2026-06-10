@@ -8,6 +8,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 
 ## [2026-06-11]
 
+### Added
+- **Backtester result cache + lazy setup pagination** (`docs/backtest-cache-plan.md`):
+  - **Step 1 — cache.** `amd_engine.run` used to re-simulate ~210k bars on **every** `/api/backtest` call and **3×** on every `/api/backtest/combined` call (≈4 full sims per page load). Results are now cached by a `(strategy, params, candle-data fingerprint)` signature — two new tables `backtest_runs` + `backtest_setups` (migration `d4f9b2c1a8e3`) + an in-memory hot layer. The engine runs **once** per combo, persists (survives Railway redeploys), and the data fingerprint (`first_ts, last_ts, count`) auto-invalidates on candle import. `/combined` is itself a cached `symbol="COMBINED"` row. New queries: `get_backtest_run`, `save_backtest_run` (concurrency-safe on the unique signature), `get_run_setups_all/page/range`, `get_historical_candle_count`. Builds are serialized per signature with an `asyncio.Lock` so the page's concurrent `/api/backtest` + `/combined` + `/setups` requests don't each run the engine or race on the write (old runs are not pruned — deleting a `run_id` still referenced elsewhere dropped its setups and corrupted the combined total).
+  - **Step 2 — pagination.** `/api/backtest` now returns `{stats, total}` (no setups); a new `/api/backtest/setups?symbol&interval&[from&to]|[offset&limit]` serves setups by time range (chart) or newest-first page (nav), each carrying its `_ordinal`. The backtester chart loads only the **newest 10 setups** on open and lazy-loads older pages as you navigate `‹` or scroll left (alongside the candle lazy-load) — instead of shipping all ~360. The setup counter shows the true `X / total`; `ensureLoaded` remains the safety net.
+
+### Changed
+- **Backtester loads candles in one call instead of two**: on page load (and asset switch) it used to fetch the most recent 2000 candles and then back-fill ~5000 older ones to bring the most-recent setup (which it auto-jumps to) into view. Now it fetches `/api/backtest` first, then makes a **single** candle request anchored at the last setup (`end = setup.exit + 30 bars`, limit 2000); `ensureLoaded()` remains the safety net. De-duplicated the setup-mapping/stats logic into `mapSetups()` / `applyBtStats()` / `loadCandlesForSetups()`. Trade-off: the chart no longer preloads candles to the right of the last setup (scrolling left still lazy-loads)
+
+### Fixed
+- **Trade History filters rendered broken**: the direction (All/Long/Short) and result (All/Wins/Losses) segmented toggles collapsed into unstyled text ("AllLongShort") because `.seg` only styled `<button>` while the filters use `<a>`. Extended `.seg` styling to `.seg a` and removed the inline `color:inherit` that fought it — they now render as proper padded pills with the active segment highlighted
+
+### Added
+- **Trade History filter toolbar + pagination**: moved the filters from the page header into a toolbar at the top of the table, added a **Symbol** filter (All/BTC/ETH/SOL) and a **Reset** button, and added server-side **pagination** fixed at **10/page** with a first/prev/numbered/next/last pager (`« ‹ 1 2 3 › »`, matching the backtester Trade Log) + an `X–Y of Z` range. Stat cards still reflect the full filtered set; the table shows one page. Extended `.pager` styling to links (was `<button>`-only). The backtester **Trade Log** table also now defaults to **10/page** (was 25)
+
 ### Changed
 - **Analytics page overhaul**:
   - Removed the left accent border on the stat cards; P&L numbers (Monthly net, P&L by Session) use comma separators + 2 decimals (were rounded to whole numbers on prod)

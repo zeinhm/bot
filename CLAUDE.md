@@ -52,7 +52,7 @@ bot/
 │   ├── email.py               # send_approval_email(), send_rejection_email() via Resend
 │   ├── db/
 │   │   ├── engine.py          # init_db(), get_session(), _ensure_schema() auto-migration
-│   │   ├── models.py          # 12 SQLAlchemy models (User, Trade, BotState, etc.)
+│   │   ├── models.py          # 14 SQLAlchemy models (User, Trade, BotState, BacktestRun, etc.)
 │   │   └── queries/
 │   │       ├── trades.py      # Trade CRUD, filtering, today PnL/count
 │   │       ├── users.py       # User CRUD, Google upsert, API key management
@@ -61,7 +61,7 @@ bot/
 │   │       ├── events.py      # Bot event logging and retrieval
 │   │       ├── state.py       # Key-value state store (per user+mode)
 │   │       ├── paper.py       # Paper account + order management
-│   │       └── backtest.py    # Backtest result storage
+│   │       └── backtest.py    # Backtest result storage + run/setup cache (get/save_backtest_run, get_run_setups_*)
 │   ├── middleware/
 │   │   └── csrf.py            # CSRF protection middleware (session-based token)
 │   └── bot/
@@ -81,7 +81,7 @@ bot/
 │   ├── settings.py            # GET/POST /settings, API key CRUD, emergency close
 │   ├── bot_control.py         # Bot start/stop/status, mode switching
 │   ├── analytics.py           # GET /analytics (session/day/monthly breakdowns)
-│   ├── backtester.py          # GET /backtester, GET /api/backtest, /api/candles
+│   ├── backtester.py          # GET /backtester, /api/backtest (cached {stats,total}), /api/backtest/setups (paged), /api/backtest/combined, /api/candles
 │   ├── alerts.py              # GET /alerts (event log)
 │   ├── track_record.py        # GET /track-record (public, no auth)
 │   └── admin/
@@ -128,7 +128,7 @@ bot/
 │
 ├── alembic/
 │   ├── env.py                 # Migration environment config
-│   └── versions/              # 5 migrations (schema → paper trading → rejection)
+│   └── versions/              # 6 migrations (schema → paper trading → rejection → funding fee → backtest cache)
 │
 ├── docs/
 │   ├── architecture.md        # System design overview
@@ -197,7 +197,7 @@ bot/
 
 **Live vs Paper**: Scoped by `(user_id, is_paper)` throughout DB queries and bot workers. `exchange.py` for live, `paper_exchange.py` for paper.
 
-## Database Models (12 tables)
+## Database Models (14 tables)
 
 | Model | Table | Key fields |
 |-------|-------|------------|
@@ -212,6 +212,8 @@ bot/
 | `PaperAccount` | `paper_accounts` | user_id (unique FK), balance (default 10000) |
 | `PaperOrder` | `paper_orders` | user_id, trade_id (FK), symbol, side, order_type, stop_price, status |
 | `RejectionLog` | `rejection_log` | user_id, email, name, status (rejected/allowed) |
+| `BacktestRun` | `backtest_runs` | signature (unique), strategy, symbol, interval, params_hash, data fingerprint, total_setups, stats (JSON) — backtester result cache |
+| `BacktestSetup` | `backtest_setups` | run_id (FK, cascade), ordinal, entry_time, data (JSON setup); indexed (run_id,ordinal) + (run_id,entry_time) |
 
 ## SOP — Keeping Docs Updated
 

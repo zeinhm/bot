@@ -123,6 +123,15 @@ async def get_historical_candle_range(symbol: str, interval: str) -> tuple:
         return row[0], row[1]
 
 
+async def get_historical_candle_count(symbol: str, interval: str) -> int:
+    async with get_session() as session:
+        result = await session.execute(
+            select(func.count(HistoricalCandle.id))
+            .where(HistoricalCandle.symbol == symbol, HistoricalCandle.interval == interval)
+        )
+        return int(result.scalar() or 0)
+
+
 async def get_all_historical_candles(symbol: str, interval: str) -> list[dict]:
     async with get_session() as session:
         result = await session.execute(

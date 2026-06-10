@@ -183,7 +183,7 @@
         t.equity = Math.round(equity * 100) / 100;
     });
 
-    var PER_PAGE = 25;
+    var PER_PAGE = 10;
     var page = 0;
     var totalPages = Math.ceil(allRows.length / PER_PAGE);
 
@@ -264,8 +264,12 @@
     var chart, candleSeries, volSeries;
     var currentSymbol = 'BTCUSDT';
     var allData = [];
-    var setups = [];
-    var setupIdx = 0;
+    var setups = [];             // loaded setups (newest-first suffix), each with _ordinal
+    var setupIdx = 0;            // index into the loaded `setups`
+    var totalSetups = 0;         // total count from /api/backtest
+    var loadedSetupCount = 0;    // how many loaded from the newest end
+    var loadingSetups = false;
+    var SETUP_PAGE = 10;         // setups fetched per /api/backtest/setups call
     var boxEls = [];
     var loading = false;
     var hasMore = true;
@@ -380,6 +384,7 @@
             return { time: d.time, value: d.volume, color: d.close >= d.open ? 'rgba(0,200,150,.18)' : 'rgba(255,77,77,.18)' };
         }));
         renderSetups();
+        syncSetupsToCandles();   // lazy-load older setups to cover the loaded candle range
     }
 
     function renderSetups() {
@@ -509,38 +514,16 @@
         fetch('/api/backtest?' + params)
             .then(function(r) { return r.json(); })
             .then(function(res) {
-                setups = (res.setups || []).map(function(s) {
-                    if (s.entryTime) s.entryTime += tzOffsetSec;
-                    if (s.exitTime) s.exitTime += tzOffsetSec;
-                    if (s.accStartTime) s.accStartTime += tzOffsetSec;
-                    if (s.accEndTime) s.accEndTime += tzOffsetSec;
-                    if (s.manipTime) s.manipTime += tzOffsetSec;
-                    return s;
-                });
-                setupIdx = 0;
                 var st = res.stats || {};
-
                 if (!st.trades && st.trades !== 0) {
                     document.getElementById('st-trades').textContent = '—';
                     document.getElementById('st-wr').textContent = '—';
                     document.getElementById('st-r').textContent = '—';
                 } else {
-                    document.getElementById('st-trades').textContent = st.trades + ' (' + st.wins + 'W / ' + st.losses + 'L)';
-                    document.getElementById('st-wr').textContent = st.trades ? st.winRate + '%' : '—';
-                    var rEl = document.getElementById('st-r');
-                    rEl.textContent = (st.totalR >= 0 ? '+' : '') + st.totalR.toFixed(1) + 'R';
-                    rEl.className = 'val mono ' + (st.totalR >= 0 ? 'pos' : 'neg');
+                    applyBtStats(st);
                 }
-
-                renderSetups();
-
-                var nav = document.getElementById('setup-nav');
-                if (setups.length > 0) {
-                    nav.style.display = 'flex';
-                    goToSetup(setups.length - 1);
-                } else {
-                    nav.style.display = 'none';
-                }
+                totalSetups = res.total || 0;
+                loadInitialSetups();   // reloads the newest setup page + re-anchors the chart
 
                 btn.disabled = false;
                 btn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" stroke="none"><path d="M5 3l14 9-14 9z"/></svg> Run Backtest';
@@ -596,7 +579,8 @@
         if (!setups.length) return;
         setupIdx = Math.max(0, Math.min(idx, setups.length - 1));
         var s = setups[setupIdx];
-        document.getElementById('setup-counter').textContent = (setupIdx + 1) + ' / ' + setups.length;
+        var globalIdx = (s._ordinal != null ? s._ordinal : setupIdx);
+        document.getElementById('setup-counter').textContent = (globalIdx + 1) + ' / ' + (totalSetups || setups.length);
 
         var padSec = 20 * BAR_SEC;
         var fromTime = s.accStartTime - padSec;
@@ -623,8 +607,117 @@
         ensureLoaded();
     }
 
-    document.getElementById('prev-setup').addEventListener('click', function() { goToSetup(setupIdx - 1); });
-    document.getElementById('next-setup').addEventListener('click', function() { goToSetup(setupIdx + 1); });
+    document.getElementById('prev-setup').addEventListener('click', navPrev);
+    document.getElementById('next-setup').addEventListener('click', navNext);
+
+    function navNext() {
+        if (setupIdx < setups.length - 1) goToSetup(setupIdx + 1);
+    }
+    function navPrev() {
+        if (setupIdx > 0) { goToSetup(setupIdx - 1); return; }
+        // at the oldest loaded setup — pull the previous page, then step older
+        if (loadedSetupCount < totalSetups) {
+            loadOlderSetups().then(function() { goToSetup(setupIdx - 1); });
+        }
+    }
+
+    // ── Shared load helpers ──
+    function mapSetups(raw) {
+        return (raw || []).map(function(s) {
+            if (s.entryTime) s.entryTime += tzOffsetSec;
+            if (s.exitTime) s.exitTime += tzOffsetSec;
+            if (s.accStartTime) s.accStartTime += tzOffsetSec;
+            if (s.accEndTime) s.accEndTime += tzOffsetSec;
+            if (s.manipTime) s.manipTime += tzOffsetSec;
+            return s;
+        });
+    }
+
+    function applyBtStats(st) {
+        if (st.trades || st.trades === 0) {
+            document.getElementById('st-trades').textContent = st.trades + ' (' + st.wins + 'W / ' + st.losses + 'L)';
+            document.getElementById('st-wr').textContent = st.trades ? st.winRate + '%' : '—';
+            var rEl = document.getElementById('st-r');
+            rEl.textContent = (st.totalR >= 0 ? '+' : '') + st.totalR.toFixed(1) + 'R';
+            rEl.className = 'val mono ' + (st.totalR >= 0 ? 'pos' : 'neg');
+        }
+    }
+
+    // Single candle fetch anchored to the most recent setup (the chart auto-jumps
+    // there), instead of loading recent candles then back-filling older ones.
+    // goToSetup → ensureLoaded() stays as the safety net if the window is short.
+    function loadCandlesForSetups() {
+        var nav = document.getElementById('setup-nav');
+        function done(res) {
+            allData = res.candles || [];
+            hasMore = res.hasMore;
+            applyData();
+            if (setups.length > 0) {
+                nav.style.display = 'flex';
+                goToSetup(setups.length - 1);
+            } else {
+                nav.style.display = 'none';
+                chart.timeScale().fitContent();
+                chartEl.style.visibility = '';
+            }
+        }
+        if (setups.length > 0) {
+            var s = setups[setups.length - 1];
+            var endSec = (s.exitTime || s.entryTime) - tzOffsetSec + 30 * BAR_SEC;
+            fetchCandles(endSec, 2000).then(done);
+        } else {
+            fetchCandles(null, CHUNK).then(done);
+        }
+    }
+
+    // ── Lazy setup loading (paged from /api/backtest/setups) ──
+    function loadSetupPageRaw(offset, limit) {
+        return fetch('/api/backtest/setups?symbol=' + currentSymbol + '&interval=15m&offset=' + offset + '&limit=' + limit)
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                if (res.total != null) totalSetups = res.total;
+                return mapSetups(res.setups || []);  // ascending, each carries _ordinal
+            });
+    }
+
+    // Reset + load the newest page, then anchor candles to the last setup.
+    function loadInitialSetups() {
+        setups = []; setupIdx = 0; loadedSetupCount = 0;
+        if (totalSetups <= 0) { loadCandlesForSetups(); return; }
+        loadSetupPageRaw(0, SETUP_PAGE).then(function(page) {
+            setups = page;
+            loadedSetupCount = page.length;
+            loadCandlesForSetups();
+        });
+    }
+
+    // Prepend the next older page; keeps `setups` a contiguous newest-first suffix.
+    function loadOlderSetups() {
+        if (loadingSetups || loadedSetupCount >= totalSetups) return Promise.resolve(0);
+        loadingSetups = true;
+        return loadSetupPageRaw(loadedSetupCount, SETUP_PAGE).then(function(older) {
+            if (older.length) {
+                setups = older.concat(setups);
+                loadedSetupCount += older.length;
+                setupIdx += older.length;   // keep the current pointer stable
+            }
+            loadingSetups = false;
+            return older.length;
+        });
+    }
+
+    // Pull older pages until the loaded setups cover the oldest loaded candle,
+    // so boxes/markers appear as you scroll left. Bounded by total / SETUP_PAGE.
+    function syncSetupsToCandles() {
+        if (loadingSetups || totalSetups <= 0 || !allData.length) return;
+        if (loadedSetupCount >= totalSetups) return;
+        var oldestCandle = allData[0].time;  // chart-time
+        if (setups.length && setups[0].entryTime <= oldestCandle) return;  // already covered
+        loadOlderSetups().then(function(k) {
+            renderSetups();
+            if (k > 0) syncSetupsToCandles();  // keep going until covered / exhausted
+        });
+    }
 
     // ── Asset dropdown ──
     var assetTrigger = document.getElementById('asset-trigger');
@@ -647,50 +740,15 @@
         document.getElementById('chart-pair').textContent = currentSymbol;
         assetMenu.style.display = 'none';
 
-        var params = 'symbol=' + currentSymbol + '&interval=15m';
-        Promise.all([
-            fetchCandles(null, CHUNK),
-            fetch('/api/backtest?' + params).then(function(r) { return r.json(); })
-        ]).then(function(results) {
-            var candleRes = results[0];
-            var btRes = results[1];
-
-            allData = candleRes.candles;
-            hasMore = candleRes.hasMore;
-
-            setups = (btRes.setups || []).map(function(s) {
-                if (s.entryTime) s.entryTime += tzOffsetSec;
-                if (s.exitTime) s.exitTime += tzOffsetSec;
-                if (s.accStartTime) s.accStartTime += tzOffsetSec;
-                if (s.accEndTime) s.accEndTime += tzOffsetSec;
-                if (s.manipTime) s.manipTime += tzOffsetSec;
-                return s;
+        fetch('/api/backtest?symbol=' + currentSymbol + '&interval=15m')
+            .then(function(r) { return r.json(); })
+            .then(function(btRes) {
+                applyBtStats(btRes.stats || {});
+                totalSetups = btRes.total || 0;
+                initChart();
+                chartEl.style.visibility = 'hidden';
+                loadInitialSetups();
             });
-            setupIdx = 0;
-
-            var st = btRes.stats || {};
-            if (st.trades || st.trades === 0) {
-                document.getElementById('st-trades').textContent = st.trades + ' (' + st.wins + 'W / ' + st.losses + 'L)';
-                document.getElementById('st-wr').textContent = st.trades ? st.winRate + '%' : '—';
-                var rEl = document.getElementById('st-r');
-                rEl.textContent = (st.totalR >= 0 ? '+' : '') + st.totalR.toFixed(1) + 'R';
-                rEl.className = 'val mono ' + (st.totalR >= 0 ? 'pos' : 'neg');
-            }
-
-            initChart();
-            chartEl.style.visibility = 'hidden';
-            applyData();
-
-            var nav = document.getElementById('setup-nav');
-            if (setups.length > 0) {
-                nav.style.display = 'flex';
-                goToSetup(setups.length - 1);
-            } else {
-                nav.style.display = 'none';
-                chart.timeScale().fitContent();
-                chartEl.style.visibility = '';
-            }
-        });
     });
 
     // ── Run button ──
@@ -700,43 +758,13 @@
     initChart();
     chartEl.style.visibility = 'hidden';
     loadCombined();
-    var params = 'symbol=' + currentSymbol + '&interval=15m';
-    Promise.all([
-        fetchCandles(null, CHUNK),
-        fetch('/api/backtest?' + params).then(function(r) { return r.json(); })
-    ]).then(function(results) {
-        allData = results[0].candles;
-        hasMore = results[0].hasMore;
-
-        setups = (results[1].setups || []).map(function(s) {
-            if (s.entryTime) s.entryTime += tzOffsetSec;
-            if (s.exitTime) s.exitTime += tzOffsetSec;
-            if (s.accStartTime) s.accStartTime += tzOffsetSec;
-            if (s.accEndTime) s.accEndTime += tzOffsetSec;
-            if (s.manipTime) s.manipTime += tzOffsetSec;
-            return s;
+    fetch('/api/backtest?symbol=' + currentSymbol + '&interval=15m')
+        .then(function(r) { return r.json(); })
+        .then(function(btRes) {
+            applyBtStats(btRes.stats || {});
+            totalSetups = btRes.total || 0;
+            loadInitialSetups();
         });
-
-        var st = results[1].stats || {};
-        if (st.trades || st.trades === 0) {
-            document.getElementById('st-trades').textContent = st.trades + ' (' + st.wins + 'W / ' + st.losses + 'L)';
-            document.getElementById('st-wr').textContent = st.trades ? st.winRate + '%' : '—';
-            var rEl = document.getElementById('st-r');
-            rEl.textContent = (st.totalR >= 0 ? '+' : '') + st.totalR.toFixed(1) + 'R';
-            rEl.className = 'val mono ' + (st.totalR >= 0 ? 'pos' : 'neg');
-        }
-
-        applyData();
-        var nav = document.getElementById('setup-nav');
-        if (setups.length > 0) {
-            nav.style.display = 'flex';
-            goToSetup(setups.length - 1);
-        } else {
-            nav.style.display = 'none';
-            chart.timeScale().fitContent();
-            chartEl.style.visibility = '';
-        }
-    });
 })();
 </script>
 {% endblock %}

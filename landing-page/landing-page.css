@@ -238,6 +238,32 @@ h1.hero-title .accent { color: var(--green); }
 .year-fill { height: 100%; background: linear-gradient(90deg, rgba(0,200,150,.5), var(--green)); border-radius: 4px; }
 .year-row .yv { font-family: var(--mono); font-size: 12.5px; text-align: right; color: var(--green); }
 
+/* ============================================================ FAQ */
+.faq { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.faq-item {
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  overflow: hidden; transition: border-color .2s;
+}
+.faq-item[open] { border-color: var(--border-2); }
+.faq-item:hover { border-color: var(--border-2); }
+.faq-q {
+  list-style: none; cursor: pointer; user-select: none;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 20px 22px; font-size: 16.5px; font-weight: 600; color: var(--text);
+}
+.faq-q::-webkit-details-marker { display: none; }
+.faq-ic { width: 20px; height: 20px; color: var(--muted); flex: none; transition: transform .25s ease, color .2s; }
+.faq-item[open] .faq-ic { transform: rotate(180deg); color: var(--green); }
+.faq-a { padding: 0 22px 20px; }
+.faq-a p { margin: 0 0 12px; font-size: 14.5px; color: var(--text-2); line-height: 1.65; }
+.faq-a p:last-child { margin-bottom: 0; }
+.faq-a b { color: var(--text); font-weight: 600; }
+/* gentle open animation (collapsed by default in JS-enabled browsers) */
+.js .faq-item:not([open]) .faq-a { display: none; }
+.faq-item[open] .faq-a { animation: faqIn .25s ease; }
+@keyframes faqIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .faq-item[open] .faq-a { animation: none; } .faq-ic { transition: none; } }
+
 /* ============================================================ RISK */
 .risk { background: var(--bg-2); border-block: 1px solid var(--border); }
 .risk .wrap { padding-block: 26px; display: flex; gap: 14px; align-items: flex-start; }

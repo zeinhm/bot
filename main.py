@@ -172,6 +172,18 @@ async def landing_page():
         return HTMLResponse(f.read())
 
 
+@app.get("/sw.js")
+async def service_worker():
+    # Served from root so the service worker can control the whole-site scope
+    # (a /static/ URL would scope it to /static/). Header allows the broad scope.
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        "static/sw.js",
+        media_type="application/javascript",
+        headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"},
+    )
+
+
 app.include_router(auth_router)
 app.include_router(dashboard_router)
 app.include_router(trades_router)

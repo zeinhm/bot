@@ -292,6 +292,12 @@
       e.preventDefault();
       b.textContent = b.dataset.done || 'On the list ✓';
     }));
+
+    // FAQ: single-open accordion (close siblings when one opens)
+    const faqItems = [...document.querySelectorAll('.faq-item')];
+    faqItems.forEach(item => item.addEventListener('toggle', () => {
+      if (item.open) faqItems.forEach(o => { if (o !== item) o.open = false; });
+    }));
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

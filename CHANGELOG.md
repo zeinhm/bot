@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 
 ---
 
+## [2026-06-12]
+
+### Added
+- **PWA (installable + offline shell)**: ZENITH is now an installable Progressive Web App. New `static/manifest.webmanifest` (standalone display, `start_url=/dashboard`, theme `#0F1117`, brand-green "Z" icons at 192/512 + maskable in `static/icons/`) and a `static/sw.js` service worker registered from `base.html`. The SW is **network-first for page navigations** (live trade data never goes stale) and **cache-first for `/static` + `/landing` assets**, and explicitly never intercepts `/api/*`, `/ws*`, `/auth/*`, `/bot/*`, or `/push/*`; offline navigations fall back to the cached page (or `/dashboard`). Served via a new root-scoped `GET /sw.js` route (`Service-Worker-Allowed: /`) so it can control the whole site. The SW also ships ready-to-use `push`/`notificationclick` handlers for the upcoming Web Push feature. Second entry in the missing-features build plan
+- **Landing page FAQ**: New expandable FAQ section on the marketing page (`#faq`, between Performance and Risk) with five edge-safe entries — *What is ZENITH Bot? · How does the strategy work? · Why Binance Futures? · Is it secure? · Who is this for?*. Built on native `<details>` (works with no JS) and progressively enhanced to a single-open accordion (opening one closes the others) with a rotating chevron + slide-in animation; ties into the existing scroll-reveal. Added `FAQ` links to the nav and the footer Product column. New `.faq`/`.faq-item`/`.faq-q`/`.faq-a` styles in `landing-page.css` reuse the existing token set. Copy is drawn from the public strategy summary and the security posture (encrypted keys, Futures-only/withdrawals-off, IP whitelist) — no detection parameters exposed. First entry in the **missing-features build plan** (`~/.claude/plans/expressive-sauteeing-whisper.md`)
+
 ## [2026-06-11]
 
 ### Fixed

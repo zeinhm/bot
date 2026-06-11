@@ -35,6 +35,7 @@
       <a href="#dashboard">Dashboard</a>
       <a href="#features">Features</a>
       <a href="#performance">Performance</a>
+      <a href="#faq">FAQ</a>
     </div>
     <div class="nav-cta">
       <a class="btn btn-primary" href="/login">Start Trading</a>
@@ -276,6 +277,70 @@
   </div>
 </section>
 
+<!-- ============================== FAQ ============================== -->
+<section class="sec" id="faq">
+  <div class="wrap">
+    <div class="sec-head center reveal">
+      <div class="eyebrow">FAQ</div>
+      <h2>Questions, answered.</h2>
+      <p>The essentials before you connect an account. Still curious? Spin up a paper account — it costs nothing.</p>
+    </div>
+
+    <div class="faq reveal">
+      <details class="faq-item" open>
+        <summary class="faq-q">
+          <span>What is ZENITH Bot?</span>
+          <svg class="faq-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="faq-a">
+          <p>ZENITH is an automated trading bot that executes a single, backtested strategy — Accumulation–Manipulation–Distribution with Fair Value Gap confirmation — on Binance Futures. It watches BTC, ETH and SOL on the 15-minute timeframe and places trades only when the structure confirms, with the stop loss and take profit set on the exchange the moment it enters. You connect your own account; the bot handles the discipline so there's no second-guessing, no revenge trading, and no skipped setups.</p>
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q">
+          <span>How does the strategy work?</span>
+          <svg class="faq-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="faq-a">
+          <p>The bot scans for periods where price coils into a tight range relative to recent volatility — <b>accumulation</b>. It then watches for a sharp wick that sweeps beyond the range, trapping breakout traders and hunting stops — <b>manipulation</b>. Once the trap is set, it waits for a Fair Value Gap to form in the opposite direction, confirming the real move, and enters at the FVG candle close.</p>
+          <p>Every trade targets a <b>2:1 reward-to-risk</b> ratio: the stop sits beyond the manipulation extreme, and take profit is twice that distance. The win rate is intentionally below 50% — the edge comes from the payoff, not from being right most of the time. Liquidity-sweep, trend and seasonal filters sit out the weakest conditions, and position size scales down automatically during losing streaks.</p>
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q">
+          <span>Why Binance Futures?</span>
+          <svg class="faq-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="faq-a">
+          <p>Binance USDT-M perpetuals give the deepest liquidity and tightest spreads on BTC, ETH and SOL, which matters for a strategy that enters and exits with market orders. Server-side stop-loss and take-profit orders execute even if the bot or your connection drops, and the API exposes the real fill and funding data the dashboard reconciles against — so every number you see is pulled from the exchange, not self-reported.</p>
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q">
+          <span>Is it secure?</span>
+          <svg class="faq-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="faq-a">
+          <p>Your funds never leave your Binance account — ZENITH only places trades. API keys are encrypted at rest, and you create them with <b>Futures trading enabled and withdrawals disabled</b>, locked to our server IPs. You sign in with Google, and optional two-factor authentication gates sensitive actions like changing keys or bot settings. We can't move your money, and you can revoke access from Binance at any time.</p>
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q">
+          <span>Who is this for?</span>
+          <svg class="faq-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="faq-a">
+          <p>Traders who believe in a rules-based edge but struggle to execute it without emotion. If you want a transparent, backtested system that runs the same way every time — and you'd rather watch the logic than babysit a chart — ZENITH is built for you. Start on paper with $10k in virtual funds, watch it trade against live prices, and go live only when you're convinced. Crypto futures carry real risk; trade only what you can afford to lose.</p>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
 <!-- ============================== RISK ============================== -->
 <section class="risk">
   <div class="wrap">
@@ -313,6 +378,7 @@
         <a href="#dashboard">Dashboard</a>
         <a href="#features">Features</a>
         <a href="#performance">Performance</a>
+        <a href="#faq">FAQ</a>
       </div>
       <div class="foot-col">
         <h4>Company</h4>

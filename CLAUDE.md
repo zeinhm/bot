@@ -118,7 +118,10 @@ bot/
 │
 ├── static/
 │   ├── css/app.css            # Full design system (dark theme, components, responsive)
-│   └── js/websocket.js        # BotWebSocket class with auto-reconnect
+│   ├── js/websocket.js        # BotWebSocket class with auto-reconnect
+│   ├── manifest.webmanifest   # PWA manifest (installable app, icons, theme)
+│   ├── sw.js                  # Service worker (network-first pages, cache-first static, web-push handlers)
+│   └── icons/                 # PWA app icons (192/512/maskable/apple-touch)
 │
 ├── landing-page/
 │   ├── landing-page.html      # Marketing page (standalone HTML, no Jinja)
@@ -172,6 +175,7 @@ bot/
 | **User approval flow**              | `routes/admin/users.py`, `templates/admin_users.html`        |
 | **Bot start/stop lifecycle**        | `app/bot/manager.py`, `routes/bot_control.py`                |
 | **Landing page**                    | `landing-page/` (all 3 files, no Jinja)                      |
+| **PWA (install/offline/icons)**     | `static/manifest.webmanifest`, `static/sw.js`, `static/icons/`, `main.py` (`/sw.js` route), `templates/base.html` (head links + SW registration) |
 | **Design tokens / colors**          | `static/css/app.css` → CSS custom properties at top           |
 | **Historical data import**          | `import_candles.py` (CLI tool, raw psycopg2)                 |
 | **Seed backtest results**           | `seed_trades.py` (CLI tool)                                  |

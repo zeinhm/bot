@@ -8,6 +8,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 
 ## [2026-06-12]
 
+### Changed
+- **Settings page tabbed**: Bot Control and Exchange are now two tabs (the active one persists via `localStorage`), while the **Install App** card and **Danger Zone** sit below, outside the tabs (always visible). New `.settings-tabs`/`.settings-tab` component; `app.css` bumped to `?v=14`.
+
 ### Added
 - **PWA install prompts**: A dedicated **Install** section on the landing page (`#install`, with nav + footer links) and an **Install App** card in Settings. Both capture the browser's `beforeinstallprompt` (Chrome/Edge/Android) and offer one-click native install. The landing section uses a **device-aware tabbed layout** — Android / iOS / Desktop — that **auto-selects the tab from the visitor's device** (UA + iPadOS touch detection) and shows the matching step-by-step instructions, mirroring a clean install-UX pattern in the ZENITH green theme. The Settings card handles iOS "Add to Home Screen" steps and an unsupported-browser fallback. Both **hide entirely when the app is already installed** (running in `display-mode: standalone`) — the landing also hides its nav/footer Install links. The landing page links the manifest + registers the service worker so it's installable directly from `/`.
 - **Bot Control (per-user risk settings UI)**: Re-introduced user-facing bot controls (the settings form + backtester sliders that were locked away on 2026-06-03), but scoped strictly to the **risk/personal knobs** — the strategy's detection logic stays fixed and hidden to protect the edge.

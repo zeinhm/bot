@@ -347,6 +347,18 @@ input[type=range]::-moz-range-thumb { width: 15px; height: 15px; border: none; b
 .tf-tabs button:hover { color: var(--text-2); }
 .tf-tabs button.active { color: var(--green); border-bottom-color: var(--green); }
 
+/* settings tab bar */
+.settings-tabs { display: flex; background: var(--card-3); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px; gap: 4px; }
+.settings-tab {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 9px 12px; border-radius: var(--radius-sm); border: 1px solid transparent; cursor: pointer;
+  background: transparent; color: var(--muted); font-family: var(--sans); font-size: 13px; font-weight: 600;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.settings-tab svg { width: 15px; height: 15px; }
+.settings-tab:hover { color: var(--text-2); }
+.settings-tab.active { background: var(--card-2); color: var(--text); border-color: var(--border-bri); }
+
 /* toggle chips (sessions / symbols) */
 .chip-toggle {
   background: var(--card-3); border: 1px solid var(--border); color: var(--muted);

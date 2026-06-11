@@ -23,6 +23,19 @@
 {% endif %}
 
 <div style="max-width:600px;margin:0 auto;display:flex;flex-direction:column;gap:12px">
+    <!-- Tabs -->
+    <div class="settings-tabs" role="tablist">
+        <button type="button" class="settings-tab active" data-tab="bot" role="tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+            Bot Control
+        </button>
+        <button type="button" class="settings-tab" data-tab="exchange" role="tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.6 7.6a5 5 0 1 1-7.1 7.1 5 5 0 0 1 7.1-7.1zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3"/></svg>
+            Exchange
+        </button>
+    </div>
+
+    <div class="settings-panel" data-panel="bot">
     <!-- Bot Control -->
     <div class="card">
         <div class="card-title row">
@@ -121,7 +134,9 @@
             </div>
         </form>
     </div>
+    </div><!-- /panel:bot -->
 
+    <div class="settings-panel" data-panel="exchange" style="display:none">
     <!-- Exchange -->
     <div class="card">
         <div class="card-title">Exchange</div>
@@ -185,6 +200,8 @@
             </div>
         </div>
     </div>
+
+    </div><!-- /panel:exchange -->
 
     <!-- Install App -->
     <div class="card" id="install-card">
@@ -271,6 +288,21 @@ function deleteApiKeys() {
             btn.textContent = 'Delete';
         });
 }
+// ---- Settings tabs (Bot Control / Exchange) ----
+(function() {
+    var tabs = [].slice.call(document.querySelectorAll('.settings-tab'));
+    var panels = [].slice.call(document.querySelectorAll('.settings-panel'));
+    if (!tabs.length) return;
+    function select(name) {
+        tabs.forEach(function(t) { t.classList.toggle('active', t.dataset.tab === name); });
+        panels.forEach(function(p) { p.style.display = p.dataset.panel === name ? '' : 'none'; });
+        try { localStorage.setItem('zenith_settings_tab', name); } catch (e) {}
+    }
+    tabs.forEach(function(t) { t.addEventListener('click', function() { select(t.dataset.tab); }); });
+    var saved = null;
+    try { saved = localStorage.getItem('zenith_settings_tab'); } catch (e) {}
+    select(saved === 'exchange' ? 'exchange' : 'bot');
+})();
 // ---- Bot Control form ----
 (function() {
     var form = document.getElementById('bot-control-form');

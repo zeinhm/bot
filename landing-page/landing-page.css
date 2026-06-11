@@ -286,6 +286,7 @@ h1.hero-title .accent { color: var(--green); }
 .cta-note { margin-top: 18px; font-size: 13px; color: var(--muted); position: relative; }
 
 /* ============================================================ INSTALL */
+.install-sub-text { font-size: 14px !important; }
 .install-block { max-width: 640px; margin: 0 auto; }
 .install-hint-line { text-align: center; font-size: 13px; color: var(--muted); margin: 20px 0 14px; }
 .install-tabs { display: flex; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 4px; gap: 4px; margin-bottom: 22px; }

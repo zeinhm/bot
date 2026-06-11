@@ -9,7 +9,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 ## [2026-06-11]
 
 ### Fixed
-- **Railway build failure (not a code issue)**: Railway's railpack builder began defaulting to Python `3.13.14`, which has no precompiled mise binary (`no precompiled python found for core:python@3.13.14`), so the build died before `pip install`/migrations ever ran. Pinned `.python-version` to `3.12.7` (stable, has a binary, deps + app code all compatible)
+- **Railway deploy failure (not a code issue)**: a railpack builder upgrade broke deploys two ways. (1) It defaulted to Python `3.13.14`, which has no precompiled mise binary, failing the build — pinned `.python-version` to `3.13.13` (the exact version the last working deploy used; only `.14` lacks a binary). (2) It began actually running the Procfile's `alembic upgrade head &&` prefix, which fails on prod: prod has **never** had an `alembic_version` table (the schema is built by `create_all` + `_ensure_schema`, not alembic), so `alembic upgrade head` tries to create the base schema over existing tables and errors out before `uvicorn` starts. Dropped the alembic prefix from the start command (Procfile + nixpacks) — `create_all` creates the two new `backtest_*` tables on boot, matching how prod has always been managed
 
 ### Added
 - **Backtester result cache + lazy setup pagination** (`docs/backtest-cache-plan.md`):

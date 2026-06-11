@@ -299,24 +299,44 @@
       if (item.open) faqItems.forEach(o => { if (o !== item) o.open = false; });
     }));
 
-    // PWA install section: native one-click button when the browser offers a
-    // prompt (Android/desktop Chromium); platform step-by-step always shown.
-    const installNowWrap = document.getElementById('install-now-wrap');
-    const installNow = document.getElementById('install-now');
-    const installDoneWrap = document.getElementById('install-done-wrap');
-    if (installNow) {
+    // PWA install section: device-aware tabs + native one-click button.
+    const installBlock = document.querySelector('.install-block');
+    if (installBlock) {
       const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-      const sync = () => {
-        if (standalone) { if (installDoneWrap) installDoneWrap.style.display = ''; if (installNowWrap) installNowWrap.style.display = 'none'; return; }
-        if (window._pwaPrompt && installNowWrap) installNowWrap.style.display = '';
-      };
-      document.addEventListener('pwa-installable', sync);
-      sync();
-      installNow.addEventListener('click', () => {
-        if (!window._pwaPrompt) return;
-        window._pwaPrompt.prompt();
-        window._pwaPrompt.userChoice.finally(() => { window._pwaPrompt = null; if (installNowWrap) installNowWrap.style.display = 'none'; });
-      });
+
+      if (standalone) {
+        // Already installed — no reason to advertise installing. Hide the whole
+        // section and its nav/footer links.
+        const section = document.getElementById('install');
+        if (section) section.style.display = 'none';
+        document.querySelectorAll('a[href="#install"]').forEach((a) => { a.style.display = 'none'; });
+      } else {
+        const tabs = [...installBlock.querySelectorAll('.install-tab')];
+        const panels = [...installBlock.querySelectorAll('.install-steps')];
+        const ua = navigator.userAgent || '';
+        const isIOS = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const isAndroid = /android/i.test(ua);
+        const detected = isIOS ? 'ios' : (isAndroid ? 'android' : 'desktop');
+
+        const selectTab = (name) => {
+          tabs.forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
+          panels.forEach((p) => { p.style.display = p.dataset.panel === name ? '' : 'none'; });
+        };
+        tabs.forEach((t) => t.addEventListener('click', () => selectTab(t.dataset.tab)));
+        selectTab(detected);
+
+        // Native install button (Android / desktop Chromium).
+        const cta = document.getElementById('install-cta');
+        const installNow = document.getElementById('install-now');
+        const sync = () => { if (window._pwaPrompt && cta) cta.style.display = ''; };
+        document.addEventListener('pwa-installable', sync);
+        sync();
+        if (installNow) installNow.addEventListener('click', () => {
+          if (!window._pwaPrompt) return;
+          window._pwaPrompt.prompt();
+          window._pwaPrompt.userChoice.finally(() => { window._pwaPrompt = null; if (cta) cta.style.display = 'none'; });
+        });
+      }
     }
   }
 

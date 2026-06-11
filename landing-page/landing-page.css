@@ -154,6 +154,7 @@ h1.hero-title .accent { color: var(--green); }
 .sec-head { max-width: 640px; margin-bottom: 56px; }
 .sec-head.center { margin-inline: auto; text-align: center; }
 .sec-head h2 { font-size: 40px; font-weight: 700; letter-spacing: -1px; margin: 14px 0 16px; line-height: 1.1; text-wrap: balance; }
+.sec-head h2 .accent { color: var(--green); }
 .sec-head p { font-size: 17px; color: var(--text-2); margin: 0; line-height: 1.6; }
 
 /* ============================================================ HOW IT WORKS */
@@ -285,21 +286,26 @@ h1.hero-title .accent { color: var(--green); }
 .cta-note { margin-top: 18px; font-size: 13px; color: var(--muted); position: relative; }
 
 /* ============================================================ INSTALL */
-.install-hint { margin-top: 12px; font-size: 13px; color: var(--muted); }
-.install-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-.install-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px 22px; transition: border-color .2s, transform .2s; }
-.install-card:hover { border-color: var(--green-line); transform: translateY(-3px); }
-.install-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-.install-ic { width: 42px; height: 42px; border-radius: 10px; background: var(--green-dim); color: var(--green); display: grid; place-items: center; flex: none; }
-.install-ic svg { width: 22px; height: 22px; }
-.install-plat { font-size: 15.5px; font-weight: 600; }
-.install-sub { font-size: 12px; color: var(--muted); }
-.install-steps { list-style: none; counter-reset: step; margin: 0; padding: 0; }
-.install-steps li { counter-increment: step; position: relative; padding: 8px 0 8px 34px; font-size: 13.5px; color: var(--text-2); line-height: 1.5; border-top: 1px solid var(--border); }
-.install-steps li:first-child { border-top: none; }
-.install-steps li::before { content: counter(step); position: absolute; left: 0; top: 8px; width: 22px; height: 22px; border-radius: 50%; background: var(--green-dim); color: var(--green); font-family: var(--mono); font-size: 11px; font-weight: 700; display: grid; place-items: center; }
+.install-block { max-width: 640px; margin: 0 auto; }
+.install-hint-line { text-align: center; font-size: 13px; color: var(--muted); margin: 20px 0 14px; }
+.install-tabs { display: flex; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 4px; gap: 4px; margin-bottom: 22px; }
+.install-tab {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 11px 12px; border-radius: 7px; border: 1px solid transparent; cursor: pointer;
+  background: transparent; color: var(--muted); font-family: var(--sans); font-size: 14px; font-weight: 600;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.install-tab svg { width: 16px; height: 16px; }
+.install-tab:hover { color: var(--text-2); }
+.install-tab.active { background: var(--card-2); color: var(--text); border-color: var(--border-2); }
+.install-steps { list-style: none; counter-reset: step; margin: 0; padding: 0 4px; }
+.install-steps li { counter-increment: step; position: relative; padding: 11px 0 11px 40px; font-size: 14.5px; color: var(--text-2); line-height: 1.55; }
+.install-steps li::before {
+  content: counter(step); position: absolute; left: 0; top: 9px;
+  width: 24px; height: 24px; border-radius: 50%; background: var(--green-dim); color: var(--green);
+  font-family: var(--mono); font-size: 12px; font-weight: 700; display: grid; place-items: center;
+}
 .install-steps b { color: var(--text); font-weight: 600; }
-.install-steps .inl { width: 14px; height: 14px; vertical-align: -2px; color: var(--muted); }
 
 /* ============================================================ FOOTER */
 footer { border-top: 1px solid var(--border); padding: 56px 0 36px; background: var(--bg-2); }
@@ -336,7 +342,8 @@ footer { border-top: 1px solid var(--border); padding: 56px 0 36px; background: 
   .stat-cell .num { font-size: 30px; }
   .sec { padding: 72px 0; }
   .sec-head h2, .cta h2 { font-size: 30px; }
-  .steps, .feat-grid, .install-grid { grid-template-columns: 1fr; }
+  .steps, .feat-grid { grid-template-columns: 1fr; }
+  .install-tab { font-size: 13px; padding: 10px 8px; gap: 6px; }
   .cta-form { flex-direction: column; width: 100%; }
   .cta-form input { width: 100%; }
   .foot-grid { grid-template-columns: 1fr 1fr; }

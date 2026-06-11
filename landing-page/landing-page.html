@@ -362,61 +362,50 @@ window.addEventListener('beforeinstallprompt', function (e) {
   <div class="wrap">
     <div class="sec-head center reveal">
       <div class="eyebrow">Install</div>
-      <h2>Trade from your home screen.</h2>
-      <p>ZENITH installs as an app — full-screen, offline-ready, one tap from your home screen or desktop. No app store required.</p>
+      <h2>Trade anywhere. <span class="accent">Install in seconds.</span></h2>
+      <p>Add ZENITH directly to your home screen — full-screen, offline-ready, no app store.</p>
     </div>
 
-    <div id="install-now-wrap" class="reveal" style="text-align:center;margin-bottom:34px;display:none">
-      <button class="btn btn-primary btn-lg" id="install-now">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-        Install ZENITH
-      </button>
-      <div class="install-hint">Your browser supports one-click install.</div>
-    </div>
-
-    <div id="install-done-wrap" class="reveal" style="text-align:center;margin-bottom:8px;display:none">
-      <span class="hero-badge"><span class="led"></span> <b>Installed</b>&nbsp;· you're running the app</span>
-    </div>
-
-    <div class="install-grid reveal">
-      <!-- iOS -->
-      <div class="install-card">
-        <div class="install-head">
-          <span class="install-ic"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 12.04c-.03-2.6 2.13-3.85 2.22-3.91-1.21-1.77-3.09-2.01-3.76-2.04-1.6-.16-3.12.94-3.93.94-.81 0-2.06-.92-3.39-.89-1.74.03-3.35 1.01-4.25 2.57-1.81 3.15-.46 7.81 1.3 10.37.86 1.25 1.88 2.66 3.22 2.61 1.29-.05 1.78-.84 3.34-.84 1.56 0 2 .84 3.36.81 1.39-.02 2.27-1.28 3.12-2.54.98-1.46 1.39-2.87 1.41-2.94-.03-.01-2.71-1.04-2.74-4.13M14.6 4.94c.71-.86 1.19-2.06 1.06-3.25-1.02.04-2.26.68-2.99 1.54-.66.76-1.23 1.98-1.08 3.15 1.14.09 2.3-.58 3.01-1.44"/></svg></span>
-          <div><div class="install-plat">iPhone &amp; iPad</div><div class="install-sub">Safari</div></div>
-        </div>
-        <ol class="install-steps">
-          <li>Tap the <b>Share</b> button <svg class="inl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg></li>
-          <li>Choose <b>Add to Home Screen</b></li>
-          <li>Tap <b>Add</b>, then open ZENITH</li>
-        </ol>
+    <div class="install-block reveal">
+      <div id="install-cta" style="text-align:center;margin-bottom:8px;display:none">
+        <button class="btn btn-primary btn-lg" id="install-now">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Install App
+        </button>
       </div>
 
-      <!-- Android -->
-      <div class="install-card">
-        <div class="install-head">
-          <span class="install-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg></span>
-          <div><div class="install-plat">Android</div><div class="install-sub">Chrome</div></div>
-        </div>
-        <ol class="install-steps">
-          <li>Tap <b>Install</b> above, or the <b>⋮</b> menu</li>
-          <li>Choose <b>Install app</b> / <b>Add to Home screen</b></li>
-          <li>Confirm, then open ZENITH</li>
-        </ol>
+      <div class="install-hint-line">Not seeing the button? Follow the steps for your device:</div>
+
+      <div class="install-tabs" role="tablist">
+        <button class="install-tab" data-tab="android" role="tab">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg>
+          Android
+        </button>
+        <button class="install-tab" data-tab="ios" role="tab">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></svg>
+          iOS
+        </button>
+        <button class="install-tab" data-tab="desktop" role="tab">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+          Desktop
+        </button>
       </div>
 
-      <!-- Desktop -->
-      <div class="install-card">
-        <div class="install-head">
-          <span class="install-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>
-          <div><div class="install-plat">Desktop</div><div class="install-sub">Chrome &amp; Edge</div></div>
-        </div>
-        <ol class="install-steps">
-          <li>Tap <b>Install</b> above, or the install icon <svg class="inl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> in the address bar</li>
-          <li>Click <b>Install</b> in the dialog</li>
-          <li>ZENITH opens in its own window</li>
-        </ol>
-      </div>
+      <ol class="install-steps" data-panel="android">
+        <li>Open this page in <b>Chrome</b> on your Android device.</li>
+        <li>Tap the <b>⋮</b> menu, then <b>Install app</b> / <b>Add to Home screen</b>.</li>
+        <li>Confirm — ZENITH lands on your home screen.</li>
+      </ol>
+      <ol class="install-steps" data-panel="ios" style="display:none">
+        <li>Open this page in <b>Safari</b> on your iPhone or iPad.</li>
+        <li>Tap the <b>Share</b> button at the bottom of the screen.</li>
+        <li>Choose <b>Add to Home Screen</b>, then tap <b>Add</b>.</li>
+      </ol>
+      <ol class="install-steps" data-panel="desktop" style="display:none">
+        <li>Open this page in <b>Chrome</b> or <b>Edge</b> on your computer.</li>
+        <li>Click the <b>install icon</b> in the address bar on the right side.</li>
+        <li>Click <b>Install</b> in the prompt to add it to your desktop.</li>
+      </ol>
     </div>
   </div>
 </section>

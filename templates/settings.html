@@ -199,12 +199,6 @@
             </div>
         </div>
 
-        <!-- Installed state -->
-        <div id="install-done" class="callout green" style="display:none">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg>
-            <span>Installed — you're running the app.</span>
-        </div>
-
         <!-- Install button (Chrome/Edge/Android) -->
         <button type="button" class="btn btn-primary btn-block" id="install-btn" style="display:none">Install ZENITH</button>
 
@@ -349,20 +343,19 @@ function deleteApiKeys() {
 })();
 // ---- Install App card ----
 (function() {
+    var card = document.getElementById('install-card');
     var btn = document.getElementById('install-btn');
-    if (!btn) return;
-    var done = document.getElementById('install-done');
+    if (!card || !btn) return;
     var ios = document.getElementById('install-ios');
     var na = document.getElementById('install-na');
-
-    function hideAll() { [btn, done, ios, na].forEach(function(el) { if (el) el.style.display = 'none'; }); }
 
     var isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
     var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
 
     function render() {
-        hideAll();
-        if (isStandalone) { done.style.display = 'flex'; return; }
+        // Already installed → hide the whole card; nothing to offer.
+        if (isStandalone) { card.style.display = 'none'; return; }
+        [btn, ios, na].forEach(function(el) { if (el) el.style.display = 'none'; });
         if (window._pwaPrompt) { btn.style.display = ''; return; }
         if (isIOS) { ios.style.display = 'flex'; return; }
         na.style.display = 'block';

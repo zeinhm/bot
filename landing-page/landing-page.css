@@ -282,8 +282,24 @@ h1.hero-title .accent { color: var(--green); }
   padding: 14px 16px; color: var(--text); font-size: 15px; font-family: var(--sans); outline: none;
 }
 .cta-form input:focus { border-color: var(--green-line); }
-.cta-actions { display: inline-flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap; }
 .cta-note { margin-top: 18px; font-size: 13px; color: var(--muted); position: relative; }
+
+/* ============================================================ INSTALL */
+.install-hint { margin-top: 12px; font-size: 13px; color: var(--muted); }
+.install-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.install-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px 22px; transition: border-color .2s, transform .2s; }
+.install-card:hover { border-color: var(--green-line); transform: translateY(-3px); }
+.install-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.install-ic { width: 42px; height: 42px; border-radius: 10px; background: var(--green-dim); color: var(--green); display: grid; place-items: center; flex: none; }
+.install-ic svg { width: 22px; height: 22px; }
+.install-plat { font-size: 15.5px; font-weight: 600; }
+.install-sub { font-size: 12px; color: var(--muted); }
+.install-steps { list-style: none; counter-reset: step; margin: 0; padding: 0; }
+.install-steps li { counter-increment: step; position: relative; padding: 8px 0 8px 34px; font-size: 13.5px; color: var(--text-2); line-height: 1.5; border-top: 1px solid var(--border); }
+.install-steps li:first-child { border-top: none; }
+.install-steps li::before { content: counter(step); position: absolute; left: 0; top: 8px; width: 22px; height: 22px; border-radius: 50%; background: var(--green-dim); color: var(--green); font-family: var(--mono); font-size: 11px; font-weight: 700; display: grid; place-items: center; }
+.install-steps b { color: var(--text); font-weight: 600; }
+.install-steps .inl { width: 14px; height: 14px; vertical-align: -2px; color: var(--muted); }
 
 /* ============================================================ FOOTER */
 footer { border-top: 1px solid var(--border); padding: 56px 0 36px; background: var(--bg-2); }
@@ -320,7 +336,7 @@ footer { border-top: 1px solid var(--border); padding: 56px 0 36px; background: 
   .stat-cell .num { font-size: 30px; }
   .sec { padding: 72px 0; }
   .sec-head h2, .cta h2 { font-size: 30px; }
-  .steps, .feat-grid { grid-template-columns: 1fr; }
+  .steps, .feat-grid, .install-grid { grid-template-columns: 1fr; }
   .cta-form { flex-direction: column; width: 100%; }
   .cta-form input { width: 100%; }
   .foot-grid { grid-template-columns: 1fr 1fr; }

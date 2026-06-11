@@ -50,6 +50,7 @@ window.addEventListener('beforeinstallprompt', function (e) {
       <a href="#dashboard">Dashboard</a>
       <a href="#features">Features</a>
       <a href="#performance">Performance</a>
+      <a href="#install">Install</a>
       <a href="#faq">FAQ</a>
     </div>
     <div class="nav-cta">
@@ -356,6 +357,70 @@ window.addEventListener('beforeinstallprompt', function (e) {
   </div>
 </section>
 
+<!-- ============================== INSTALL ============================== -->
+<section class="sec dashprev" id="install">
+  <div class="wrap">
+    <div class="sec-head center reveal">
+      <div class="eyebrow">Install</div>
+      <h2>Trade from your home screen.</h2>
+      <p>ZENITH installs as an app — full-screen, offline-ready, one tap from your home screen or desktop. No app store required.</p>
+    </div>
+
+    <div id="install-now-wrap" class="reveal" style="text-align:center;margin-bottom:34px;display:none">
+      <button class="btn btn-primary btn-lg" id="install-now">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        Install ZENITH
+      </button>
+      <div class="install-hint">Your browser supports one-click install.</div>
+    </div>
+
+    <div id="install-done-wrap" class="reveal" style="text-align:center;margin-bottom:8px;display:none">
+      <span class="hero-badge"><span class="led"></span> <b>Installed</b>&nbsp;· you're running the app</span>
+    </div>
+
+    <div class="install-grid reveal">
+      <!-- iOS -->
+      <div class="install-card">
+        <div class="install-head">
+          <span class="install-ic"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 12.04c-.03-2.6 2.13-3.85 2.22-3.91-1.21-1.77-3.09-2.01-3.76-2.04-1.6-.16-3.12.94-3.93.94-.81 0-2.06-.92-3.39-.89-1.74.03-3.35 1.01-4.25 2.57-1.81 3.15-.46 7.81 1.3 10.37.86 1.25 1.88 2.66 3.22 2.61 1.29-.05 1.78-.84 3.34-.84 1.56 0 2 .84 3.36.81 1.39-.02 2.27-1.28 3.12-2.54.98-1.46 1.39-2.87 1.41-2.94-.03-.01-2.71-1.04-2.74-4.13M14.6 4.94c.71-.86 1.19-2.06 1.06-3.25-1.02.04-2.26.68-2.99 1.54-.66.76-1.23 1.98-1.08 3.15 1.14.09 2.3-.58 3.01-1.44"/></svg></span>
+          <div><div class="install-plat">iPhone &amp; iPad</div><div class="install-sub">Safari</div></div>
+        </div>
+        <ol class="install-steps">
+          <li>Tap the <b>Share</b> button <svg class="inl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg></li>
+          <li>Choose <b>Add to Home Screen</b></li>
+          <li>Tap <b>Add</b>, then open ZENITH</li>
+        </ol>
+      </div>
+
+      <!-- Android -->
+      <div class="install-card">
+        <div class="install-head">
+          <span class="install-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg></span>
+          <div><div class="install-plat">Android</div><div class="install-sub">Chrome</div></div>
+        </div>
+        <ol class="install-steps">
+          <li>Tap <b>Install</b> above, or the <b>⋮</b> menu</li>
+          <li>Choose <b>Install app</b> / <b>Add to Home screen</b></li>
+          <li>Confirm, then open ZENITH</li>
+        </ol>
+      </div>
+
+      <!-- Desktop -->
+      <div class="install-card">
+        <div class="install-head">
+          <span class="install-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>
+          <div><div class="install-plat">Desktop</div><div class="install-sub">Chrome &amp; Edge</div></div>
+        </div>
+        <ol class="install-steps">
+          <li>Tap <b>Install</b> above, or the install icon <svg class="inl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> in the address bar</li>
+          <li>Click <b>Install</b> in the dialog</li>
+          <li>ZENITH opens in its own window</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ============================== RISK ============================== -->
 <section class="risk">
   <div class="wrap">
@@ -370,14 +435,10 @@ window.addEventListener('beforeinstallprompt', function (e) {
   <div class="wrap">
     <h2>Start systematic. Start on paper.</h2>
     <p>Spin up a paper account with $10k virtual funds in under a minute. Go live when you're ready.</p>
-    <div class="cta-actions" style="position:relative">
+    <div style="position:relative">
       <a class="btn btn-primary btn-lg" href="/login">Start Trading
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
       </a>
-      <button class="btn btn-ghost btn-lg" id="pwa-install-cta" style="display:none">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-        Install app
-      </button>
     </div>
     <div class="cta-note">Sign in with Google · your keys, your funds.</div>
   </div>
@@ -397,6 +458,7 @@ window.addEventListener('beforeinstallprompt', function (e) {
         <a href="#dashboard">Dashboard</a>
         <a href="#features">Features</a>
         <a href="#performance">Performance</a>
+        <a href="#install">Install</a>
         <a href="#faq">FAQ</a>
       </div>
       <div class="foot-col">

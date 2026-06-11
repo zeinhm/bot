@@ -299,16 +299,23 @@
       if (item.open) faqItems.forEach(o => { if (o !== item) o.open = false; });
     }));
 
-    // PWA install CTA — shows when the browser offers an install prompt.
-    const installBtn = document.getElementById('pwa-install-cta');
-    if (installBtn) {
-      const showInstall = () => { if (window._pwaPrompt) installBtn.style.display = ''; };
-      document.addEventListener('pwa-installable', showInstall);
-      showInstall();
-      installBtn.addEventListener('click', () => {
+    // PWA install section: native one-click button when the browser offers a
+    // prompt (Android/desktop Chromium); platform step-by-step always shown.
+    const installNowWrap = document.getElementById('install-now-wrap');
+    const installNow = document.getElementById('install-now');
+    const installDoneWrap = document.getElementById('install-done-wrap');
+    if (installNow) {
+      const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+      const sync = () => {
+        if (standalone) { if (installDoneWrap) installDoneWrap.style.display = ''; if (installNowWrap) installNowWrap.style.display = 'none'; return; }
+        if (window._pwaPrompt && installNowWrap) installNowWrap.style.display = '';
+      };
+      document.addEventListener('pwa-installable', sync);
+      sync();
+      installNow.addEventListener('click', () => {
         if (!window._pwaPrompt) return;
         window._pwaPrompt.prompt();
-        window._pwaPrompt.userChoice.finally(() => { window._pwaPrompt = null; installBtn.style.display = 'none'; });
+        window._pwaPrompt.userChoice.finally(() => { window._pwaPrompt = null; if (installNowWrap) installNowWrap.style.display = 'none'; });
       });
     }
   }

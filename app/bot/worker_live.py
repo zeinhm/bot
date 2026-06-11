@@ -26,7 +26,11 @@ class LiveWorker(BaseWorker):
 
     def _create_exchange(self):
         from exchange import BinanceExchange
-        return BinanceExchange(api_key=self.config.api_key, api_secret=self.config.api_secret)
+        return BinanceExchange(
+            api_key=self.config.api_key,
+            api_secret=self.config.api_secret,
+            leverage=self.config.leverage,
+        )
 
     # --- Data hooks ---
     async def _resolve_exit(self, trade):

@@ -347,6 +347,15 @@ input[type=range]::-moz-range-thumb { width: 15px; height: 15px; border: none; b
 .tf-tabs button:hover { color: var(--text-2); }
 .tf-tabs button.active { color: var(--green); border-bottom-color: var(--green); }
 
+/* toggle chips (sessions / symbols) */
+.chip-toggle {
+  background: var(--card-3); border: 1px solid var(--border); color: var(--muted);
+  cursor: pointer; font-size: 11.5px; font-weight: 600; font-family: var(--sans);
+  padding: 6px 13px; border-radius: 999px; transition: all .12s; user-select: none;
+}
+.chip-toggle:hover { border-color: var(--border-bri); color: var(--text-2); }
+.chip-toggle.on { background: var(--green-dim); border-color: var(--green-line); color: var(--green); }
+
 /* segmented control */
 .seg { display: inline-flex; background: var(--card-3); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px; }
 .seg button, .seg a { background: transparent; border: none; color: var(--muted); cursor: pointer; font-size: 11.5px; font-weight: 600; font-family: var(--sans); padding: 5px 12px; border-radius: 3px; text-decoration: none; display: inline-block; }

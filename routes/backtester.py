@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import hashlib
 import json
@@ -91,8 +93,8 @@ async def get_candles(
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
 
 
-def _build_cfg(symbol: str) -> dict:
-    return {
+def _build_cfg(symbol: str, ov: dict | None = None) -> dict:
+    cfg = {
         "accLen": STRATEGY_PARAMS["acc_len"],
         "accMode": STRATEGY_PARAMS["acc_mode"],
         "atrMultAcc": STRATEGY_PARAMS["atr_mult_acc"],
@@ -116,10 +118,15 @@ def _build_cfg(symbol: str) -> dict:
         "adxPeriod": STRATEGY_PARAMS.get("adx_period", 42),
         "adxThreshold": STRATEGY_PARAMS.get("adx_threshold", 35),
     }
+    # Playground overrides — ONLY the risk knobs (rrr, sessions, seasonal). The
+    # detection params above are never overridable (protect the edge). Unset = defaults.
+    if ov:
+        cfg.update(ov)
+    return cfg
 
 
-def _equity_cfg() -> dict:
-    return {
+def _equity_cfg(ov: dict | None = None) -> dict:
+    cfg = {
         "initialCapital": 10000.0,
         "riskPct": 0.02,
         "commissionRate": COMMISSION_PCT,
@@ -127,6 +134,29 @@ def _equity_cfg() -> dict:
         "reducedRiskPct": STRATEGY_PARAMS.get("reduced_risk_pct", 0.25) / 100.0,
         "winsToRecover": STRATEGY_PARAMS.get("wins_to_recover", 2),
     }
+    if ov and "riskPct" in ov:
+        cfg["riskPct"] = ov["riskPct"]
+    return cfg
+
+
+def _parse_setup_overrides(rrr, sessions, seasonal) -> dict:
+    """Build the amd_engine cfg overrides from playground query params (rrr/sessions/seasonal).
+    These change the actual setups, so each combo gets its own cached run."""
+    ov: dict = {}
+    if rrr is not None:
+        ov["rrr"] = float(rrr)
+    if sessions:
+        picked = [s for s in sessions.split(",") if s in ("sydney", "tokyo", "london", "ny")]
+        if picked:
+            ov["sessions"] = picked
+    if seasonal is not None:
+        if int(seasonal):
+            ov["skipMonths"] = STRATEGY_PARAMS["skip_months"]
+            ov["skipWeeks"] = {int(k): v for k, v in STRATEGY_PARAMS.get("skip_weeks", {}).items()}
+        else:
+            ov["skipMonths"] = []
+            ov["skipWeeks"] = {}
+    return ov
 
 
 # ── Result cache (run the engine once per strategy+params+data signature) ──────
@@ -147,11 +177,12 @@ def _signature(symbol: str, interval: str, params_hash: str,
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-async def _get_or_build_run(symbol: str, interval: str) -> dict:
+async def _get_or_build_run(symbol: str, interval: str, ov: dict | None = None) -> dict:
     """Return cached metadata {run_id, stats, total, signature} for this
     (strategy, params, data) combo — running amd_engine only on a cache miss.
-    Setups are NOT held in memory; fetch them by page/range from the DB."""
-    cfg = _build_cfg(symbol)
+    `ov` carries playground risk overrides (rrr/sessions/seasonal); each distinct
+    combo becomes its own cached run. Setups are fetched by page/range from the DB."""
+    cfg = _build_cfg(symbol, ov)
     params_hash = _params_hash(cfg)
     first_ts, last_ts = await db.get_historical_candle_range(symbol, interval)
     count = await db.get_historical_candle_count(symbol, interval)
@@ -199,10 +230,14 @@ async def run_backtest(
     request: Request,
     symbol: str = Query("BTCUSDT"),
     interval: str = Query("15m"),
+    rrr: Optional[float] = Query(None),
+    sessions: Optional[str] = Query(None),
+    seasonal: Optional[int] = Query(None),
 ):
     """Stats + total setup count only. Setups are loaded lazily via /api/backtest/setups."""
     await require_auth(request)
-    meta = await _get_or_build_run(symbol, interval)
+    ov = _parse_setup_overrides(rrr, sessions, seasonal)
+    meta = await _get_or_build_run(symbol, interval, ov)
     return JSONResponse({"stats": meta["stats"], "total": meta["total"]})
 
 
@@ -215,11 +250,15 @@ async def backtest_setups(
     to_ts: Optional[int] = Query(None, alias="to"),
     limit: int = Query(10, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    rrr: Optional[float] = Query(None),
+    sessions: Optional[str] = Query(None),
+    seasonal: Optional[int] = Query(None),
 ):
     """Setups for a run, by time range (from/to, for the chart) or newest-first
     page (limit/offset, for nav). Each setup carries its `_ordinal` (global index)."""
     await require_auth(request)
-    meta = await _get_or_build_run(symbol, interval)
+    ov = _parse_setup_overrides(rrr, sessions, seasonal)
+    meta = await _get_or_build_run(symbol, interval, ov)
     if meta["run_id"] is None:
         return JSONResponse({"setups": [], "total": 0})
     if from_ts is not None and to_ts is not None:
@@ -230,13 +269,23 @@ async def backtest_setups(
 
 
 @router.get("/api/backtest/combined")
-async def run_backtest_combined(request: Request):
+async def run_backtest_combined(
+    request: Request,
+    rrr: Optional[float] = Query(None),
+    sessions: Optional[str] = Query(None),
+    seasonal: Optional[int] = Query(None),
+    risk_pct: Optional[float] = Query(None),
+):
     await require_auth(request)
 
-    metas = {symbol: await _get_or_build_run(symbol, "15m") for symbol in SYMBOLS}
+    setup_ov = _parse_setup_overrides(rrr, sessions, seasonal)
+    equity_ov = {"riskPct": risk_pct / 100.0} if risk_pct is not None else None
+    eff_rrr = setup_ov.get("rrr", STRATEGY_PARAMS["rrr"])
+
+    metas = {symbol: await _get_or_build_run(symbol, "15m", setup_ov) for symbol in SYMBOLS}
     combo_sig = hashlib.sha256(
         ("|".join(metas[s]["signature"] for s in SYMBOLS)
-         + "|" + _params_hash(_equity_cfg())).encode()
+         + "|" + _params_hash(_equity_cfg(equity_ov))).encode()
     ).hexdigest()
 
     # combined result is itself cached (mem → persisted COMBINED run row)
@@ -261,12 +310,12 @@ async def run_backtest_combined(request: Request):
             if m["run_id"] is not None:
                 all_setups.extend(await db.get_run_setups_all(m["run_id"]))
         all_setups.sort(key=lambda s: s["entryTime"])
-        combined_stats = amd_engine.compute_stats(all_setups, STRATEGY_PARAMS["rrr"], _equity_cfg())
+        combined_stats = amd_engine.compute_stats(all_setups, eff_rrr, _equity_cfg(equity_ov))
         payload = {"stats": combined_stats, "perAsset": per_asset}
 
         await db.save_backtest_run({
             "signature": combo_sig, "strategy": _STRATEGY_ID, "symbol": "COMBINED", "interval": "15m",
-            "params_hash": _params_hash(_equity_cfg()), "data_first_ts": None, "data_last_ts": None,
+            "params_hash": _params_hash(_equity_cfg(equity_ov)), "data_first_ts": None, "data_last_ts": None,
             "candle_count": None, "total_setups": 0, "stats": json.dumps(payload),
         }, [])
         _combined_cache[combo_sig] = payload

@@ -18,12 +18,14 @@ log = logging.getLogger(__name__)
 
 
 class BinanceExchange:
-    def __init__(self, api_key: str, api_secret: str):
+    def __init__(self, api_key: str, api_secret: str, leverage: int | None = None):
         self.api_key = api_key
         self.api_secret = api_secret
         self.client: AsyncClient | None = None
         self.bsm: BinanceSocketManager | None = None
         self.hedge_mode: bool = False
+        # Per-user leverage; falls back to the global default when unset.
+        self.leverage: int = int(leverage) if leverage else LEVERAGE
 
     async def connect(self):
         self.client = await AsyncClient.create(
@@ -49,10 +51,16 @@ class BinanceExchange:
     async def _set_leverage(self):
         for symbol in SYMBOLS:
             try:
-                await self.client.futures_change_leverage(symbol=symbol, leverage=LEVERAGE)
-                log.info("Set %s leverage to %dx", symbol, LEVERAGE)
+                await self.client.futures_change_leverage(symbol=symbol, leverage=self.leverage)
+                log.info("Set %s leverage to %dx", symbol, self.leverage)
             except Exception as e:
                 log.warning("Failed to set leverage for %s: %s", symbol, e)
+
+    async def set_leverage(self, leverage: int):
+        """Update leverage and re-apply on the exchange (used when settings change)."""
+        self.leverage = int(leverage) if leverage else LEVERAGE
+        if self.client is not None:
+            await self._set_leverage()
 
     async def close(self):
         if self.client:

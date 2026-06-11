@@ -23,6 +23,105 @@
 {% endif %}
 
 <div style="max-width:600px;margin:0 auto;display:flex;flex-direction:column;gap:12px">
+    <!-- Bot Control -->
+    <div class="card">
+        <div class="card-title row">
+            <span>Bot Control</span>
+            <span class="pill {{ 'amber' if is_paper else 'gray' }}" style="font-size:10px">{{ 'DEMO' if is_paper else 'LIVE' }}</span>
+        </div>
+        <p class="muted" style="font-size:11.5px;margin:0 0 14px">Personal risk settings for your {{ 'demo' if is_paper else 'live' }} bot. Changes take effect on the next trade. The strategy's detection logic is fixed.</p>
+
+        <form id="bot-control-form">
+            <!-- Master enable -->
+            <div class="toggle-row" style="padding-top:0">
+                <div>
+                    <div style="font-size:13px;font-weight:600">Bot enabled</div>
+                    <div class="muted" style="font-size:11px">When off, the bot runs but places no new trades</div>
+                </div>
+                <button type="button" class="switch {{ 'on' if bot_enabled else '' }}" data-toggle="bot_enabled" aria-pressed="{{ 'true' if bot_enabled else 'false' }}"></button>
+                <input type="checkbox" name="bot_enabled" hidden {{ 'checked' if bot_enabled else '' }}>
+            </div>
+
+            <!-- Risk -->
+            <div class="toggle-row">
+                <div>
+                    <div style="font-size:13px;font-weight:600">Risk per trade</div>
+                    <div class="muted" style="font-size:11px">Static $ amount, or dynamic % of balance (1–5%)</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px">
+                    <div class="seg" data-seg="risk_mode">
+                        <button type="button" data-val="static" class="{{ 'active' if risk_mode == 'static' else '' }}">$</button>
+                        <button type="button" data-val="dynamic" class="{{ 'active' if risk_mode == 'dynamic' else '' }}">%</button>
+                    </div>
+                    <div class="input-suffix" style="width:96px">
+                        <input class="input mono" id="risk_value" name="risk_value" type="number" step="0.1" min="0.1" value="{{ '%.1f'|format(risk_value) if risk_mode == 'dynamic' else '%.0f'|format(risk_value) }}" style="text-align:right;padding-right:24px">
+                        <span class="suffix" id="risk-suffix">{{ '%' if risk_mode == 'dynamic' else '$' }}</span>
+                    </div>
+                </div>
+            </div>
+            <input type="hidden" name="risk_mode" id="risk_mode_input" value="{{ risk_mode }}">
+
+            <!-- RR -->
+            <div class="toggle-row">
+                <div>
+                    <div style="font-size:13px;font-weight:600">Reward : Risk</div>
+                    <div class="muted" style="font-size:11px">Take profit as a multiple of the stop distance</div>
+                </div>
+                <div class="seg" data-seg="rr">
+                    <button type="button" data-val="2" class="{{ 'active' if rr_ratio == 2.0 else '' }}">2:1</button>
+                    <button type="button" data-val="3" class="{{ 'active' if rr_ratio == 3.0 else '' }}">3:1</button>
+                </div>
+                <input type="hidden" name="rr_ratio" id="rr_ratio_input" value="{{ '%g'|format(rr_ratio) }}">
+            </div>
+
+            <!-- Leverage -->
+            <div class="slider-row" style="margin:14px 0 6px">
+                <div class="slider-head">
+                    <span class="lbl">Leverage <span class="muted" style="font-weight:400">· affects margin, not strategy</span></span>
+                    <span class="val" id="lev-val">{{ leverage }}×</span>
+                </div>
+                <input type="range" name="leverage" id="lev-range" min="1" max="20" step="1" value="{{ leverage }}">
+            </div>
+
+            <!-- Sessions -->
+            <div style="margin:14px 0 6px">
+                <div style="font-size:13px;font-weight:600;margin-bottom:8px">Active sessions</div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px">
+                    {% for s in all_sessions %}
+                    <button type="button" class="chip-toggle {{ 'on' if s in active_sessions else '' }}" data-chip="session_{{ s }}">{{ 'NY' if s == 'ny' else s|capitalize }}</button>
+                    <input type="checkbox" name="session_{{ s }}" hidden {{ 'checked' if s in active_sessions else '' }}>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Symbols -->
+            <div style="margin:14px 0 6px">
+                <div style="font-size:13px;font-weight:600;margin-bottom:8px">Symbols</div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px">
+                    {% for s in all_symbols %}
+                    <button type="button" class="chip-toggle {{ 'on' if s in active_symbols else '' }}" data-chip="symbol_{{ s }}">{{ s.replace('USDT','') }}</button>
+                    <input type="checkbox" name="symbol_{{ s }}" hidden {{ 'checked' if s in active_symbols else '' }}>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Seasonal -->
+            <div class="toggle-row">
+                <div>
+                    <div style="font-size:13px;font-weight:600">Seasonal filter</div>
+                    <div class="muted" style="font-size:11px">Skip historically weak periods (May + April weeks 2 &amp; 4)</div>
+                </div>
+                <button type="button" class="switch {{ 'on' if seasonal_filter else '' }}" data-toggle="seasonal_filter" aria-pressed="{{ 'true' if seasonal_filter else 'false' }}"></button>
+                <input type="checkbox" name="seasonal_filter" hidden {{ 'checked' if seasonal_filter else '' }}>
+            </div>
+
+            <div style="display:flex;gap:8px;margin-top:16px">
+                <button type="submit" class="btn btn-primary" style="flex:1" id="btn-save-bot">Save changes</button>
+                <button type="button" class="btn btn-ghost" id="btn-reset-bot" style="font-size:12px">Reset to default</button>
+            </div>
+        </form>
+    </div>
+
     <!-- Exchange -->
     <div class="card">
         <div class="card-title">Exchange</div>
@@ -144,6 +243,76 @@ function deleteApiKeys() {
             btn.textContent = 'Delete';
         });
 }
+// ---- Bot Control form ----
+(function() {
+    var form = document.getElementById('bot-control-form');
+    if (!form) return;
+
+    // Toggle switches (bot_enabled, seasonal_filter)
+    form.querySelectorAll('[data-toggle]').forEach(function(sw) {
+        sw.addEventListener('click', function() {
+            var on = !sw.classList.contains('on');
+            sw.classList.toggle('on', on);
+            sw.setAttribute('aria-pressed', on ? 'true' : 'false');
+            var cb = form.querySelector('input[name="' + sw.dataset.toggle + '"]');
+            if (cb) cb.checked = on;
+        });
+    });
+
+    // Toggle chips (sessions, symbols)
+    form.querySelectorAll('[data-chip]').forEach(function(chip) {
+        chip.addEventListener('click', function() {
+            var on = !chip.classList.contains('on');
+            chip.classList.toggle('on', on);
+            var cb = form.querySelector('input[name="' + chip.dataset.chip + '"]');
+            if (cb) cb.checked = on;
+        });
+    });
+
+    // Segmented controls (risk_mode, rr)
+    form.querySelectorAll('[data-seg]').forEach(function(seg) {
+        seg.querySelectorAll('button').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                seg.querySelectorAll('button').forEach(function(b) { b.classList.remove('active'); });
+                btn.classList.add('active');
+                var val = btn.dataset.val;
+                if (seg.dataset.seg === 'risk_mode') {
+                    document.getElementById('risk_mode_input').value = val;
+                    document.getElementById('risk-suffix').textContent = val === 'dynamic' ? '%' : '$';
+                } else if (seg.dataset.seg === 'rr') {
+                    document.getElementById('rr_ratio_input').value = val;
+                }
+            });
+        });
+    });
+
+    // Leverage slider label
+    var lev = document.getElementById('lev-range');
+    if (lev) lev.addEventListener('input', function() {
+        document.getElementById('lev-val').textContent = lev.value + '×';
+    });
+
+    // Save (fetch + follow redirect to saved/error page)
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var btn = document.getElementById('btn-save-bot');
+        btn.disabled = true; btn.textContent = 'Saving…';
+        fetch('/settings', { method: 'POST', headers: {'X-CSRF-Token': csrfToken()}, body: new FormData(form) })
+            .then(function(r) { window.location.href = r.url || '/settings?saved=1'; })
+            .catch(function() { btn.disabled = false; btn.textContent = 'Save changes'; });
+    });
+
+    // Reset to default
+    document.getElementById('btn-reset-bot').addEventListener('click', function() {
+        if (!confirm('Reset all bot control settings to the validated defaults?')) return;
+        var btn = this;
+        btn.disabled = true; btn.textContent = 'Resetting…';
+        fetch('/settings/reset', { method: 'POST', headers: {'X-CSRF-Token': csrfToken()} })
+            .then(function(r) { return r.json(); })
+            .then(function() { window.location.href = '/settings?saved=1'; })
+            .catch(function() { btn.disabled = false; btn.textContent = 'Reset to default'; });
+    });
+})();
 function emergencyClose() {
     if (!confirm('EMERGENCY CLOSE\n\nThis will immediately close ALL open positions at market price.\n\nAre you sure?')) return;
     var btn = document.getElementById('btn-emergency-close');

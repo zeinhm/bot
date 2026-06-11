@@ -57,7 +57,45 @@
 <div class="grid bt-grid" style="grid-template-columns:320px 1fr;align-items:start">
     <!-- Parameters -->
     <div class="card" style="position:sticky;top:0">
-        <div class="card-title">Strategy</div>
+        <div class="card-title row">
+            <span>Playground</span>
+            <button type="button" class="link" id="bt-reset" style="font-size:11px">Reset</button>
+        </div>
+        <p style="font-size:11.5px;color:var(--text-3);line-height:1.5;margin:0 0 12px">Test the risk settings against history. The detection logic is fixed — only your risk knobs change.</p>
+
+        <div class="param-row" style="padding:7px 0">
+            <span class="lbl">Reward : Risk</span>
+            <div class="seg" data-bt="rr">
+                <button type="button" data-val="2" class="active">2:1</button>
+                <button type="button" data-val="3">3:1</button>
+            </div>
+        </div>
+
+        <div class="slider-row" style="margin:8px 0 4px">
+            <div class="slider-head"><span class="lbl">Risk per trade</span><span class="val" id="bt-risk-val">2.0%</span></div>
+            <input type="range" id="bt-risk" min="1" max="5" step="0.5" value="2">
+        </div>
+
+        <div class="slider-row" style="margin:8px 0 4px">
+            <div class="slider-head"><span class="lbl">Leverage <span class="muted" style="font-weight:400">· margin only</span></span><span class="val" id="bt-lev-val">{{ leverage }}×</span></div>
+            <input type="range" id="bt-lev" min="1" max="20" step="1" value="{{ leverage }}">
+        </div>
+
+        <div style="margin:10px 0 4px">
+            <div class="lbl" style="margin-bottom:7px">Sessions</div>
+            <div style="display:flex;flex-wrap:wrap;gap:5px">
+                {% for s in ['sydney','tokyo','london','ny'] %}
+                <button type="button" class="chip-toggle on" data-bt-session="{{ s }}" style="padding:5px 11px;font-size:11px">{{ 'NY' if s == 'ny' else s|capitalize }}</button>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="param-row" style="padding:9px 0 4px">
+            <span class="lbl">Seasonal filter</span>
+            <button type="button" class="switch on" id="bt-seasonal" aria-pressed="true"></button>
+        </div>
+
+        <div class="card-title" style="margin-top:16px">Strategy</div>
         <p style="font-size:12px;color:var(--text-2);line-height:1.6;margin:0 0 12px">
             The bot scans for periods where price coils into a tight range relative to recent volatility — accumulation. It then watches for a sharp wick that sweeps beyond the range boundary, trapping breakout traders and hunting stop losses — manipulation.
         </p>
@@ -69,8 +107,6 @@
         <p style="font-size:12px;color:var(--text-2);line-height:1.6;margin:0 0 8px">
             Every trade targets a <span style="color:var(--text-1);font-weight:600">2:1 reward-to-risk</span> ratio. Stop loss is ATR-based, always at least as wide as the manipulation extreme. Take profit is twice the stop distance from entry.
         </p>
-        <div class="param-row"><span class="lbl">Reward : Risk</span><span class="val mono">2.0</span></div>
-        <div class="param-row"><span class="lbl">Leverage</span><span class="val mono">{{ leverage }}×</span></div>
         <div class="param-row"><span class="lbl">Commission</span><span class="val mono">{{ "%.2f" | format(commission_pct * 100) }}%</span></div>
 
         <div class="card-title" style="margin-top:14px">Filters</div>
@@ -480,7 +516,7 @@
     }
 
     function loadCombined() {
-        fetch('/api/backtest/combined')
+        fetch('/api/backtest/combined?' + btCombinedParams())
             .then(function(r) { return r.json(); })
             .then(function(res) {
                 var st = res.stats || {};
@@ -509,7 +545,7 @@
         btn.disabled = true;
         btn.textContent = 'Running…';
 
-        var params = 'symbol=' + currentSymbol + '&interval=15m';
+        var params = 'symbol=' + currentSymbol + '&interval=15m&' + btSetupParams();
 
         fetch('/api/backtest?' + params)
             .then(function(r) { return r.json(); })
@@ -672,7 +708,7 @@
 
     // ── Lazy setup loading (paged from /api/backtest/setups) ──
     function loadSetupPageRaw(offset, limit) {
-        return fetch('/api/backtest/setups?symbol=' + currentSymbol + '&interval=15m&offset=' + offset + '&limit=' + limit)
+        return fetch('/api/backtest/setups?symbol=' + currentSymbol + '&interval=15m&offset=' + offset + '&limit=' + limit + '&' + btSetupParams())
             .then(function(r) { return r.json(); })
             .then(function(res) {
                 if (res.total != null) totalSetups = res.total;
@@ -740,7 +776,7 @@
         document.getElementById('chart-pair').textContent = currentSymbol;
         assetMenu.style.display = 'none';
 
-        fetch('/api/backtest?symbol=' + currentSymbol + '&interval=15m')
+        fetch('/api/backtest?symbol=' + currentSymbol + '&interval=15m&' + btSetupParams())
             .then(function(r) { return r.json(); })
             .then(function(btRes) {
                 applyBtStats(btRes.stats || {});
@@ -754,11 +790,86 @@
     // ── Run button ──
     document.getElementById('run-btn').addEventListener('click', function() { runBacktest(); });
 
+    // ── Playground controls ──
+    var DEFAULTS = { rr: '2', risk: '2', lev: '{{ leverage }}', sessions: ['sydney','tokyo','london','ny'], seasonal: true };
+
+    function btSetupParams() {
+        var rr = document.querySelector('.seg[data-bt="rr"] button.active');
+        var sessions = [].map.call(document.querySelectorAll('[data-bt-session].on'), function(b) { return b.dataset.btSession; });
+        var seasonal = document.getElementById('bt-seasonal').classList.contains('on') ? 1 : 0;
+        return 'rrr=' + (rr ? rr.dataset.val : '2') +
+               '&sessions=' + sessions.join(',') +
+               '&seasonal=' + seasonal;
+    }
+    function btCombinedParams() {
+        return btSetupParams() + '&risk_pct=' + (document.getElementById('bt-risk').value || '2');
+    }
+
+    var _btReloadTimer = null;
+    function btReload() {
+        // Debounce so dragging a slider doesn't fire a burst of engine builds.
+        clearTimeout(_btReloadTimer);
+        _btReloadTimer = setTimeout(function() {
+            loadCombined();
+            fetch('/api/backtest?symbol=' + currentSymbol + '&interval=15m&' + btSetupParams())
+                .then(function(r) { return r.json(); })
+                .then(function(btRes) {
+                    applyBtStats(btRes.stats || {});
+                    totalSetups = btRes.total || 0;
+                    initChart();
+                    chartEl.style.visibility = 'hidden';
+                    loadInitialSetups();
+                });
+        }, 250);
+    }
+
+    // RR segment
+    document.querySelectorAll('.seg[data-bt="rr"] button').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.seg[data-bt="rr"] button').forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            btReload();
+        });
+    });
+    // Risk % slider (affects equity sim → combined only, but reload both for simplicity)
+    var btRisk = document.getElementById('bt-risk');
+    btRisk.addEventListener('input', function() { document.getElementById('bt-risk-val').textContent = parseFloat(btRisk.value).toFixed(1) + '%'; });
+    btRisk.addEventListener('change', btReload);
+    // Leverage slider (display only — doesn't change backtest results)
+    var btLev = document.getElementById('bt-lev');
+    btLev.addEventListener('input', function() { document.getElementById('bt-lev-val').textContent = btLev.value + '×'; });
+    // Session chips
+    document.querySelectorAll('[data-bt-session]').forEach(function(chip) {
+        chip.addEventListener('click', function() {
+            // keep at least one session selected
+            if (chip.classList.contains('on') && document.querySelectorAll('[data-bt-session].on').length <= 1) return;
+            chip.classList.toggle('on');
+            btReload();
+        });
+    });
+    // Seasonal toggle
+    var btSeasonal = document.getElementById('bt-seasonal');
+    btSeasonal.addEventListener('click', function() {
+        var on = !btSeasonal.classList.contains('on');
+        btSeasonal.classList.toggle('on', on);
+        btSeasonal.setAttribute('aria-pressed', on ? 'true' : 'false');
+        btReload();
+    });
+    // Reset
+    document.getElementById('bt-reset').addEventListener('click', function() {
+        document.querySelectorAll('.seg[data-bt="rr"] button').forEach(function(b) { b.classList.toggle('active', b.dataset.val === DEFAULTS.rr); });
+        btRisk.value = DEFAULTS.risk; document.getElementById('bt-risk-val').textContent = parseFloat(DEFAULTS.risk).toFixed(1) + '%';
+        btLev.value = DEFAULTS.lev; document.getElementById('bt-lev-val').textContent = DEFAULTS.lev + '×';
+        document.querySelectorAll('[data-bt-session]').forEach(function(c) { c.classList.add('on'); });
+        btSeasonal.classList.add('on'); btSeasonal.setAttribute('aria-pressed', 'true');
+        btReload();
+    });
+
     // ── Auto-run on load ──
     initChart();
     chartEl.style.visibility = 'hidden';
     loadCombined();
-    fetch('/api/backtest?symbol=' + currentSymbol + '&interval=15m')
+    fetch('/api/backtest?symbol=' + currentSymbol + '&interval=15m&' + btSetupParams())
         .then(function(r) { return r.json(); })
         .then(function(btRes) {
             applyBtStats(btRes.stats || {});

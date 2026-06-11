@@ -429,7 +429,8 @@ WebSocket connection manager + 7 background push tasks.
 | Method | Path | Template | Purpose |
 |--------|------|----------|---------|
 | GET | `/settings` | `settings.html` | Bot settings, API key status |
-| POST | `/settings` | — | Save bot settings |
+| POST | `/settings` | — | Save bot settings (risk/RR/sessions/symbols/**leverage**/**seasonal_filter**); applies leverage live to a running worker |
+| POST | `/settings/reset` | — | Reset all bot-control settings for the mode to validated defaults |
 | POST | `/settings/api-keys` | — | Save new API keys, restart bot |
 | POST | `/settings/api-keys/delete` | — | Delete API keys, stop live bot |
 | POST | `/api/emergency-close` | — | Close all positions, mark trades as loss |
@@ -451,10 +452,11 @@ WebSocket connection manager + 7 background push tasks.
 ### `routes/backtester.py`
 | Method | Path | Template | Purpose |
 |--------|------|----------|---------|
-| GET | `/backtester` | `backtester.html` | Backtester page with strategy description |
+| GET | `/backtester` | `backtester.html` | Backtester page + **Playground** controls (risk knobs) |
 | GET | `/api/candles` | — | Paginated historical candles from DB |
-| GET | `/api/backtest` | — | Run backtest for single symbol |
-| GET | `/api/backtest/combined` | — | Run backtest across all 3 symbols, combined equity |
+| GET | `/api/backtest` | — | Run backtest for single symbol; playground overrides `rrr`/`sessions`/`seasonal` |
+| GET | `/api/backtest/setups` | — | Setups by page/range; same overrides |
+| GET | `/api/backtest/combined` | — | Combined backtest; overrides `rrr`/`sessions`/`seasonal`/`risk_pct`. Overrides fold into the cache signature (one cached run per combo) |
 
 ### `routes/alerts.py`
 | Method | Path | Template | Purpose |

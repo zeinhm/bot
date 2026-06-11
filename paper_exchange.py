@@ -28,6 +28,11 @@ class PaperExchange:
         self._shared = shared_market
         self.client = True
         self._order_counter = 0
+        self.leverage = 5  # tracked for parity with BinanceExchange (paper is unleveraged)
+
+    async def set_leverage(self, leverage: int):
+        # Paper trading has no real margin; track the value for interface parity.
+        self.leverage = int(leverage) if leverage else 5
 
     @property
     def market_client(self):

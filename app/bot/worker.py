@@ -91,6 +91,13 @@ class BaseWorker:
         log.info("BotWorker[user=%d/%s] starting...", self.user_id, self._mode_label())
         await self.exchange.connect()
 
+        # Apply the user's chosen leverage (falls back to the config default when unset).
+        lev = await db.get_state("leverage", self.config.leverage, user_id=self.user_id, is_paper=self.is_paper)
+        try:
+            await self.exchange.set_leverage(lev)
+        except Exception as e:
+            log.warning("BotWorker[user=%d/%s] failed to apply leverage %s: %s", self.user_id, self._mode_label(), lev, e)
+
         enabled = await db.get_state("bot_enabled", True, user_id=self.user_id, is_paper=self.is_paper)
         if not enabled:
             log.info("BotWorker[user=%d/%s] disabled in settings, monitor-only mode", self.user_id, self._mode_label())
@@ -308,7 +315,13 @@ class BaseWorker:
     async def _process_candle(self, symbol: str):
         now = datetime.now(timezone.utc)
 
-        if now.month in self.config.strategy_params["skip_months"]:
+        # Seasonal filter is per-user (default on = today's behavior). When on, use the
+        # configured skip months/weeks; when off, trade through them.
+        seasonal = await db.get_state("seasonal_filter", True, user_id=self.user_id, is_paper=self.is_paper)
+        skip_months = self.config.strategy_params.get("skip_months", []) if seasonal else []
+        skip_weeks = self.config.strategy_params.get("skip_weeks", {}) if seasonal else {}
+
+        if now.month in skip_months:
             return
 
         bot_enabled = await db.get_state("bot_enabled", True, user_id=self.user_id, is_paper=self.is_paper)
@@ -331,7 +344,14 @@ class BaseWorker:
 
         rr = await db.get_state("rr_ratio", self.config.strategy_params["rrr"], user_id=self.user_id, is_paper=self.is_paper)
         sessions = await db.get_state("active_sessions", self.config.strategy_params["sessions"], user_id=self.user_id, is_paper=self.is_paper)
-        params = {**self.config.strategy_params, "rrr": rr, "sessions": sessions, "acc_range_mode": ACC_RANGE_MODE.get(symbol, "wick")}
+        params = {
+            **self.config.strategy_params,
+            "rrr": rr,
+            "sessions": sessions,
+            "skip_months": skip_months,
+            "skip_weeks": skip_weeks,
+            "acc_range_mode": ACC_RANGE_MODE.get(symbol, "wick"),
+        }
 
         candles = self._shared_market.get_candles(symbol) if self._shared_market else []
         signal = check_signal(candles, params)

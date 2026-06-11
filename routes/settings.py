@@ -31,6 +31,8 @@ async def settings_page(request: Request):
     max_trades = await db.get_state("max_trades_per_day", 99, user_id=user.id, is_paper=is_paper)
     active_symbols = await db.get_state("active_symbols", SYMBOLS, user_id=user.id, is_paper=is_paper)
     active_sessions = await db.get_state("active_sessions", STRATEGY_PARAMS["sessions"], user_id=user.id, is_paper=is_paper)
+    leverage = await db.get_state("leverage", LEVERAGE, user_id=user.id, is_paper=is_paper)
+    seasonal_filter = await db.get_state("seasonal_filter", True, user_id=user.id, is_paper=is_paper)
 
     cfg = await db.get_user_config(user.id)
     api_key_set = cfg is not None and cfg.binance_api_key_enc is not None
@@ -60,7 +62,9 @@ async def settings_page(request: Request):
         "max_trades": max_trades,
         "api_key_set": api_key_set,
         "api_key_preview": api_key_preview,
-        "leverage": LEVERAGE,
+        "leverage": leverage,
+        "default_leverage": LEVERAGE,
+        "seasonal_filter": seasonal_filter,
         "all_symbols": SYMBOLS,
         "active_symbols": active_symbols,
         "all_sessions": ALL_SESSIONS,
@@ -80,6 +84,8 @@ async def save_settings(
     risk_value: float = Form(10.0),
     rr_ratio: float = Form(2.0),
     max_trades: int = Form(99),
+    leverage: int = Form(LEVERAGE),
+    seasonal_filter: str = Form(None),
 ):
     user = await require_auth(request)
     mode = get_trading_mode(request)
@@ -104,6 +110,9 @@ async def save_settings(
     if not (1 <= max_trades <= 10):
         errors.append("Max trades must be 1–10")
 
+    if not (1 <= leverage <= 20):
+        errors.append("Leverage must be 1–20")
+
     symbols = [s for s in SYMBOLS if form.get(f"symbol_{s}")]
     if not symbols:
         errors.append("Select at least one symbol")
@@ -122,8 +131,44 @@ async def save_settings(
     await db.set_state("max_trades_per_day", max_trades, user_id=user.id, is_paper=is_paper)
     await db.set_state("active_symbols", symbols, user_id=user.id, is_paper=is_paper)
     await db.set_state("active_sessions", sessions, user_id=user.id, is_paper=is_paper)
+    await db.set_state("leverage", leverage, user_id=user.id, is_paper=is_paper)
+    await db.set_state("seasonal_filter", seasonal_filter == "on", user_id=user.id, is_paper=is_paper)
+
+    # Apply leverage to a running worker immediately (no restart needed).
+    worker = get_bot_for_user(user.id, mode)
+    if worker and getattr(worker.exchange, "client", None):
+        try:
+            await worker.exchange.set_leverage(leverage)
+        except Exception as e:
+            log.warning("Failed to apply leverage live for user %d: %s", user.id, e)
 
     return RedirectResponse("/settings?saved=1", status_code=303)
+
+
+@router.post("/settings/reset")
+async def reset_settings(request: Request):
+    """Reset all bot-control settings for the current mode back to validated defaults."""
+    user = await require_auth(request)
+    mode = get_trading_mode(request)
+    is_paper = (mode == "paper")
+
+    await db.set_state("bot_enabled", True, user_id=user.id, is_paper=is_paper)
+    await db.set_state("risk_mode", "static", user_id=user.id, is_paper=is_paper)
+    await db.set_state("risk_value", 10.0, user_id=user.id, is_paper=is_paper)
+    await db.set_state("rr_ratio", STRATEGY_PARAMS["rrr"], user_id=user.id, is_paper=is_paper)
+    await db.set_state("active_symbols", SYMBOLS, user_id=user.id, is_paper=is_paper)
+    await db.set_state("active_sessions", STRATEGY_PARAMS["sessions"], user_id=user.id, is_paper=is_paper)
+    await db.set_state("leverage", LEVERAGE, user_id=user.id, is_paper=is_paper)
+    await db.set_state("seasonal_filter", True, user_id=user.id, is_paper=is_paper)
+
+    worker = get_bot_for_user(user.id, mode)
+    if worker and getattr(worker.exchange, "client", None):
+        try:
+            await worker.exchange.set_leverage(LEVERAGE)
+        except Exception as e:
+            log.warning("Failed to apply leverage on reset for user %d: %s", user.id, e)
+
+    return JSONResponse({"ok": True})
 
 
 @router.post("/settings/api-keys")

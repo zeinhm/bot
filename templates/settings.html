@@ -186,6 +186,40 @@
         </div>
     </div>
 
+    <!-- Install App -->
+    <div class="card" id="install-card">
+        <div class="card-title">Install App</div>
+        <div class="vcenter gap12" style="margin-bottom:14px">
+            <div style="width:42px;height:42px;border-radius:10px;background:var(--green-dim);display:grid;place-items:center;color:var(--green);flex:none">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            </div>
+            <div style="min-width:0">
+                <div style="font-size:13.5px;font-weight:600">ZENITH on your home screen</div>
+                <div class="muted" style="font-size:11.5px">Full-screen, offline-ready, launches like a native app.</div>
+            </div>
+        </div>
+
+        <!-- Installed state -->
+        <div id="install-done" class="callout green" style="display:none">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg>
+            <span>Installed — you're running the app.</span>
+        </div>
+
+        <!-- Install button (Chrome/Edge/Android) -->
+        <button type="button" class="btn btn-primary btn-block" id="install-btn" style="display:none">Install ZENITH</button>
+
+        <!-- iOS instructions -->
+        <div id="install-ios" class="callout" style="display:none;padding:10px 12px">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" style="flex:none;margin-top:1px"><path d="M12 2v13M7 7l5-5 5 5M5 21h14"/></svg>
+            <div style="flex:1;min-width:0">
+                <span style="font-size:11.5px" class="muted">On iPhone/iPad: tap <b style="color:var(--text-2)">Share</b> in Safari, then <b style="color:var(--text-2)">Add to Home Screen</b>.</span>
+            </div>
+        </div>
+
+        <!-- Fallback (desktop browser without install support) -->
+        <div id="install-na" class="muted" style="display:none;font-size:11.5px">Use Chrome, Edge, or Safari to install. Your browser will show an install icon in the address bar when available.</div>
+    </div>
+
     <!-- Danger Zone -->
     <div class="card danger">
         <div class="card-title">Danger Zone</div>
@@ -312,6 +346,40 @@ function deleteApiKeys() {
             .then(function() { window.location.href = '/settings?saved=1'; })
             .catch(function() { btn.disabled = false; btn.textContent = 'Reset to default'; });
     });
+})();
+// ---- Install App card ----
+(function() {
+    var btn = document.getElementById('install-btn');
+    if (!btn) return;
+    var done = document.getElementById('install-done');
+    var ios = document.getElementById('install-ios');
+    var na = document.getElementById('install-na');
+
+    function hideAll() { [btn, done, ios, na].forEach(function(el) { if (el) el.style.display = 'none'; }); }
+
+    var isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+
+    function render() {
+        hideAll();
+        if (isStandalone) { done.style.display = 'flex'; return; }
+        if (window._pwaPrompt) { btn.style.display = ''; return; }
+        if (isIOS) { ios.style.display = 'flex'; return; }
+        na.style.display = 'block';
+    }
+
+    btn.addEventListener('click', function() {
+        if (!window._pwaPrompt) return;
+        window._pwaPrompt.prompt();
+        window._pwaPrompt.userChoice.finally(function() {
+            window._pwaPrompt = null;
+            render();
+        });
+    });
+
+    document.addEventListener('pwa-installable', render);
+    document.addEventListener('pwa-installed', function() { isStandalone = true; render(); });
+    render();
 })();
 function emergencyClose() {
     if (!confirm('EMERGENCY CLOSE\n\nThis will immediately close ALL open positions at market price.\n\nAre you sure?')) return;

@@ -282,6 +282,7 @@ h1.hero-title .accent { color: var(--green); }
   padding: 14px 16px; color: var(--text); font-size: 15px; font-family: var(--sans); outline: none;
 }
 .cta-form input:focus { border-color: var(--green-line); }
+.cta-actions { display: inline-flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap; }
 .cta-note { margin-top: 18px; font-size: 13px; color: var(--muted); position: relative; }
 
 /* ============================================================ FOOTER */

@@ -17,6 +17,17 @@
             navigator.serviceWorker.register('/sw.js').catch(function () {});
         });
     }
+    // Capture the install prompt app-wide so the Settings "Install App" card can offer it.
+    window._pwaPrompt = null;
+    window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        window._pwaPrompt = e;
+        document.dispatchEvent(new CustomEvent('pwa-installable'));
+    });
+    window.addEventListener('appinstalled', function () {
+        window._pwaPrompt = null;
+        document.dispatchEvent(new CustomEvent('pwa-installed'));
+    });
     </script>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>

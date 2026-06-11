@@ -22,7 +22,22 @@
 <!-- Favicon -->
 <link rel="icon" type="image/svg+xml" href="/landing/favicon.svg">
 
+<!-- PWA -->
+<link rel="manifest" href="/static/manifest.webmanifest">
+<meta name="theme-color" content="#0F1117">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+
 <link rel="stylesheet" href="/landing/landing-page.css" />
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () { navigator.serviceWorker.register('/sw.js').catch(function () {}); });
+}
+window._pwaPrompt = null;
+window.addEventListener('beforeinstallprompt', function (e) {
+  e.preventDefault(); window._pwaPrompt = e;
+  document.dispatchEvent(new CustomEvent('pwa-installable'));
+});
+</script>
 </head>
 <body>
 
@@ -355,10 +370,14 @@
   <div class="wrap">
     <h2>Start systematic. Start on paper.</h2>
     <p>Spin up a paper account with $10k virtual funds in under a minute. Go live when you're ready.</p>
-    <div style="position:relative">
+    <div class="cta-actions" style="position:relative">
       <a class="btn btn-primary btn-lg" href="/login">Start Trading
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
       </a>
+      <button class="btn btn-ghost btn-lg" id="pwa-install-cta" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        Install app
+      </button>
     </div>
     <div class="cta-note">Sign in with Google · your keys, your funds.</div>
   </div>

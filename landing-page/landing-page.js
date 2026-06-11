@@ -298,6 +298,19 @@
     faqItems.forEach(item => item.addEventListener('toggle', () => {
       if (item.open) faqItems.forEach(o => { if (o !== item) o.open = false; });
     }));
+
+    // PWA install CTA — shows when the browser offers an install prompt.
+    const installBtn = document.getElementById('pwa-install-cta');
+    if (installBtn) {
+      const showInstall = () => { if (window._pwaPrompt) installBtn.style.display = ''; };
+      document.addEventListener('pwa-installable', showInstall);
+      showInstall();
+      installBtn.addEventListener('click', () => {
+        if (!window._pwaPrompt) return;
+        window._pwaPrompt.prompt();
+        window._pwaPrompt.userChoice.finally(() => { window._pwaPrompt = null; installBtn.style.display = 'none'; });
+      });
+    }
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

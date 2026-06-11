@@ -286,6 +286,9 @@ h1.hero-title .accent { color: var(--green); }
 .cta-note { margin-top: 18px; font-size: 13px; color: var(--muted); position: relative; }
 
 /* ============================================================ INSTALL */
+/* Wider head + no wrap so the title stays on one line on desktop. */
+#install .sec-head { max-width: 860px; }
+#install .sec-head h2 { white-space: nowrap; }
 .install-sub-text { font-size: 14px !important; }
 .install-block { max-width: 640px; margin: 0 auto; }
 .install-hint-line { text-align: center; font-size: 13px; color: var(--muted); margin: 20px 0 14px; }
@@ -344,6 +347,7 @@ footer { border-top: 1px solid var(--border); padding: 56px 0 36px; background: 
   .sec { padding: 72px 0; }
   .sec-head h2, .cta h2 { font-size: 30px; }
   .steps, .feat-grid { grid-template-columns: 1fr; }
+  #install .sec-head h2 { white-space: normal; }
   .install-tab { font-size: 13px; padding: 10px 8px; gap: 6px; }
   .cta-form { flex-direction: column; width: 100%; }
   .cta-form input { width: 100%; }

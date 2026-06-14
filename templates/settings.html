@@ -56,36 +56,24 @@
             </div>
 
             <!-- Risk -->
-            <div class="toggle-row">
-                <div>
-                    <div style="font-size:13px;font-weight:600">Risk per trade</div>
-                    <div class="muted" style="font-size:11px">Static $ amount, or dynamic % of balance (1–5%)</div>
+            <div class="slider-row" style="margin:14px 0 6px">
+                <div class="slider-head">
+                    <span class="lbl">Risk per trade <span class="muted" style="font-weight:400">· % of balance</span></span>
+                    <span class="val" id="risk-val">{{ '%.1f'|format(risk_value if (risk_mode == 'dynamic' and 1 <= risk_value <= 3) else 2.0) }}%</span>
                 </div>
-                <div style="display:flex;align-items:center;gap:8px">
-                    <div class="seg" data-seg="risk_mode">
-                        <button type="button" data-val="static" class="{{ 'active' if risk_mode == 'static' else '' }}">$</button>
-                        <button type="button" data-val="dynamic" class="{{ 'active' if risk_mode == 'dynamic' else '' }}">%</button>
-                    </div>
-                    <div class="input-suffix" style="width:96px">
-                        <input class="input mono" id="risk_value" name="risk_value" type="number" step="0.1" min="0.1" value="{{ '%.1f'|format(risk_value) if risk_mode == 'dynamic' else '%.0f'|format(risk_value) }}" style="text-align:right;padding-right:24px">
-                        <span class="suffix" id="risk-suffix">{{ '%' if risk_mode == 'dynamic' else '$' }}</span>
-                    </div>
-                </div>
+                <input type="range" name="risk_value" id="risk-range" min="1" max="3" step="0.5" value="{{ '%.1f'|format(risk_value if (risk_mode == 'dynamic' and 1 <= risk_value <= 3) else 2.0) }}">
             </div>
-            <input type="hidden" name="risk_mode" id="risk_mode_input" value="{{ risk_mode }}">
+            <input type="hidden" name="risk_mode" value="dynamic">
 
-            <!-- RR -->
+            <!-- RR (fixed at the validated 2:1) -->
             <div class="toggle-row">
                 <div>
                     <div style="font-size:13px;font-weight:600">Reward : Risk</div>
-                    <div class="muted" style="font-size:11px">Take profit as a multiple of the stop distance</div>
+                    <div class="muted" style="font-size:11px">Take profit at twice the stop distance — fixed by the strategy</div>
                 </div>
-                <div class="seg" data-seg="rr">
-                    <button type="button" data-val="2" class="{{ 'active' if rr_ratio == 2.0 else '' }}">2:1</button>
-                    <button type="button" data-val="3" class="{{ 'active' if rr_ratio == 3.0 else '' }}">3:1</button>
-                </div>
-                <input type="hidden" name="rr_ratio" id="rr_ratio_input" value="{{ '%g'|format(rr_ratio) }}">
+                <span class="pill gray mono" style="padding:3px 11px">2:1</span>
             </div>
+            <input type="hidden" name="rr_ratio" value="2">
 
             <!-- Leverage -->
             <div class="slider-row" style="margin:14px 0 6px">
@@ -118,19 +106,31 @@
                 </div>
             </div>
 
-            <!-- Seasonal -->
+            <!-- Seasonal events -->
+            <div style="margin:14px 0 4px">
+                <div style="font-size:13px;font-weight:600">Seasonal filter</div>
+                <div class="muted" style="font-size:11px">Sit out recurring events that make the market choppy and two-sided — US tax deadlines and the “sell in May” slump.</div>
+            </div>
+            <div class="toggle-row" style="padding-top:6px">
+                <div>
+                    <div style="font-size:12.5px;font-weight:600">Sell in May</div>
+                    <div class="muted" style="font-size:11px">Skip the whole of May — the well-known “sell in May and go away” seasonal slump.</div>
+                </div>
+                <button type="button" class="switch {{ 'on' if skip_may else '' }}" data-toggle="skip_may" aria-pressed="{{ 'true' if skip_may else 'false' }}"></button>
+                <input type="checkbox" name="skip_may" hidden {{ 'checked' if skip_may else '' }}>
+            </div>
             <div class="toggle-row">
                 <div>
-                    <div style="font-size:13px;font-weight:600">Seasonal filter</div>
-                    <div class="muted" style="font-size:11px">Skip historically weak periods (May + April weeks 2 &amp; 4)</div>
+                    <div style="font-size:12.5px;font-weight:600">US tax deadline</div>
+                    <div class="muted" style="font-size:11px">Skip mid-to-late April — US tax-filing season drives liquidations and choppy price action.</div>
                 </div>
-                <button type="button" class="switch {{ 'on' if seasonal_filter else '' }}" data-toggle="seasonal_filter" aria-pressed="{{ 'true' if seasonal_filter else 'false' }}"></button>
-                <input type="checkbox" name="seasonal_filter" hidden {{ 'checked' if seasonal_filter else '' }}>
+                <button type="button" class="switch {{ 'on' if skip_tax else '' }}" data-toggle="skip_tax_deadline" aria-pressed="{{ 'true' if skip_tax else 'false' }}"></button>
+                <input type="checkbox" name="skip_tax_deadline" hidden {{ 'checked' if skip_tax else '' }}>
             </div>
 
             <div style="display:flex;gap:8px;margin-top:16px">
-                <button type="submit" class="btn btn-primary" style="flex:1" id="btn-save-bot">Save changes</button>
-                <button type="button" class="btn btn-ghost" id="btn-reset-bot" style="font-size:12px">Reset to default</button>
+                <button type="button" class="btn btn-primary" style="flex:1" id="btn-save-bot">Save changes</button>
+                <button type="button" class="btn btn-ghost" style="flex:1" id="btn-reset-bot">Reset to default</button>
             </div>
         </form>
     </div>
@@ -191,7 +191,13 @@
         <div class="callout" style="margin-top:14px;padding:10px 12px;flex-wrap:wrap">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" style="flex:none;margin-top:1px"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
             <div style="flex:1;min-width:0">
-                <span style="font-size:11.5px" class="muted">Whitelist these IPs in your Binance API settings:</span>
+                <div class="between" style="gap:8px;align-items:flex-start">
+                    <span style="font-size:11.5px" class="muted">Whitelist these IPs in your Binance API settings:</span>
+                    <button type="button" class="btn btn-ghost btn-sm" id="copy-ips" style="font-size:10.5px;padding:3px 9px;flex:none">
+                        <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        <span id="copy-ips-label">Copy</span>
+                    </button>
+                </div>
                 <div style="margin-top:6px;font-family:var(--mono);font-size:11px;color:var(--text-2);line-height:1.8;user-select:all">
                     208.77.246.240<br>
                     208.77.246.241<br>
@@ -212,7 +218,7 @@
             </div>
             <div style="min-width:0">
                 <div style="font-size:13.5px;font-weight:600">ZENITH on your home screen</div>
-                <div class="muted" style="font-size:11.5px">Full-screen, offline-ready, launches like a native app.</div>
+                <div class="muted" style="font-size:11.5px">Full-screen and fast — one tap from your home screen, like a native app.</div>
             </div>
         </div>
 
@@ -241,6 +247,18 @@
         <button type="button" class="btn btn-ghost btn-block" disabled>Reset paper trading wallet</button>
     </div>
 </div>
+<!-- Save confirmation modal -->
+<div id="save-confirm-modal" style="display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.6);align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)this.style.display='none'">
+    <div class="card" style="max-width:400px;width:100%">
+        <div style="font-size:15px;font-weight:700;margin-bottom:8px">Apply settings?</div>
+        <p class="muted" style="font-size:12.5px;margin:0 0 16px">These changes take effect on your {{ 'demo' if is_paper else 'live' }} bot's next trade.</p>
+        <div style="display:flex;gap:8px">
+            <button type="button" class="btn btn-ghost" style="flex:1;font-size:12px" onclick="document.getElementById('save-confirm-modal').style.display='none'">Cancel</button>
+            <button type="button" class="btn btn-primary" style="flex:1;font-size:12px" id="save-confirm-btn">Save changes</button>
+        </div>
+    </div>
+</div>
+
 <div id="toast" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a2a22;border:1px solid var(--green-line);color:var(--green);padding:10px 20px;border-radius:var(--radius);font-size:13px;font-weight:600;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,.4)"></div>
 <script>
 function showToast(msg) {
@@ -308,7 +326,7 @@ function deleteApiKeys() {
     var form = document.getElementById('bot-control-form');
     if (!form) return;
 
-    // Toggle switches (bot_enabled, seasonal_filter)
+    // Toggle switches (bot_enabled, skip_may, skip_tax_deadline)
     form.querySelectorAll('[data-toggle]').forEach(function(sw) {
         sw.addEventListener('click', function() {
             var on = !sw.classList.contains('on');
@@ -329,21 +347,10 @@ function deleteApiKeys() {
         });
     });
 
-    // Segmented controls (risk_mode, rr)
-    form.querySelectorAll('[data-seg]').forEach(function(seg) {
-        seg.querySelectorAll('button').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                seg.querySelectorAll('button').forEach(function(b) { b.classList.remove('active'); });
-                btn.classList.add('active');
-                var val = btn.dataset.val;
-                if (seg.dataset.seg === 'risk_mode') {
-                    document.getElementById('risk_mode_input').value = val;
-                    document.getElementById('risk-suffix').textContent = val === 'dynamic' ? '%' : '$';
-                } else if (seg.dataset.seg === 'rr') {
-                    document.getElementById('rr_ratio_input').value = val;
-                }
-            });
-        });
+    // Risk % slider label (dynamic % of balance)
+    var risk = document.getElementById('risk-range');
+    if (risk) risk.addEventListener('input', function() {
+        document.getElementById('risk-val').textContent = parseFloat(risk.value).toFixed(1) + '%';
     });
 
     // Leverage slider label
@@ -352,15 +359,21 @@ function deleteApiKeys() {
         document.getElementById('lev-val').textContent = lev.value + '×';
     });
 
-    // Save (fetch + follow redirect to saved/error page)
-    form.addEventListener('submit', function(e) {
-        e.preventDefault();
-        var btn = document.getElementById('btn-save-bot');
-        btn.disabled = true; btn.textContent = 'Saving…';
+    // Save → confirm modal → fetch (follow redirect to saved/error page)
+    function openSaveModal() { document.getElementById('save-confirm-modal').style.display = 'flex'; }
+    function doSaveBot() {
+        var cbtn = document.getElementById('save-confirm-btn');
+        cbtn.disabled = true; cbtn.textContent = 'Saving…';
         fetch('/settings', { method: 'POST', headers: {'X-CSRF-Token': csrfToken()}, body: new FormData(form) })
             .then(function(r) { window.location.href = r.url || '/settings?saved=1'; })
-            .catch(function() { btn.disabled = false; btn.textContent = 'Save changes'; });
-    });
+            .catch(function() {
+                cbtn.disabled = false; cbtn.textContent = 'Save changes';
+                document.getElementById('save-confirm-modal').style.display = 'none';
+            });
+    }
+    document.getElementById('btn-save-bot').addEventListener('click', openSaveModal);
+    form.addEventListener('submit', function(e) { e.preventDefault(); openSaveModal(); });
+    document.getElementById('save-confirm-btn').addEventListener('click', doSaveBot);
 
     // Reset to default
     document.getElementById('btn-reset-bot').addEventListener('click', function() {
@@ -371,6 +384,28 @@ function deleteApiKeys() {
             .then(function(r) { return r.json(); })
             .then(function() { window.location.href = '/settings?saved=1'; })
             .catch(function() { btn.disabled = false; btn.textContent = 'Reset to default'; });
+    });
+})();
+// ---- Copy IPs ----
+(function() {
+    var btn = document.getElementById('copy-ips');
+    if (!btn) return;
+    var IPS = '208.77.246.240 208.77.246.241 208.77.246.242';
+    var label = document.getElementById('copy-ips-label');
+    btn.addEventListener('click', function() {
+        var done = function() {
+            if (label) label.textContent = 'Copied';
+            showToast('IPs copied');
+            setTimeout(function() { if (label) label.textContent = 'Copy'; }, 1500);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(IPS).then(done).catch(function() {});
+        } else {
+            var ta = document.createElement('textarea');
+            ta.value = IPS; document.body.appendChild(ta); ta.select();
+            try { document.execCommand('copy'); done(); } catch (e) {}
+            document.body.removeChild(ta);
+        }
     });
 })();
 // ---- Install App card ----

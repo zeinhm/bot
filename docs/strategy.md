@@ -326,7 +326,7 @@ During losing streaks, position size scales down dramatically to protect capital
 
 - **Liquidity sweep zones** block entries where the move may already be exhausted
 - A **trend filter** skips choppy, directionless markets to avoid whipsaws
-- **Seasonal filters** sit out historically underperforming periods
+- **Seasonal filter** sits out recurring events that make the market choppy — US tax deadlines and the "sell in May" slump
 - Trades only execute during **active market sessions**
 
 ### Track Record

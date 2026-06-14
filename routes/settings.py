@@ -28,11 +28,11 @@ async def settings_page(request: Request):
     risk_mode = await db.get_state("risk_mode", "static", user_id=user.id, is_paper=is_paper)
     risk_value = await db.get_state("risk_value", 10.0, user_id=user.id, is_paper=is_paper)
     rr_ratio = await db.get_state("rr_ratio", STRATEGY_PARAMS["rrr"], user_id=user.id, is_paper=is_paper)
-    max_trades = await db.get_state("max_trades_per_day", 99, user_id=user.id, is_paper=is_paper)
     active_symbols = await db.get_state("active_symbols", SYMBOLS, user_id=user.id, is_paper=is_paper)
     active_sessions = await db.get_state("active_sessions", STRATEGY_PARAMS["sessions"], user_id=user.id, is_paper=is_paper)
     leverage = await db.get_state("leverage", LEVERAGE, user_id=user.id, is_paper=is_paper)
-    seasonal_filter = await db.get_state("seasonal_filter", True, user_id=user.id, is_paper=is_paper)
+    skip_may = await db.get_state("skip_may", True, user_id=user.id, is_paper=is_paper)
+    skip_tax = await db.get_state("skip_tax_deadline", True, user_id=user.id, is_paper=is_paper)
 
     cfg = await db.get_user_config(user.id)
     api_key_set = cfg is not None and cfg.binance_api_key_enc is not None
@@ -59,12 +59,12 @@ async def settings_page(request: Request):
         "risk_mode": risk_mode,
         "risk_value": risk_value,
         "rr_ratio": rr_ratio,
-        "max_trades": max_trades,
         "api_key_set": api_key_set,
         "api_key_preview": api_key_preview,
         "leverage": leverage,
         "default_leverage": LEVERAGE,
-        "seasonal_filter": seasonal_filter,
+        "skip_may": skip_may,
+        "skip_tax": skip_tax,
         "all_symbols": SYMBOLS,
         "active_symbols": active_symbols,
         "all_sessions": ALL_SESSIONS,
@@ -83,9 +83,9 @@ async def save_settings(
     risk_mode: str = Form("static"),
     risk_value: float = Form(10.0),
     rr_ratio: float = Form(2.0),
-    max_trades: int = Form(99),
     leverage: int = Form(LEVERAGE),
-    seasonal_filter: str = Form(None),
+    skip_may: str = Form(None),
+    skip_tax_deadline: str = Form(None),
 ):
     user = await require_auth(request)
     mode = get_trading_mode(request)
@@ -107,9 +107,6 @@ async def save_settings(
     if not (1.0 <= rr_ratio <= 10.0):
         errors.append("RR ratio must be 1.0–10.0")
 
-    if not (1 <= max_trades <= 10):
-        errors.append("Max trades must be 1–10")
-
     if not (1 <= leverage <= 20):
         errors.append("Leverage must be 1–20")
 
@@ -128,11 +125,11 @@ async def save_settings(
     await db.set_state("risk_mode", risk_mode, user_id=user.id, is_paper=is_paper)
     await db.set_state("risk_value", risk_value, user_id=user.id, is_paper=is_paper)
     await db.set_state("rr_ratio", rr_ratio, user_id=user.id, is_paper=is_paper)
-    await db.set_state("max_trades_per_day", max_trades, user_id=user.id, is_paper=is_paper)
     await db.set_state("active_symbols", symbols, user_id=user.id, is_paper=is_paper)
     await db.set_state("active_sessions", sessions, user_id=user.id, is_paper=is_paper)
     await db.set_state("leverage", leverage, user_id=user.id, is_paper=is_paper)
-    await db.set_state("seasonal_filter", seasonal_filter == "on", user_id=user.id, is_paper=is_paper)
+    await db.set_state("skip_may", skip_may == "on", user_id=user.id, is_paper=is_paper)
+    await db.set_state("skip_tax_deadline", skip_tax_deadline == "on", user_id=user.id, is_paper=is_paper)
 
     # Apply leverage to a running worker immediately (no restart needed).
     worker = get_bot_for_user(user.id, mode)
@@ -153,13 +150,14 @@ async def reset_settings(request: Request):
     is_paper = (mode == "paper")
 
     await db.set_state("bot_enabled", True, user_id=user.id, is_paper=is_paper)
-    await db.set_state("risk_mode", "static", user_id=user.id, is_paper=is_paper)
-    await db.set_state("risk_value", 10.0, user_id=user.id, is_paper=is_paper)
+    await db.set_state("risk_mode", "dynamic", user_id=user.id, is_paper=is_paper)
+    await db.set_state("risk_value", 2.0, user_id=user.id, is_paper=is_paper)
     await db.set_state("rr_ratio", STRATEGY_PARAMS["rrr"], user_id=user.id, is_paper=is_paper)
     await db.set_state("active_symbols", SYMBOLS, user_id=user.id, is_paper=is_paper)
     await db.set_state("active_sessions", STRATEGY_PARAMS["sessions"], user_id=user.id, is_paper=is_paper)
     await db.set_state("leverage", LEVERAGE, user_id=user.id, is_paper=is_paper)
-    await db.set_state("seasonal_filter", True, user_id=user.id, is_paper=is_paper)
+    await db.set_state("skip_may", True, user_id=user.id, is_paper=is_paper)
+    await db.set_state("skip_tax_deadline", True, user_id=user.id, is_paper=is_paper)
 
     worker = get_bot_for_user(user.id, mode)
     if worker and getattr(worker.exchange, "client", None):

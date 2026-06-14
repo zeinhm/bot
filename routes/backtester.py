@@ -139,23 +139,21 @@ def _equity_cfg(ov: dict | None = None) -> dict:
     return cfg
 
 
-def _parse_setup_overrides(rrr, sessions, seasonal) -> dict:
-    """Build the amd_engine cfg overrides from playground query params (rrr/sessions/seasonal).
-    These change the actual setups, so each combo gets its own cached run."""
+def _parse_setup_overrides(sessions, skip_may, skip_tax) -> dict:
+    """Build the amd_engine cfg overrides from playground query params: the
+    sessions and the two seasonal-event toggles (Sell-in-May → skip May;
+    US-tax-deadline → skip the April tax weeks). These change the actual setups,
+    so each combo gets its own cached run. RR is fixed at the validated 2:1."""
     ov: dict = {}
-    if rrr is not None:
-        ov["rrr"] = float(rrr)
     if sessions:
         picked = [s for s in sessions.split(",") if s in ("sydney", "tokyo", "london", "ny")]
         if picked:
             ov["sessions"] = picked
-    if seasonal is not None:
-        if int(seasonal):
-            ov["skipMonths"] = STRATEGY_PARAMS["skip_months"]
-            ov["skipWeeks"] = {int(k): v for k, v in STRATEGY_PARAMS.get("skip_weeks", {}).items()}
-        else:
-            ov["skipMonths"] = []
-            ov["skipWeeks"] = {}
+    if skip_may is not None:
+        ov["skipMonths"] = STRATEGY_PARAMS["skip_months"] if int(skip_may) else []
+    if skip_tax is not None:
+        ov["skipWeeks"] = ({int(k): v for k, v in STRATEGY_PARAMS.get("skip_weeks", {}).items()}
+                           if int(skip_tax) else {})
     return ov
 
 
@@ -230,13 +228,13 @@ async def run_backtest(
     request: Request,
     symbol: str = Query("BTCUSDT"),
     interval: str = Query("15m"),
-    rrr: Optional[float] = Query(None),
     sessions: Optional[str] = Query(None),
-    seasonal: Optional[int] = Query(None),
+    skip_may: Optional[int] = Query(None),
+    skip_tax: Optional[int] = Query(None),
 ):
     """Stats + total setup count only. Setups are loaded lazily via /api/backtest/setups."""
     await require_auth(request)
-    ov = _parse_setup_overrides(rrr, sessions, seasonal)
+    ov = _parse_setup_overrides(sessions, skip_may, skip_tax)
     meta = await _get_or_build_run(symbol, interval, ov)
     return JSONResponse({"stats": meta["stats"], "total": meta["total"]})
 
@@ -250,14 +248,14 @@ async def backtest_setups(
     to_ts: Optional[int] = Query(None, alias="to"),
     limit: int = Query(10, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    rrr: Optional[float] = Query(None),
     sessions: Optional[str] = Query(None),
-    seasonal: Optional[int] = Query(None),
+    skip_may: Optional[int] = Query(None),
+    skip_tax: Optional[int] = Query(None),
 ):
     """Setups for a run, by time range (from/to, for the chart) or newest-first
     page (limit/offset, for nav). Each setup carries its `_ordinal` (global index)."""
     await require_auth(request)
-    ov = _parse_setup_overrides(rrr, sessions, seasonal)
+    ov = _parse_setup_overrides(sessions, skip_may, skip_tax)
     meta = await _get_or_build_run(symbol, interval, ov)
     if meta["run_id"] is None:
         return JSONResponse({"setups": [], "total": 0})
@@ -271,16 +269,16 @@ async def backtest_setups(
 @router.get("/api/backtest/combined")
 async def run_backtest_combined(
     request: Request,
-    rrr: Optional[float] = Query(None),
     sessions: Optional[str] = Query(None),
-    seasonal: Optional[int] = Query(None),
+    skip_may: Optional[int] = Query(None),
+    skip_tax: Optional[int] = Query(None),
     risk_pct: Optional[float] = Query(None),
 ):
     await require_auth(request)
 
-    setup_ov = _parse_setup_overrides(rrr, sessions, seasonal)
+    setup_ov = _parse_setup_overrides(sessions, skip_may, skip_tax)
     equity_ov = {"riskPct": risk_pct / 100.0} if risk_pct is not None else None
-    eff_rrr = setup_ov.get("rrr", STRATEGY_PARAMS["rrr"])
+    eff_rrr = STRATEGY_PARAMS["rrr"]
 
     metas = {symbol: await _get_or_build_run(symbol, "15m", setup_ov) for symbol in SYMBOLS}
     combo_sig = hashlib.sha256(

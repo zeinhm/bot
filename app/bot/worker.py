@@ -315,11 +315,12 @@ class BaseWorker:
     async def _process_candle(self, symbol: str):
         now = datetime.now(timezone.utc)
 
-        # Seasonal filter is per-user (default on = today's behavior). When on, use the
-        # configured skip months/weeks; when off, trade through them.
-        seasonal = await db.get_state("seasonal_filter", True, user_id=self.user_id, is_paper=self.is_paper)
-        skip_months = self.config.strategy_params.get("skip_months", []) if seasonal else []
-        skip_weeks = self.config.strategy_params.get("skip_weeks", {}) if seasonal else {}
+        # Seasonal events are per-user, independently toggleable (default on = today's
+        # behavior): "Sell in May" → skip May; "US tax deadline" → skip the April tax weeks.
+        skip_may = await db.get_state("skip_may", True, user_id=self.user_id, is_paper=self.is_paper)
+        skip_tax = await db.get_state("skip_tax_deadline", True, user_id=self.user_id, is_paper=self.is_paper)
+        skip_months = self.config.strategy_params.get("skip_months", []) if skip_may else []
+        skip_weeks = self.config.strategy_params.get("skip_weeks", {}) if skip_tax else {}
 
         if now.month in skip_months:
             return

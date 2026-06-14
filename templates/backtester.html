@@ -59,26 +59,18 @@
     <div class="card" style="position:sticky;top:0">
         <div class="card-title row">
             <span>Playground</span>
-            <button type="button" class="link" id="bt-reset" style="font-size:11px">Reset</button>
+            <button type="button" id="bt-reset" style="background:none;border:none;padding:0;cursor:pointer;color:var(--green);font-size:11px;font-weight:600;font-family:var(--sans)">Reset</button>
         </div>
         <p style="font-size:11.5px;color:var(--text-3);line-height:1.5;margin:0 0 12px">Test the risk settings against history. The detection logic is fixed — only your risk knobs change.</p>
 
         <div class="param-row" style="padding:7px 0">
             <span class="lbl">Reward : Risk</span>
-            <div class="seg" data-bt="rr">
-                <button type="button" data-val="2" class="active">2:1</button>
-                <button type="button" data-val="3">3:1</button>
-            </div>
+            <span class="val mono">2:1</span>
         </div>
 
         <div class="slider-row" style="margin:8px 0 4px">
             <div class="slider-head"><span class="lbl">Risk per trade</span><span class="val" id="bt-risk-val">2.0%</span></div>
-            <input type="range" id="bt-risk" min="1" max="5" step="0.5" value="2">
-        </div>
-
-        <div class="slider-row" style="margin:8px 0 4px">
-            <div class="slider-head"><span class="lbl">Leverage <span class="muted" style="font-weight:400">· margin only</span></span><span class="val" id="bt-lev-val">{{ leverage }}×</span></div>
-            <input type="range" id="bt-lev" min="1" max="20" step="1" value="{{ leverage }}">
+            <input type="range" id="bt-risk" min="1" max="3" step="0.5" value="2">
         </div>
 
         <div style="margin:10px 0 4px">
@@ -90,9 +82,14 @@
             </div>
         </div>
 
-        <div class="param-row" style="padding:9px 0 4px">
-            <span class="lbl">Seasonal filter</span>
-            <button type="button" class="switch on" id="bt-seasonal" aria-pressed="true"></button>
+        <div class="lbl" style="margin:12px 0 2px">Seasonal filter</div>
+        <div class="param-row" style="padding:6px 0">
+            <span class="lbl" style="color:var(--text-2)" data-tip="The 'sell in May and go away' seasonal slump — skip the whole month of May.">Sell in May</span>
+            <button type="button" class="switch on" id="bt-skip-may" aria-pressed="true"></button>
+        </div>
+        <div class="param-row" style="padding:6px 0">
+            <span class="lbl" style="color:var(--text-2)" data-tip="US tax-filing season (mid-to-late April) — forced liquidations and choppy, two-sided price action.">US tax deadline</span>
+            <button type="button" class="switch on" id="bt-skip-tax" aria-pressed="true"></button>
         </div>
 
         <div class="card-title" style="margin-top:16px">Strategy</div>
@@ -111,7 +108,7 @@
 
         <div class="card-title" style="margin-top:14px">Filters</div>
         <p style="font-size:12px;color:var(--text-2);line-height:1.6;margin:0 0 8px">
-            Liquidity sweep zones block trades where the move may already be exhausted. A trend filter sits out choppy, directionless markets. Seasonal filters skip historically underperforming periods. Trades only execute during active market sessions.
+            Liquidity sweep zones block trades where the move may already be exhausted. A trend filter sits out choppy, directionless markets. A seasonal filter sits out recurring events that make the market choppy and two-sided — US tax deadlines and the “sell in May” slump. Trades only execute during active market sessions.
         </p>
 
         <div class="card-title" style="margin-top:14px">Adaptive Sizing</div>
@@ -791,15 +788,13 @@
     document.getElementById('run-btn').addEventListener('click', function() { runBacktest(); });
 
     // ── Playground controls ──
-    var DEFAULTS = { rr: '2', risk: '2', lev: '{{ leverage }}', sessions: ['sydney','tokyo','london','ny'], seasonal: true };
+    var DEFAULTS = { risk: '2' };
 
     function btSetupParams() {
-        var rr = document.querySelector('.seg[data-bt="rr"] button.active');
         var sessions = [].map.call(document.querySelectorAll('[data-bt-session].on'), function(b) { return b.dataset.btSession; });
-        var seasonal = document.getElementById('bt-seasonal').classList.contains('on') ? 1 : 0;
-        return 'rrr=' + (rr ? rr.dataset.val : '2') +
-               '&sessions=' + sessions.join(',') +
-               '&seasonal=' + seasonal;
+        var sm = document.getElementById('bt-skip-may').classList.contains('on') ? 1 : 0;
+        var st = document.getElementById('bt-skip-tax').classList.contains('on') ? 1 : 0;
+        return 'sessions=' + sessions.join(',') + '&skip_may=' + sm + '&skip_tax=' + st;
     }
     function btCombinedParams() {
         return btSetupParams() + '&risk_pct=' + (document.getElementById('bt-risk').value || '2');
@@ -823,21 +818,10 @@
         }, 250);
     }
 
-    // RR segment
-    document.querySelectorAll('.seg[data-bt="rr"] button').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            document.querySelectorAll('.seg[data-bt="rr"] button').forEach(function(b) { b.classList.remove('active'); });
-            btn.classList.add('active');
-            btReload();
-        });
-    });
     // Risk % slider (affects equity sim → combined only, but reload both for simplicity)
     var btRisk = document.getElementById('bt-risk');
     btRisk.addEventListener('input', function() { document.getElementById('bt-risk-val').textContent = parseFloat(btRisk.value).toFixed(1) + '%'; });
     btRisk.addEventListener('change', btReload);
-    // Leverage slider (display only — doesn't change backtest results)
-    var btLev = document.getElementById('bt-lev');
-    btLev.addEventListener('input', function() { document.getElementById('bt-lev-val').textContent = btLev.value + '×'; });
     // Session chips
     document.querySelectorAll('[data-bt-session]').forEach(function(chip) {
         chip.addEventListener('click', function() {
@@ -847,21 +831,21 @@
             btReload();
         });
     });
-    // Seasonal toggle
-    var btSeasonal = document.getElementById('bt-seasonal');
-    btSeasonal.addEventListener('click', function() {
-        var on = !btSeasonal.classList.contains('on');
-        btSeasonal.classList.toggle('on', on);
-        btSeasonal.setAttribute('aria-pressed', on ? 'true' : 'false');
-        btReload();
+    // Seasonal event toggles (Sell in May, US tax deadline)
+    ['bt-skip-may', 'bt-skip-tax'].forEach(function(id) {
+        var t = document.getElementById(id);
+        t.addEventListener('click', function() {
+            var on = !t.classList.contains('on');
+            t.classList.toggle('on', on);
+            t.setAttribute('aria-pressed', on ? 'true' : 'false');
+            btReload();
+        });
     });
     // Reset
     document.getElementById('bt-reset').addEventListener('click', function() {
-        document.querySelectorAll('.seg[data-bt="rr"] button').forEach(function(b) { b.classList.toggle('active', b.dataset.val === DEFAULTS.rr); });
         btRisk.value = DEFAULTS.risk; document.getElementById('bt-risk-val').textContent = parseFloat(DEFAULTS.risk).toFixed(1) + '%';
-        btLev.value = DEFAULTS.lev; document.getElementById('bt-lev-val').textContent = DEFAULTS.lev + '×';
         document.querySelectorAll('[data-bt-session]').forEach(function(c) { c.classList.add('on'); });
-        btSeasonal.classList.add('on'); btSeasonal.setAttribute('aria-pressed', 'true');
+        ['bt-skip-may', 'bt-skip-tax'].forEach(function(id) { var t = document.getElementById(id); t.classList.add('on'); t.setAttribute('aria-pressed', 'true'); });
         btReload();
     });
 

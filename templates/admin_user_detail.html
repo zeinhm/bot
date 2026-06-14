@@ -47,6 +47,10 @@
                 {% if target.is_approved %}
                 <span class="pill green" style="gap:4px"><span class="led green"></span>Approved</span>
                 {% endif %}
+                {% if target.totp_enabled %}
+                <span class="pill blue" style="gap:4px">2FA on</span>
+                <button type="button" class="btn btn-ghost btn-sm" style="font-size:10.5px;padding:3px 9px" onclick="resetUser2FA({{ target.id }})">Reset 2FA</button>
+                {% endif %}
                 {% if target.created_at %}
                 <span class="muted" style="font-size:11px">Member since <span class="mono local-time" data-utc="{{ target.created_at.strftime('%Y-%m-%dT%H:%M:%SZ') }}" data-fmt="date">{{ target.created_at.strftime('%Y-%m-%d') }}</span></span>
                 {% endif %}
@@ -207,6 +211,14 @@
         </div>
     </div>
 </div>
+<script>
+function resetUser2FA(id) {
+    if (!confirm('Reset this user\'s 2FA? They will need to set it up again on next sign-in.')) return;
+    fetch('/admin/user/' + id + '/reset-2fa', { method: 'POST', headers: {'X-CSRF-Token': csrfToken()} })
+        .then(function(r) { return r.json(); })
+        .then(function(d) { if (d.ok) location.reload(); });
+}
+</script>
 {% if live_stats.total > 0 %}
 <script>
 (function() {

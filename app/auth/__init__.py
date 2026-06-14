@@ -9,3 +9,18 @@ from app.auth.service import (  # noqa: F401
     get_trading_mode,
     get_admin_mode,
 )
+from app.auth.twofa import (  # noqa: F401
+    require_2fa,
+    mark_2fa_verified,
+    verify_code,
+    generate_secret,
+    provisioning_uri,
+    qr_svg,
+    rate_limited,
+    record_code_failure,
+    clear_code_failures,
+    generate_backup_codes,
+    hash_backup_codes,
+    backup_codes_remaining,
+    verify_totp_or_backup,
+)

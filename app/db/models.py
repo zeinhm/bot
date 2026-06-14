@@ -98,6 +98,11 @@ class User(Base):
     is_admin = Column(Boolean, default=False, nullable=False)
     paper_bot_started = Column(Boolean, default=False, nullable=False)
 
+    # TOTP two-factor auth (opt-in; gates sensitive actions)
+    totp_secret_enc = Column(Text)               # Fernet-encrypted base32 secret
+    totp_enabled = Column(Boolean, default=False, nullable=False)
+    totp_backup_codes = Column(Text)             # JSON list of sha256-hashed one-time recovery codes
+
 
 class UserConfig(Base):
     __tablename__ = "user_configs"

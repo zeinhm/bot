@@ -33,6 +33,10 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.6 7.6a5 5 0 1 1-7.1 7.1 5 5 0 0 1 7.1-7.1zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3"/></svg>
             Exchange
         </button>
+        <button type="button" class="settings-tab" data-tab="security" role="tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            Security
+        </button>
     </div>
 
     <div class="settings-panel" data-panel="bot">
@@ -162,6 +166,17 @@
                 <div class="mono" style="font-size:12px;color:var(--text-2);margin-top:2px">••••••••••••</div>
             </div>
         </div>
+        {% if api_permissions %}
+        <div style="margin-bottom:12px">
+            <div class="k" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Key permissions</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+                <span class="pill {{ 'green' if api_permissions.reading else 'gray' }}" style="font-size:10px">Reading {{ '✓' if api_permissions.reading else '—' }}</span>
+                <span class="pill {{ 'green' if api_permissions.futures else 'gray' }}" style="font-size:10px">Futures {{ '✓' if api_permissions.futures else '—' }}</span>
+                <span class="pill {{ 'red' if api_permissions.withdrawals else 'green' }}" style="font-size:10px">Withdrawals {{ 'enabled' if api_permissions.withdrawals else 'off' }}</span>
+                <span class="pill {{ 'green' if api_permissions.ip_restricted else 'amber' }}" style="font-size:10px">{{ 'IP-restricted' if api_permissions.ip_restricted else 'No IP limit' }}</span>
+            </div>
+        </div>
+        {% endif %}
         <button type="button" class="btn btn-ghost btn-block" style="font-size:12px;color:var(--red)" onclick="document.getElementById('delete-keys-modal').style.display='flex'">Delete API Keys</button>
 
         <div id="delete-keys-modal" style="display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.6);align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)this.style.display='none'">
@@ -184,7 +199,8 @@
                 <label class="field-lbl">API Secret</label>
                 <input class="input mono" name="api_secret" type="password" required placeholder="Enter API secret" style="font-size:12px" autocomplete="new-password">
             </div>
-            <button type="submit" class="btn btn-primary btn-block" id="btn-save-keys">Save & Restart Bot</button>
+            <div id="api-key-error" class="callout amber" style="display:none;margin-bottom:10px"><span></span></div>
+            <button type="submit" class="btn btn-primary btn-block" id="btn-save-keys">Validate & Connect</button>
         </form>
         {% endif %}
 
@@ -208,6 +224,56 @@
     </div>
 
     </div><!-- /panel:exchange -->
+
+    <div class="settings-panel" data-panel="security" style="display:none">
+    <!-- Two-Factor Authentication -->
+    <div class="card">
+        <div class="card-title">Two-Factor Authentication</div>
+        {% if user.totp_enabled %}
+        <div class="callout green" style="margin-bottom:12px">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg>
+            <span>2FA is on. Sensitive actions ask for a code.</span>
+        </div>
+        <div class="between" style="margin-bottom:10px;font-size:12px">
+            <span class="muted">Recovery codes</span>
+            <span class="mono {{ 'neg' if backup_remaining == 0 else '' }}">{{ backup_remaining }} remaining</span>
+        </div>
+        {% if backup_remaining == 0 %}
+        <div class="callout amber" style="margin-bottom:10px;font-size:11.5px"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span>No recovery codes left. Regenerate so you can recover if you lose your device.</span></div>
+        {% endif %}
+        <button type="button" class="btn btn-ghost btn-block" style="font-size:12px;margin-bottom:8px" id="twofa-regen-btn">Regenerate recovery codes</button>
+        <button type="button" class="btn btn-ghost btn-block" style="font-size:12px;color:var(--red)" id="twofa-disable-btn">Disable 2FA</button>
+        {% else %}
+        <div class="vcenter gap12" style="margin-bottom:12px">
+            <div style="width:42px;height:42px;border-radius:10px;background:var(--green-dim);display:grid;place-items:center;color:var(--green);flex:none">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </div>
+            <div style="min-width:0">
+                <div style="font-size:13.5px;font-weight:600">Protect sensitive actions</div>
+                <div class="muted" style="font-size:11.5px">Require a 6-digit code to change your API keys or bot settings.</div>
+            </div>
+        </div>
+        <button type="button" class="btn btn-primary btn-block" id="twofa-enable-btn">Enable 2FA</button>
+        <div id="twofa-enroll" style="display:none;margin-top:14px">
+            <div style="text-align:center;margin-bottom:10px">
+                <div id="twofa-qr" style="width:170px;height:170px;margin:0 auto;background:#fff;border-radius:8px;padding:8px;box-sizing:border-box"></div>
+            </div>
+            <div class="muted" style="font-size:11px;text-align:center;margin-bottom:8px">Scan with Google Authenticator or Authy, or enter this key manually:</div>
+            <div style="display:flex;align-items:center;gap:8px;background:var(--card-3);border-radius:6px;padding:7px 8px 7px 12px;margin-bottom:12px">
+                <span class="mono" id="twofa-secret" style="flex:1;min-width:0;text-align:center;font-size:12px;color:var(--text-2);user-select:all;word-break:break-all"></span>
+                <button type="button" id="twofa-secret-copy" class="btn btn-ghost btn-sm" style="flex:none;padding:4px 9px;font-size:10.5px">
+                    <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    <span id="twofa-secret-copy-label">Copy</span>
+                </button>
+            </div>
+            <label class="field-lbl">Enter the 6-digit code to confirm</label>
+            <input id="twofa-enroll-code" class="input mono" inputmode="numeric" maxlength="6" placeholder="000000" style="text-align:center;letter-spacing:6px;font-size:16px;margin-bottom:8px">
+            <div id="twofa-enroll-error" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px"></div>
+            <button type="button" class="btn btn-primary btn-block" id="twofa-verify-btn">Verify &amp; Enable</button>
+        </div>
+        {% endif %}
+    </div>
+    </div><!-- /panel:security -->
 
     <!-- Install App -->
     <div class="card" id="install-card">
@@ -247,6 +313,23 @@
         <button type="button" class="btn btn-ghost btn-block" disabled>Reset paper trading wallet</button>
     </div>
 </div>
+<!-- 2FA recovery codes modal (shown once, after enroll or regenerate) -->
+<div id="twofa-backup-modal" style="display:none;position:fixed;inset:0;z-index:1001;background:rgba(0,0,0,.7);align-items:center;justify-content:center;padding:16px">
+    <div class="card" style="max-width:420px;width:100%">
+        <div class="card-title" style="margin-bottom:8px">Save your recovery codes</div>
+        <div class="callout amber" style="margin-bottom:12px">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+            <span>Each code works <b>once</b> if you lose your authenticator. Store them somewhere safe — they won't be shown again.</span>
+        </div>
+        <div id="twofa-backup-list" class="mono" style="background:var(--card-3);border-radius:6px;padding:14px;font-size:13px;line-height:2;text-align:center;letter-spacing:1px;user-select:all;margin-bottom:12px"></div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+            <button type="button" class="btn btn-ghost" style="flex:1;font-size:12px" id="twofa-backup-copy">Copy</button>
+            <button type="button" class="btn btn-ghost" style="flex:1;font-size:12px" id="twofa-backup-download">Download</button>
+        </div>
+        <button type="button" class="btn btn-primary btn-block" id="twofa-backup-done">I've saved them</button>
+    </div>
+</div>
+
 <!-- Save confirmation modal -->
 <div id="save-confirm-modal" style="display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.6);align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)this.style.display='none'">
     <div class="card" style="max-width:400px;width:100%">
@@ -274,17 +357,24 @@ function saveApiKeys(e) {
     var fd = new FormData(form);
     btn.disabled = true;
     btn.textContent = 'Saving...';
-    fetch('/settings/api-keys', {method:'POST', headers:{'X-CSRF-Token':csrfToken()}, body: fd})
+    var errEl = document.getElementById('api-key-error');
+    if (errEl) errEl.style.display = 'none';
+    guardedFetch('/settings/api-keys', {method:'POST', headers:{'X-CSRF-Token':csrfToken()}, body: fd})
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.ok) {
-                showToast('API keys updated. Bot restarted.');
+                showToast('API key validated & connected.');
                 setTimeout(function() { location.reload(); }, 1000);
+            } else {
+                if (errEl) { errEl.querySelector('span').textContent = data.error || 'Validation failed.'; errEl.style.display = 'flex'; }
+                btn.disabled = false;
+                btn.textContent = 'Validate & Connect';
             }
         })
         .catch(function() {
+            if (errEl) { errEl.querySelector('span').textContent = 'Network error — try again.'; errEl.style.display = 'flex'; }
             btn.disabled = false;
-            btn.textContent = 'Save & Restart Bot';
+            btn.textContent = 'Validate & Connect';
         });
     return false;
 }
@@ -292,7 +382,7 @@ function deleteApiKeys() {
     var btn = document.getElementById('btn-delete-keys');
     btn.disabled = true;
     btn.textContent = 'Deleting...';
-    fetch('/settings/api-keys/delete', {method:'POST', headers:{'X-CSRF-Token':csrfToken()}})
+    guardedFetch('/settings/api-keys/delete', {method:'POST', headers:{'X-CSRF-Token':csrfToken()}})
         .then(function(r) { return r.json(); })
         .then(function(data) {
             document.getElementById('delete-keys-modal').style.display = 'none';
@@ -319,7 +409,7 @@ function deleteApiKeys() {
     tabs.forEach(function(t) { t.addEventListener('click', function() { select(t.dataset.tab); }); });
     var saved = null;
     try { saved = localStorage.getItem('zenith_settings_tab'); } catch (e) {}
-    select(saved === 'exchange' ? 'exchange' : 'bot');
+    select(['exchange', 'security'].indexOf(saved) !== -1 ? saved : 'bot');
 })();
 // ---- Bot Control form ----
 (function() {
@@ -364,7 +454,7 @@ function deleteApiKeys() {
     function doSaveBot() {
         var cbtn = document.getElementById('save-confirm-btn');
         cbtn.disabled = true; cbtn.textContent = 'Saving…';
-        fetch('/settings', { method: 'POST', headers: {'X-CSRF-Token': csrfToken()}, body: new FormData(form) })
+        guardedFetch('/settings', { method: 'POST', headers: {'X-CSRF-Token': csrfToken()}, body: new FormData(form) })
             .then(function(r) { window.location.href = r.url || '/settings?saved=1'; })
             .catch(function() {
                 cbtn.disabled = false; cbtn.textContent = 'Save changes';
@@ -380,9 +470,12 @@ function deleteApiKeys() {
         if (!confirm('Reset all bot control settings to the validated defaults?')) return;
         var btn = this;
         btn.disabled = true; btn.textContent = 'Resetting…';
-        fetch('/settings/reset', { method: 'POST', headers: {'X-CSRF-Token': csrfToken()} })
+        guardedFetch('/settings/reset', { method: 'POST', headers: {'X-CSRF-Token': csrfToken()} })
             .then(function(r) { return r.json(); })
-            .then(function() { window.location.href = '/settings?saved=1'; })
+            .then(function(d) {
+                if (d && d.ok) { window.location.href = '/settings?saved=1'; }
+                else { btn.disabled = false; btn.textContent = 'Reset to default'; }
+            })
             .catch(function() { btn.disabled = false; btn.textContent = 'Reset to default'; });
     });
 })();
@@ -440,6 +533,111 @@ function deleteApiKeys() {
     document.addEventListener('pwa-installable', render);
     document.addEventListener('pwa-installed', function() { isStandalone = true; render(); });
     render();
+})();
+// ---- Two-Factor Auth (enroll / verify / disable) ----
+(function() {
+    var enableBtn = document.getElementById('twofa-enable-btn');
+    var verifyBtn = document.getElementById('twofa-verify-btn');
+    var disableBtn = document.getElementById('twofa-disable-btn');
+
+    if (enableBtn) enableBtn.addEventListener('click', function() {
+        enableBtn.disabled = true; enableBtn.textContent = 'Loading…';
+        fetch('/settings/2fa/enroll', { method: 'POST', headers: {'X-CSRF-Token': csrfToken()} })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (!d.ok) { enableBtn.disabled = false; enableBtn.textContent = 'Enable 2FA'; return; }
+                var qrEl = document.getElementById('twofa-qr');
+                qrEl.innerHTML = d.qr;
+                var svg = qrEl.querySelector('svg');
+                if (svg) { svg.setAttribute('width', '100%'); svg.setAttribute('height', '100%'); svg.style.display = 'block'; }
+                document.getElementById('twofa-secret').textContent = d.secret;
+                document.getElementById('twofa-enroll').style.display = 'block';
+                enableBtn.style.display = 'none';
+                document.getElementById('twofa-enroll-code').focus();
+            })
+            .catch(function() { enableBtn.disabled = false; enableBtn.textContent = 'Enable 2FA'; });
+    });
+
+    // Copy the manual setup key
+    var secretCopyBtn = document.getElementById('twofa-secret-copy');
+    if (secretCopyBtn) secretCopyBtn.addEventListener('click', function() {
+        var txt = document.getElementById('twofa-secret').textContent;
+        var label = document.getElementById('twofa-secret-copy-label');
+        var done = function() { if (label) { label.textContent = 'Copied'; setTimeout(function() { label.textContent = 'Copy'; }, 1500); } };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(txt).then(done).catch(function() {});
+        } else {
+            var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select();
+            try { document.execCommand('copy'); done(); } catch (e) {}
+            document.body.removeChild(ta);
+        }
+    });
+
+    // Recovery codes modal — shown once after enroll/regenerate.
+    var backupCodes = [];
+    function showBackupCodes(codes) {
+        backupCodes = codes || [];
+        document.getElementById('twofa-backup-list').innerHTML = backupCodes.map(function(c) { return '<div>' + c + '</div>'; }).join('');
+        document.getElementById('twofa-backup-modal').style.display = 'flex';
+    }
+    var copyBtn = document.getElementById('twofa-backup-copy');
+    if (copyBtn) copyBtn.addEventListener('click', function() {
+        var text = backupCodes.join('\n');
+        if (navigator.clipboard) navigator.clipboard.writeText(text).then(function(){ showToast('Recovery codes copied'); }).catch(function(){});
+    });
+    var dlBtn = document.getElementById('twofa-backup-download');
+    if (dlBtn) dlBtn.addEventListener('click', function() {
+        var blob = new Blob(['ZENITH recovery codes\n\n' + backupCodes.join('\n') + '\n'], {type: 'text/plain'});
+        var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'zenith-recovery-codes.txt'; a.click();
+    });
+    var doneBtn = document.getElementById('twofa-backup-done');
+    if (doneBtn) doneBtn.addEventListener('click', function() { location.reload(); });
+
+    if (verifyBtn) {
+        var doVerify = function() {
+            var code = document.getElementById('twofa-enroll-code').value.trim();
+            var err = document.getElementById('twofa-enroll-error');
+            err.style.display = 'none';
+            if (!code) return;
+            verifyBtn.disabled = true; verifyBtn.textContent = 'Verifying…';
+            var fd = new FormData(); fd.append('code', code);
+            fetch('/settings/2fa/verify', { method: 'POST', headers: {'X-CSRF-Token': csrfToken()}, body: fd })
+                .then(function(r) { return r.json().then(function(d) { return { ok: r.ok && d.ok, d: d }; }); })
+                .then(function(res) {
+                    verifyBtn.disabled = false; verifyBtn.textContent = 'Verify & Enable';
+                    if (res.ok) { showBackupCodes(res.d.backup_codes); }
+                    else { err.textContent = (res.d && res.d.error) || 'Invalid code.'; err.style.display = 'block'; }
+                })
+                .catch(function() { verifyBtn.disabled = false; verifyBtn.textContent = 'Verify & Enable'; });
+        };
+        verifyBtn.addEventListener('click', doVerify);
+        document.getElementById('twofa-enroll-code').addEventListener('keydown', function(e) { if (e.key === 'Enter') doVerify(); });
+    }
+
+    var regenBtn = document.getElementById('twofa-regen-btn');
+    if (regenBtn) regenBtn.addEventListener('click', function() {
+        var code = prompt('Enter a current 6-digit code (or a remaining recovery code) to generate new ones:');
+        if (!code) return;
+        var fd = new FormData(); fd.append('code', code.trim());
+        fetch('/settings/2fa/backup-codes/regenerate', { method: 'POST', headers: {'X-CSRF-Token': csrfToken()}, body: fd })
+            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok && d.ok, d: d }; }); })
+            .then(function(res) {
+                if (res.ok) { showBackupCodes(res.d.backup_codes); }
+                else { alert((res.d && res.d.error) || 'Invalid code.'); }
+            });
+    });
+
+    if (disableBtn) disableBtn.addEventListener('click', function() {
+        var code = prompt('Enter a current 6-digit code (or a recovery code) to turn off 2FA:');
+        if (!code) return;
+        var fd = new FormData(); fd.append('code', code.trim());
+        fetch('/settings/2fa/disable', { method: 'POST', headers: {'X-CSRF-Token': csrfToken()}, body: fd })
+            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok && d.ok, d: d }; }); })
+            .then(function(res) {
+                if (res.ok) { showToast('Two-factor disabled.'); setTimeout(function() { location.reload(); }, 800); }
+                else { alert((res.d && res.d.error) || 'Invalid code.'); }
+            });
+    });
 })();
 function emergencyClose() {
     if (!confirm('EMERGENCY CLOSE\n\nThis will immediately close ALL open positions at market price.\n\nAre you sure?')) return;

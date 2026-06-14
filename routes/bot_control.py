@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import update
 
-from app.auth import require_auth, get_trading_mode
+from app.auth import require_auth, get_trading_mode, require_2fa
 from app.bot import get_bot_for_user, make_broadcast_fn, build_user_config, build_paper_config
 from app.auth import decrypt
 from app.db.models import User
@@ -17,6 +17,9 @@ log = logging.getLogger(__name__)
 @router.post("/bot/start")
 async def start_bot(request: Request):
     user = await require_auth(request)
+    chal = require_2fa(request, user)
+    if chal:
+        return chal
     mode = get_trading_mode(request)
     manager = request.app.state.bot_manager
 
@@ -44,6 +47,9 @@ async def start_bot(request: Request):
 @router.post("/bot/stop")
 async def stop_bot(request: Request):
     user = await require_auth(request)
+    chal = require_2fa(request, user)
+    if chal:
+        return chal
     mode = get_trading_mode(request)
     manager = request.app.state.bot_manager
 

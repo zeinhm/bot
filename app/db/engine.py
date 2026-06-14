@@ -20,10 +20,18 @@ async def _ensure_schema(eng):
             ("is_admin", "false"),
             ("is_rejected", "false"),
             ("paper_bot_started", "false"),
+            ("totp_enabled", "false"),
         ]:
             await conn.execute(text(
                 f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} BOOLEAN NOT NULL DEFAULT {default}"
             ))
+        # nullable TOTP secret (Fernet-encrypted) + hashed one-time backup codes
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret_enc TEXT"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_backup_codes TEXT"
+        ))
 
         # trades columns
         for col, typ, default in [

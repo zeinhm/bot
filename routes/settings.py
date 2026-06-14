@@ -5,9 +5,10 @@ from fastapi import APIRouter, Request, Form
 from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
-from app.auth import require_auth, encrypt, decrypt, get_trading_mode
+from app.auth import require_auth, encrypt, decrypt, get_trading_mode, require_2fa, backup_codes_remaining
 from app.bot import get_bot_for_user, make_broadcast_fn, build_user_config
 from config import SYMBOLS, STRATEGY_PARAMS, LEVERAGE
+from exchange import validate_api_key
 import app.db as db
 from app.core.context import get_global_context
 
@@ -36,6 +37,7 @@ async def settings_page(request: Request):
 
     cfg = await db.get_user_config(user.id)
     api_key_set = cfg is not None and cfg.binance_api_key_enc is not None
+    api_permissions = await db.get_state("api_permissions", {}, user_id=user.id, is_paper=False)
 
     api_key_preview = ""
     if api_key_set:
@@ -61,6 +63,8 @@ async def settings_page(request: Request):
         "rr_ratio": rr_ratio,
         "api_key_set": api_key_set,
         "api_key_preview": api_key_preview,
+        "api_permissions": api_permissions,
+        "backup_remaining": backup_codes_remaining(getattr(user, "totp_backup_codes", None)),
         "leverage": leverage,
         "default_leverage": LEVERAGE,
         "skip_may": skip_may,
@@ -88,6 +92,9 @@ async def save_settings(
     skip_tax_deadline: str = Form(None),
 ):
     user = await require_auth(request)
+    chal = require_2fa(request, user)
+    if chal:
+        return chal
     mode = get_trading_mode(request)
     is_paper = (mode == "paper")
     form = await request.form()
@@ -146,6 +153,9 @@ async def save_settings(
 async def reset_settings(request: Request):
     """Reset all bot-control settings for the current mode back to validated defaults."""
     user = await require_auth(request)
+    chal = require_2fa(request, user)
+    if chal:
+        return chal
     mode = get_trading_mode(request)
     is_paper = (mode == "paper")
 
@@ -176,6 +186,15 @@ async def save_api_keys(
     api_secret: str = Form(...),
 ):
     user = await require_auth(request)
+    chal = require_2fa(request, user)
+    if chal:
+        return chal
+
+    # Validate against Binance before persisting — rejects bad keys, Futures-
+    # disabled keys, and (for safety) keys with withdrawals enabled.
+    result = await validate_api_key(api_key.strip(), api_secret.strip())
+    if not result["ok"]:
+        return JSONResponse({"ok": False, "error": result["error"]}, status_code=400)
 
     api_key_enc = encrypt(api_key.strip())
     api_secret_enc = encrypt(api_secret.strip())
@@ -185,6 +204,7 @@ async def save_api_keys(
         api_key_enc=api_key_enc,
         api_secret_enc=api_secret_enc,
     )
+    await db.set_state("api_permissions", result["permissions"], user_id=user.id, is_paper=False)
 
     manager = request.app.state.bot_manager
     worker = manager.get_worker(user.id, "live")
@@ -200,12 +220,27 @@ async def save_api_keys(
                             shared_market=shared_market)
 
     log.info("User %d updated API keys", user.id)
-    return JSONResponse({"ok": True})
+    return JSONResponse({"ok": True, "permissions": result["permissions"]})
+
+
+@router.post("/settings/api-keys/validate")
+async def validate_api_keys_route(
+    request: Request,
+    api_key: str = Form(...),
+    api_secret: str = Form(...),
+):
+    """Validate keys without persisting — used by the inline form + onboarding wizard."""
+    await require_auth(request)
+    result = await validate_api_key(api_key.strip(), api_secret.strip())
+    return JSONResponse(result)
 
 
 @router.post("/settings/api-keys/delete")
 async def delete_api_keys(request: Request):
     user = await require_auth(request)
+    chal = require_2fa(request, user)
+    if chal:
+        return chal
 
     manager = request.app.state.bot_manager
     worker = manager.get_worker(user.id, "live")
@@ -222,6 +257,8 @@ async def delete_api_keys(request: Request):
 
 @router.post("/api/emergency-close")
 async def emergency_close(request: Request):
+    # Intentionally NOT 2FA-gated: this is a time-critical "get me out now" action;
+    # the confirm dialog is the safeguard. Speed matters more than step-up here.
     user = await require_auth(request)
     mode = get_trading_mode(request)
     is_paper = (mode == "paper")

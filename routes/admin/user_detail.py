@@ -129,6 +129,26 @@ async def admin_user_detail(request: Request, user_id: int):
     })
 
 
+@router.post("/admin/user/{user_id}/reset-2fa")
+async def reset_user_2fa(request: Request, user_id: int):
+    """Admin recovery: clear a user's 2FA so they can re-enroll (lost device)."""
+    from routes.admin import require_admin
+    admin = await require_admin(request)
+
+    from sqlalchemy import update
+    from app.db.models import User
+    async with db.get_session() as session:
+        await session.execute(
+            update(User).where(User.id == user_id).values(
+                totp_secret_enc=None, totp_enabled=False, totp_backup_codes=None)
+        )
+        await session.commit()
+
+    log.info("Admin %d reset 2FA for user %d", admin.id, user_id)
+    await db.log_event(f"Admin reset 2FA for user #{user_id}", level="warn", category="system")
+    return JSONResponse({"ok": True})
+
+
 @router.post("/admin/user/{user_id}/reconcile")
 async def reconcile_trades(request: Request, user_id: int):
     from routes.admin import require_admin

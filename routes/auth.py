@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 from app.auth import require_auth, encrypt, decrypt
 from app.bot import make_broadcast_fn, build_user_config
 from config import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+from exchange import validate_api_key
 import app.db as db
 
 router = APIRouter()
@@ -117,6 +118,7 @@ async def setup_page(request: Request):
     return templates.TemplateResponse(request, "setup.html", {
         "user": user,
         "has_keys": cfg is not None and cfg.binance_api_key_enc is not None,
+        "error": request.query_params.get("error", ""),
     })
 
 
@@ -128,6 +130,12 @@ async def save_setup(
 ):
     user = await require_auth(request)
 
+    # Validate against Binance before saving (same gate as Settings).
+    result = await validate_api_key(api_key.strip(), api_secret.strip())
+    if not result["ok"]:
+        from urllib.parse import quote
+        return RedirectResponse(f"/setup?error={quote(result['error'])}", status_code=303)
+
     api_key_enc = encrypt(api_key.strip())
     api_secret_enc = encrypt(api_secret.strip())
 
@@ -136,6 +144,7 @@ async def save_setup(
         api_key_enc=api_key_enc,
         api_secret_enc=api_secret_enc,
     )
+    await db.set_state("api_permissions", result["permissions"], user_id=user.id, is_paper=False)
 
     manager = request.app.state.bot_manager
     config = build_user_config(api_key.strip(), api_secret.strip())

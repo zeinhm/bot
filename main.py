@@ -38,6 +38,7 @@ from routes.backtester import router as backtester_router
 from routes.alerts import router as alerts_router
 from routes.track_record import router as track_record_router
 from routes.bot_control import router as bot_control_router
+from routes.twofa import router as twofa_router
 from routes.admin import router as admin_router, AdminNotFound
 
 logging.basicConfig(
@@ -194,5 +195,6 @@ app.include_router(backtester_router)
 app.include_router(alerts_router)
 app.include_router(track_record_router)
 app.include_router(bot_control_router)
+app.include_router(twofa_router)
 app.include_router(admin_router)
 app.include_router(ws_router)

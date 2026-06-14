@@ -360,7 +360,69 @@
     </div>
 </div>
 
+<!-- 2FA step-up challenge modal -->
+<div id="twofa-modal" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.6);align-items:center;justify-content:center;padding:16px">
+    <div class="card" style="max-width:360px;width:100%">
+        <div style="font-size:15px;font-weight:700;margin-bottom:4px">Two-factor verification</div>
+        <p class="muted" style="font-size:12.5px;margin:0 0 14px">Enter the 6-digit code from your authenticator app to continue.</p>
+        <input id="twofa-code" class="input mono" autocomplete="one-time-code" maxlength="11" placeholder="6-digit or recovery code" style="text-align:center;letter-spacing:2px;font-size:16px;margin-bottom:8px">
+        <div class="muted" style="font-size:11px;text-align:center;margin-bottom:10px">Lost your device? Enter a one-time recovery code instead.</div>
+        <div id="twofa-error" style="display:none;color:var(--red);font-size:12px;margin-bottom:10px"></div>
+        <div style="display:flex;gap:8px">
+            <button id="twofa-cancel" class="btn btn-ghost" style="flex:1;font-size:12px">Cancel</button>
+            <button id="twofa-submit" class="btn btn-primary" style="flex:1;font-size:12px">Verify</button>
+        </div>
+    </div>
+</div>
+
 <script>
+// Shows the 2FA modal, resolves true after a successful step-up challenge.
+function show2FAModal() {
+    return new Promise(function(resolve) {
+        var modal = document.getElementById('twofa-modal');
+        var input = document.getElementById('twofa-code');
+        var submit = document.getElementById('twofa-submit');
+        var cancel = document.getElementById('twofa-cancel');
+        var err = document.getElementById('twofa-error');
+        input.value = ''; err.style.display = 'none';
+        modal.style.display = 'flex';
+        setTimeout(function() { input.focus(); }, 50);
+        function cleanup() { modal.style.display = 'none'; submit.onclick = null; cancel.onclick = null; input.onkeydown = null; }
+        function doVerify() {
+            var code = input.value.trim();
+            if (!code) return;
+            submit.disabled = true; submit.textContent = 'Verifying…';
+            var fd = new FormData(); fd.append('code', code);
+            fetch('/settings/2fa/challenge', { method: 'POST', headers: {'X-CSRF-Token': csrfToken()}, body: fd })
+                .then(function(r) { return r.json().then(function(d) { return { ok: r.ok && d.ok, d: d }; }); })
+                .then(function(res) {
+                    submit.disabled = false; submit.textContent = 'Verify';
+                    if (res.ok) {
+                        cleanup();
+                        if (res.d && res.d.used_backup) { alert('Recovery code used. ' + res.d.backup_remaining + ' recovery code(s) left.'); }
+                        resolve(true);
+                    }
+                    else { err.textContent = (res.d && res.d.error) || 'Invalid code.'; err.style.display = 'block'; input.select(); }
+                })
+                .catch(function() { submit.disabled = false; submit.textContent = 'Verify'; err.textContent = 'Network error.'; err.style.display = 'block'; });
+        }
+        submit.onclick = doVerify;
+        input.onkeydown = function(e) { if (e.key === 'Enter') doVerify(); };
+        cancel.onclick = function() { cleanup(); resolve(false); };
+    });
+}
+// fetch wrapper: on a 401 "twofa_required", prompts for a code then retries once.
+function guardedFetch(url, opts) {
+    return fetch(url, opts).then(function(r) {
+        if (r.status !== 401) return r;
+        return r.clone().json().catch(function() { return {}; }).then(function(data) {
+            if (data && data.twofa_required) {
+                return show2FAModal().then(function(ok) { return ok ? fetch(url, opts) : r; });
+            }
+            return r;
+        });
+    });
+}
 function toggleAdminMode(enable) {
     fetch('/admin/toggle', { method: 'POST', headers: {'X-CSRF-Token': csrfToken()} })
     .then(function(r) { return r.json(); })

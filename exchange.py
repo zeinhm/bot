@@ -260,6 +260,61 @@ class BinanceExchange:
         return f"{rounded:.2f}"
 
 
+async def validate_api_key(api_key: str, api_secret: str) -> dict:
+    """Validate a Binance Futures API key before saving it.
+
+    Returns ``{ok, permissions, error}``. ``ok`` is True only if the key works,
+    Futures is enabled, and withdrawals are NOT enabled (a security red flag).
+    ``permissions`` carries the readable flags (reading/futures/withdrawals/
+    ip_restricted) when available; some keys can't read their own restrictions,
+    in which case it's empty but the Futures check still gates ``ok``.
+    """
+    try:
+        client = await AsyncClient.create(api_key=api_key, api_secret=api_secret)
+    except Exception:
+        return {"ok": False, "permissions": {}, "error": "Could not connect to Binance. Check the key and secret."}
+
+    try:
+        # 1) Proves the key/secret work AND that Futures access is enabled.
+        try:
+            await client.futures_account_balance()
+        except Exception as e:
+            msg = str(e)
+            if "-2015" in msg:
+                err = "Invalid key, IP not whitelisted, or Futures trading not enabled on this key."
+            elif "-2014" in msg or "-1022" in msg or "signature" in msg.lower():
+                err = "Invalid API key or secret."
+            else:
+                err = "Could not access Binance Futures with this key."
+            return {"ok": False, "permissions": {}, "error": err}
+
+        # 2) Read the permission flags (best-effort — not all keys can read this).
+        perms: dict = {}
+        try:
+            r = await client.get_account_api_permissions()
+            perms = {
+                "reading": bool(r.get("enableReading", True)),
+                "futures": bool(r.get("enableFutures", True)),
+                "withdrawals": bool(r.get("enableWithdrawals", False)),
+                "ip_restricted": bool(r.get("ipRestrict", False)),
+            }
+            if perms["withdrawals"]:
+                return {
+                    "ok": False,
+                    "permissions": perms,
+                    "error": "This key has Withdrawals enabled. Disable it on Binance for safety, then reconnect.",
+                }
+        except Exception:
+            perms = {}  # unknown — Futures access is already confirmed above
+
+        return {"ok": True, "permissions": perms, "error": None}
+    finally:
+        try:
+            await client.close_connection()
+        except Exception:
+            pass
+
+
 def r_value_for_exit(
     is_sl: bool,
     entry_price: float | None,

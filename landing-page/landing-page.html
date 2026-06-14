@@ -27,7 +27,7 @@
 <meta name="theme-color" content="#0F1117">
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 
-<link rel="stylesheet" href="/landing/landing-page.css" />
+<link rel="stylesheet" href="/landing/landing-page.css?v=2" />
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () { navigator.serviceWorker.register('/sw.js').catch(function () {}); });
@@ -157,7 +157,7 @@ window.addEventListener('beforeinstallprompt', function (e) {
     <div class="filters reveal">
       <span class="filter-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Liquidity-sweep zones block exhausted moves</span>
       <span class="filter-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Trend filter skips choppy markets</span>
-      <span class="filter-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Seasonal filters sit out weak periods</span>
+      <span class="filter-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Seasonal filter for choppy events — US tax season &amp; sell-in-May</span>
       <span class="filter-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Trades active sessions only</span>
     </div>
   </div>
@@ -320,7 +320,7 @@ window.addEventListener('beforeinstallprompt', function (e) {
         </summary>
         <div class="faq-a">
           <p>The bot scans for periods where price coils into a tight range relative to recent volatility — <b>accumulation</b>. It then watches for a sharp wick that sweeps beyond the range, trapping breakout traders and hunting stops — <b>manipulation</b>. Once the trap is set, it waits for a Fair Value Gap to form in the opposite direction, confirming the real move, and enters at the FVG candle close.</p>
-          <p>Every trade targets a <b>2:1 reward-to-risk</b> ratio: the stop sits beyond the manipulation extreme, and take profit is twice that distance. The win rate is intentionally below 50% — the edge comes from the payoff, not from being right most of the time. Liquidity-sweep, trend and seasonal filters sit out the weakest conditions, and position size scales down automatically during losing streaks.</p>
+          <p>Every trade targets a <b>2:1 reward-to-risk</b> ratio: the stop sits beyond the manipulation extreme, and take profit is twice that distance. The win rate is intentionally below 50% — the edge comes from the payoff, not from being right most of the time. Liquidity-sweep and trend filters sit out exhausted or choppy moves, a seasonal filter sits out recurring events that make the market choppy — US tax deadlines and the “sell in May” slump — and position size scales down automatically during losing streaks.</p>
         </div>
       </details>
 
@@ -471,6 +471,6 @@ window.addEventListener('beforeinstallprompt', function (e) {
   </div>
 </footer>
 
-<script src="/landing/landing-page.js"></script>
+<script src="/landing/landing-page.js?v=2"></script>
 </body>
 </html>

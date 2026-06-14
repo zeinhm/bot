@@ -27,7 +27,7 @@
 <meta name="theme-color" content="#0F1117">
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 
-<link rel="stylesheet" href="/landing/landing-page.css?v=2" />
+<link rel="stylesheet" href="/landing/landing-page.css?v=4" />
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () { navigator.serviceWorker.register('/sw.js').catch(function () {}); });
@@ -117,43 +117,60 @@ window.addEventListener('beforeinstallprompt', function (e) {
 </section>
 
 <!-- ============================== HOW IT WORKS ============================== -->
-<section class="sec" id="how">
-  <div class="wrap">
-    <div class="sec-head reveal">
-      <div class="eyebrow">How it works</div>
-      <h2>Not a black box. A rules-based edge <span class="accent">you can read.</span></h2>
-      <p>Every entry walks the same four steps. No discretionary overrides, no hidden signals — the bot acts only when the structure confirms.</p>
+<!-- ZENITH — "How it works" pinned scroll section (interactive AMD trade). -->
+<section class="amd" id="how">
+  <div class="amd-track" id="amd-track">
+    <div class="amd-stick">
+      <div class="wrap amd-inner">
+        <div class="amd-top">
+          <div class="eyebrow">How it works</div>
+          <h2>Not a black box. A trade you can <span class="accent">watch unfold.</span></h2>
+        </div>
+        <div class="amd-grid">
+          <div class="amd-steps">
+            <div class="amd-step">
+              <div class="amd-sn"><span class="led-dot"></span>01 · ACCUMULATION</div>
+              <h3>Price coils</h3>
+              <p>Price compresses into a tight range relative to recent volatility — energy building before a move.</p>
+              <div class="amd-bar"><span></span></div>
+            </div>
+            <div class="amd-step">
+              <div class="amd-sn"><span class="led-dot"></span>02 · MANIPULATION</div>
+              <h3>The sweep</h3>
+              <p>A sharp wick pushes beyond the range, trapping breakout traders and hunting stops.</p>
+              <div class="amd-bar"><span></span></div>
+            </div>
+            <div class="amd-step">
+              <div class="amd-sn"><span class="led-dot"></span>03 · DISTRIBUTION</div>
+              <h3>FVG confirms</h3>
+              <p>A Fair Value Gap forms in the opposite direction. The bot enters at the FVG close — not on hope.</p>
+              <div class="amd-bar"><span></span></div>
+            </div>
+            <div class="amd-step">
+              <div class="amd-sn"><span class="led-dot"></span>04 · EXECUTION</div>
+              <h3>2:1, every time</h3>
+              <p>Stop beyond the manipulation extreme; take profit at twice the risk. Wins pay double.</p>
+              <div class="amd-bar"><span></span></div>
+            </div>
+          </div>
+          <div class="amd-stage">
+            <div class="amd-chartcard">
+              <div class="amd-chart-head">
+                <span class="amd-readout" id="amd-readout"></span>
+              </div>
+              <canvas id="amd-chart"></canvas>
+            </div>
+            <div class="amd-hint">Scroll to step through the strategy ↓</div>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="steps">
-      <div class="step-card reveal">
-        <div class="sn">01 — ACCUMULATION</div>
-        <div class="diag" id="accDiag"></div>
-        <h3>Price coils</h3>
-        <p>The bot detects when price compresses into a tight range relative to recent volatility — energy building before a move.</p>
-        <svg class="step-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-      </div>
-      <div class="step-card reveal">
-        <div class="sn">02 — MANIPULATION</div>
-        <div class="diag" id="manDiag"></div>
-        <h3>The sweep</h3>
-        <p>A sharp wick pushes beyond the range, trapping breakout traders and hunting stops — the liquidity grab before the real move.</p>
-        <svg class="step-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-      </div>
-      <div class="step-card reveal">
-        <div class="sn">03 — DISTRIBUTION</div>
-        <div class="diag" id="fvgDiag"></div>
-        <h3>FVG confirms</h3>
-        <p>A Fair Value Gap forms in the opposite direction, confirming intent. The bot enters at the FVG close — not on hope.</p>
-        <svg class="step-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-      </div>
-      <div class="step-card reveal">
-        <div class="sn">04 — EXECUTION</div>
-        <div class="diag" id="entryDiag"></div>
-        <h3>2:1 every time</h3>
-        <p>Stop loss sits beyond the manipulation extreme (volatility-based). Take profit at 2× the stop distance. Wins pay double.</p>
-      </div>
-    </div>
+  </div>
+</section>
 
+<!-- Strategy filter chips (preserved from the original How-it-works section). -->
+<section class="sec amd-filters-sec">
+  <div class="wrap">
     <div class="filters reveal">
       <span class="filter-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Liquidity-sweep zones block exhausted moves</span>
       <span class="filter-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Trend filter skips choppy markets</span>
@@ -472,5 +489,6 @@ window.addEventListener('beforeinstallprompt', function (e) {
 </footer>
 
 <script src="/landing/landing-page.js?v=2"></script>
+<script src="/landing/amd-scroll.js?v=5"></script>
 </body>
 </html>

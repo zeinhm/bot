@@ -6,6 +6,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 
 ---
 
+## [2026-06-15]
+
+### Added
+- **Interactive "How it works" section** (`landing-page/`): the `#how` section is now a pinned, scroll-driven canvas that builds a full AMD trade as you scroll — accumulation range → liquidity sweep → FVG + entry → SL/TP execution, the four step cards lighting up in sync. The chart header shows only the current step label (e.g. "03 · FVG confirms — entry fires"). New `amd-scroll.js` (vanilla JS + `<canvas>`, no libraries/build step); styles appended to `landing-page.css` (`.amd-*`, cache-bust `?v=4`); markup replaces the old static four-card grid. Desktop (>980px) gets the pinned side-by-side effect (steps left, chart right). Mobile (≤980px) reflows to a **card-deck**: the chart stays pinned below while the four phase cards stack on top — the active card in front, the rest peeking behind, each scroll step sending the front card back and bringing the next forward, so the explanation and chart are always on screen together (`amd-scroll.js` sets a per-card `--depth`/`z-index`; CSS animates the stack). `prefers-reduced-motion` falls back to a plain static stack. The strategy filter chips (liquidity-sweep / trend / seasonal / sessions) are preserved as a section directly below.
+
 ## [2026-06-14]
 
 ### Added

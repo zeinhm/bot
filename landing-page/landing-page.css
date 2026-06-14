@@ -360,3 +360,83 @@ footer { border-top: 1px solid var(--border); padding: 56px 0 36px; background: 
   .dash-stat .dv { font-size: 18px; }
   .browser-url { max-width: none; }
 }
+
+/* ============================================================ HOW IT WORKS — pinned scroll
+   Paste this block at the end of bot/landing-page/landing-page.css.
+   Uses your existing tokens (--green, --bg-2, --mono, etc.) — nothing else to change.
+   ============================================================ */
+.amd { position: relative; background: var(--bg-2); border-block: 1px solid var(--border); }
+.amd-track { height: 380vh; }                 /* total scroll the section consumes — raise to slow it down */
+.amd-stick { position: sticky; top: 0; height: 100vh; display: flex; align-items: center; overflow: hidden; }
+.amd-stick::before { content: ""; position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,.014) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.014) 1px, transparent 1px); background-size: 52px 52px; -webkit-mask-image: radial-gradient(120% 90% at 50% 28%, #000, transparent 75%); mask-image: radial-gradient(120% 90% at 50% 28%, #000, transparent 75%); pointer-events: none; }
+.amd-inner { width: 100%; position: relative; z-index: 1; }
+.amd-top { margin-bottom: 26px; }
+.amd-top .eyebrow { margin-bottom: 8px; }
+.amd-top h2 { font-size: 34px; font-weight: 700; letter-spacing: -1px; margin: 0; line-height: 1.1; }
+.amd-top h2 .accent { color: var(--green); }
+.amd-grid { display: grid; grid-template-columns: .82fr 1.18fr; gap: 40px; align-items: center; }
+.amd-steps { display: flex; flex-direction: column; gap: 10px; }
+.amd-step { padding: 15px 18px; border: 1px solid var(--border); border-radius: 12px; background: rgba(20,24,31,.45); opacity: .45; transition: opacity .35s, border-color .35s, background .35s, transform .35s; }
+.amd-step.done { opacity: .72; }
+.amd-step.on { opacity: 1; border-color: var(--green-line); background: var(--card); transform: translateX(4px); }
+.amd-sn { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 1px; color: var(--muted); display: flex; align-items: center; gap: 9px; }
+.amd-step.on .amd-sn { color: var(--green); }
+.led-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: none; transition: background .3s, box-shadow .3s; }
+.amd-step.on .led-dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.amd-step.done .led-dot { background: var(--green); }
+.amd-step h3 { font-size: 17px; font-weight: 600; margin: 9px 0 5px; }
+.amd-step p { font-size: 13px; color: var(--text-2); margin: 0; line-height: 1.5; }
+.amd-bar { height: 2px; background: rgba(255,255,255,.06); border-radius: 2px; margin-top: 12px; overflow: hidden; }
+.amd-bar > span { display: block; height: 100%; background: var(--green); border-radius: 2px; transform: scaleX(0); transform-origin: left; transition: transform .12s linear; }
+.amd-stage { position: relative; }
+.amd-chartcard { background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.5); }
+.amd-chart-head { display: flex; align-items: center; justify-content: space-between; padding: 11px 16px; border-bottom: 1px solid var(--border); background: var(--bg-2); }
+.amd-pair { font-family: var(--mono); font-size: 12px; color: var(--muted); letter-spacing: .3px; }
+.amd-readout { font-family: var(--mono); font-size: 12px; display: flex; gap: 14px; align-items: center; }
+.amd-readout .r-phase { color: var(--text-2); }
+.amd-readout .r-val { font-weight: 700; color: var(--green); }
+.amd-readout .r-val.muted { color: var(--muted); font-weight: 600; }
+#amd-chart { display: block; width: 100%; height: 404px; }
+.amd-hint { text-align: center; font-size: 12px; color: var(--muted); margin-top: 14px; letter-spacing: .3px; }
+/* ===== Mobile: card-deck reflow — deck on top, chart below ===== */
+@media (max-width: 980px) {
+  .amd-track { height: 420vh; }
+  .amd-stick { position: sticky; top: 0; height: 100vh; padding: 0; }
+  .amd-inner { display: flex; flex-direction: column; height: 100%; padding-top: 16px; padding-bottom: 18px; }
+  .amd-top { margin-bottom: 14px; }
+  .amd-top h2 { font-size: 23px; letter-spacing: -.6px; }
+  .amd-grid { display: flex; flex-direction: column; align-items: stretch; gap: 16px; flex: 1; min-height: 0; }
+
+  /* the deck */
+  .amd-steps { position: relative; width: 100%; height: 196px; flex: none; }
+  .amd-step {
+    position: absolute; left: 0; right: 0; top: 0; margin: 0;
+    background: var(--card); border-color: var(--border);
+    transform: translateY(calc(var(--depth, 0) * 16px)) scale(calc(1 - var(--depth, 0) * 0.04));
+    transform-origin: top center;
+    opacity: calc(1 - var(--depth, 0) * 0.24);
+    transition: transform .55s cubic-bezier(.45,0,.2,1), opacity .45s ease, border-color .3s, background .3s;
+    will-change: transform, opacity;
+    box-shadow: 0 -1px 0 rgba(0,0,0,.4), 0 14px 30px rgba(0,0,0,.4);
+  }
+  .amd-step.on { transform: translateY(0) scale(1); opacity: 1; border-color: var(--green-line); }
+  .amd-step .amd-bar { transition: opacity .3s; }
+  .amd-step:not(.on) .amd-bar { opacity: 0; }
+
+  /* the chart, under the deck, filling remaining height */
+  .amd-stage { flex: 1; width: 100%; min-height: 0; display: flex; flex-direction: column; }
+  .amd-chartcard { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  #amd-chart { flex: 1; height: 100%; min-height: 200px; }
+  .amd-hint { display: none; }
+}
+
+/* reduced motion: plain static stack, no pin */
+@media (prefers-reduced-motion: reduce) {
+  .amd-track { height: auto; }
+  .amd-stick { position: static; height: auto; padding: 72px 0; }
+  .amd-inner { display: block; height: auto; }
+  .amd-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+  .amd-steps { position: static; height: auto; }
+  .amd-step { position: static; transform: none; opacity: 1; margin-bottom: 10px; box-shadow: none; }
+  #amd-chart { height: 300px; }
+}

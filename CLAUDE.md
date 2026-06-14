@@ -47,6 +47,7 @@ bot/
 │
 ├── app/
 │   ├── auth/service.py        # Fernet encrypt/decrypt, require_auth, session helpers
+│   ├── auth/twofa.py          # TOTP 2FA: enroll/verify, require_2fa step-up gate, backup codes, rate limit
 │   ├── core/context.py        # get_global_context() for template rendering
 │   ├── core/template_filters.py # Shared Jinja filters (num: comma+decimals); register_filters()
 │   ├── email.py               # send_approval_email(), send_rejection_email() via Resend
@@ -80,6 +81,7 @@ bot/
 │   ├── trades.py              # GET /trades (filtered trade history)
 │   ├── settings.py            # GET/POST /settings, API key CRUD, emergency close
 │   ├── bot_control.py         # Bot start/stop/status, mode switching
+│   ├── twofa.py               # 2FA endpoints: enroll/verify/disable/challenge + backup-codes/regenerate
 │   ├── analytics.py           # GET /analytics (session/day/monthly breakdowns)
 │   ├── backtester.py          # GET /backtester, /api/backtest (cached {stats,total}), /api/backtest/setups (paged), /api/backtest/combined, /api/candles
 │   ├── alerts.py              # GET /alerts (event log)
@@ -131,7 +133,7 @@ bot/
 │
 ├── alembic/
 │   ├── env.py                 # Migration environment config
-│   └── versions/              # 6 migrations (schema → paper trading → rejection → funding fee → backtest cache)
+│   └── versions/              # 8 migrations (schema → paper trading → rejection → funding fee → backtest cache → 2FA)
 │
 ├── docs/
 │   ├── architecture.md        # System design overview
@@ -172,6 +174,8 @@ bot/
 | **Email notifications**             | `app/email.py`                                               |
 | **User auth / session**             | `app/auth/service.py`, `routes/auth.py`                      |
 | **API key encryption**              | `app/auth/service.py` → `encrypt()`, `decrypt()`             |
+| **API key validation**              | `exchange.py` → `validate_api_key()`; wired in `routes/settings.py` + `routes/auth.py` (setup) |
+| **2FA (TOTP) / step-up gate**       | `app/auth/twofa.py` (`require_2fa`, backup codes), `routes/twofa.py`, Settings → Security tab (`templates/settings.html`), challenge modal + `guardedFetch` in `templates/base.html`; admin reset in `routes/admin/user_detail.py` |
 | **User approval flow**              | `routes/admin/users.py`, `templates/admin_users.html`        |
 | **Bot start/stop lifecycle**        | `app/bot/manager.py`, `routes/bot_control.py`                |
 | **Landing page**                    | `landing-page/` (all 3 files, no Jinja)                      |
@@ -205,7 +209,7 @@ bot/
 
 | Model | Table | Key fields |
 |-------|-------|------------|
-| `User` | `users` | google_id, email, name, is_approved, is_rejected, is_admin, paper_bot_started |
+| `User` | `users` | google_id, email, name, is_approved, is_rejected, is_admin, paper_bot_started, totp_secret_enc, totp_enabled, totp_backup_codes |
 | `UserConfig` | `user_configs` | user_id (FK), binance_api_key_enc, binance_api_secret_enc |
 | `Trade` | `trades` | user_id (FK), is_paper, symbol, direction, entry/exit price/time, result, r_value, pnl_usdt (net), commission (USDT fee), funding_fee |
 | `BotState` | `bot_state` | key, value, user_id, is_paper — unique on (key, user_id, is_paper) |

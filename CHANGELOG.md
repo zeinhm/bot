@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 
 ---
 
+## [2026-06-14]
+
+### Added
+- **Account — API-key validation (Phase 4a)**: `exchange.validate_api_key()` validates a Binance key before saving — confirms it works + Futures is enabled, and **rejects keys with withdrawals enabled** (security). Gates both save paths (Settings `/settings/api-keys` and onboarding `/setup`); bad keys never persist or start the bot. Permission flags (Reading / Futures / Withdrawals / IP-restricted) are stored on save and shown as pills when connected. New `POST /settings/api-keys/validate` (no-persist) for inline/wizard validation. The Settings form is now "Validate & Connect" with an inline error; `/setup` shows validation errors.
+- **Account — TOTP two-factor auth (Phase 4b)**: opt-in **step-up** 2FA. New `app/auth/twofa.py` (pyotp) + `routes/twofa.py` (`/settings/2fa/enroll|verify|disable|challenge` + `/backup-codes/regenerate`). Once enabled, `require_2fa` gates the non-urgent high-value actions — **settings save/reset, API-key save/delete, live bot start/stop** — re-verified every 15 min. **Emergency close is intentionally not gated** (time-critical; the confirm dialog is the safeguard). Global 2FA challenge modal + `guardedFetch` in `base.html` auto-prompt on `401 twofa_required` and retry once. Settings has a new **Security tab** for the 2FA card (enable → QR + copyable key → verify → enabled; disable; recovery-code status + regenerate). **Brute-force protection:** 5 failed code attempts / 5 min → `429`, per user.
+- **2FA recovery**: **one-time backup codes** (10, sha256-hashed, single-use) generated at enrollment, shown once with Copy/Download; accepted anywhere a TOTP code is (challenge/disable/regenerate); "N remaining" shown with a regenerate option. Plus an admin **Reset 2FA** action on the user-detail page (clears 2FA + codes for a lost device).
+- Schema: nullable `users.totp_secret_enc` / `totp_enabled` / `totp_backup_codes` via `_ensure_schema` + alembic `e5a1c2d3f4b7`. New deps `pyotp`, `qrcode`. 2FA is opt-in, so existing users are unaffected.
+
 ## [2026-06-12]
 
 ### Changed

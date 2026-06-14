@@ -431,9 +431,23 @@ WebSocket connection manager + 7 background push tasks.
 | GET | `/settings` | `settings.html` | Bot settings, API key status |
 | POST | `/settings` | — | Save bot settings (risk/RR/sessions/symbols/**leverage**/**seasonal_filter**); applies leverage live to a running worker |
 | POST | `/settings/reset` | — | Reset all bot-control settings for the mode to validated defaults |
-| POST | `/settings/api-keys` | — | Save new API keys, restart bot |
-| POST | `/settings/api-keys/delete` | — | Delete API keys, stop live bot |
-| POST | `/api/emergency-close` | — | Close all positions, mark trades as loss |
+| POST | `/settings/api-keys` | — | Validate (`exchange.validate_api_key`) then save keys, store permission flags, restart bot. 2FA-gated |
+| POST | `/settings/api-keys/validate` | — | Validate keys without persisting (inline form + wizard) |
+| POST | `/settings/api-keys/delete` | — | Delete API keys, stop live bot. 2FA-gated |
+| POST | `/api/emergency-close` | — | Close all positions, mark trades as loss. **Not** 2FA-gated (time-critical) |
+
+Sensitive POSTs (`/settings`, `/settings/reset`, `/settings/api-keys`, `/settings/api-keys/delete`, `/bot/start`, `/bot/stop`) call `require_2fa(request, user)` — returns a `401 twofa_required` when the user has 2FA enabled and isn't freshly verified; the client's `guardedFetch` (base.html) prompts for a code and retries.
+
+### `routes/twofa.py`
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/settings/2fa/enroll` | Generate a pending TOTP secret (session) + QR; returns secret + SVG |
+| POST | `/settings/2fa/verify` | Confirm enrollment, persist encrypted secret, enable, return **backup codes** (once) |
+| POST | `/settings/2fa/disable` | Disable 2FA — requires a current TOTP or backup code |
+| POST | `/settings/2fa/challenge` | Step-up: validate a TOTP/backup code, mark the session verified |
+| POST | `/settings/2fa/backup-codes/regenerate` | Replace backup codes (requires a current code) |
+
+`app/auth/twofa.py`: `generate_secret`, `provisioning_uri`, `verify_code`, `qr_svg`, `is_2fa_fresh`/`mark_2fa_verified`, `require_2fa` (the gate), `generate_backup_codes`/`hash_backup_codes`/`verify_totp_or_backup`/`backup_codes_remaining` (single-use sha256-hashed recovery codes), and a per-user `rate_limited`/`record_code_failure`/`clear_code_failures` (5 fails / 5 min). `exchange.validate_api_key(key, secret)` → `{ok, permissions, error}`.
 
 ### `routes/bot_control.py`
 | Method | Path | Purpose |
@@ -492,6 +506,7 @@ WebSocket connection manager + 7 background push tasks.
 |--------|------|----------|---------|
 | GET | `/admin/user/{id}` | `admin_user_detail.html` | Detailed user view with stats, equity, trades, events |
 | POST | `/admin/user/{id}/reconcile` | — | Reconcile trades against Binance fill data |
+| POST | `/admin/user/{id}/reset-2fa` | — | Clear a user's 2FA + backup codes (lost-device recovery) |
 
 Helper functions: `compute_stats(trades)`, `_get_order()`, `_get_fills()`, `_get_all_fills()`
 
@@ -565,7 +580,10 @@ Responsive breakpoints: `768px` (hide sidebar, show bottom nav), `767px` (full m
 | `b1267890df2e` | Add is_rejected to users |
 | `673da50d8570` | Create rejection_log table |
 | `a2f1c3d5e7b9` | Add paper_bot_started to users, backfill approved users |
+| `c3e8a1f2b4d6` | Add funding_fee to trades |
+| `d4f9b2c1a8e3` | Add backtest_runs + backtest_setups (result cache) |
+| `e5a1c2d3f4b7` | Add totp_secret_enc / totp_enabled / totp_backup_codes to users (2FA) |
 
-Chain: `None → 18cd → 8ade → b126 → 673d → a2f1`
+Chain: `None → 18cd → 8ade → b126 → 673d → a2f1 → c3e8 → d4f9 → e5a1`
 
 Note: `_ensure_schema()` in `engine.py` also runs idempotent ALTER TABLE statements on startup, so schema changes are applied even without running Alembic.

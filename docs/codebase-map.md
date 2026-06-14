@@ -429,7 +429,7 @@ WebSocket connection manager + 7 background push tasks.
 | Method | Path | Template | Purpose |
 |--------|------|----------|---------|
 | GET | `/settings` | `settings.html` | Bot settings, API key status |
-| POST | `/settings` | — | Save bot settings (risk/RR/sessions/symbols/**leverage**/**seasonal_filter**); applies leverage live to a running worker |
+| POST | `/settings` | — | Save bot settings (risk%/sessions/symbols/**leverage**/**skip_may**/**skip_tax_deadline**; RR fixed at 2:1); applies leverage live to a running worker. 2FA-gated |
 | POST | `/settings/reset` | — | Reset all bot-control settings for the mode to validated defaults |
 | POST | `/settings/api-keys` | — | Validate (`exchange.validate_api_key`) then save keys, store permission flags, restart bot. 2FA-gated |
 | POST | `/settings/api-keys/validate` | — | Validate keys without persisting (inline form + wizard) |
@@ -468,9 +468,9 @@ Sensitive POSTs (`/settings`, `/settings/reset`, `/settings/api-keys`, `/setting
 |--------|------|----------|---------|
 | GET | `/backtester` | `backtester.html` | Backtester page + **Playground** controls (risk knobs) |
 | GET | `/api/candles` | — | Paginated historical candles from DB |
-| GET | `/api/backtest` | — | Run backtest for single symbol; playground overrides `rrr`/`sessions`/`seasonal` |
+| GET | `/api/backtest` | — | Run backtest for single symbol; playground overrides `sessions`/`skip_may`/`skip_tax` (RR fixed at 2:1; no leverage knob — sizing is risk-%-based) |
 | GET | `/api/backtest/setups` | — | Setups by page/range; same overrides |
-| GET | `/api/backtest/combined` | — | Combined backtest; overrides `rrr`/`sessions`/`seasonal`/`risk_pct`. Overrides fold into the cache signature (one cached run per combo) |
+| GET | `/api/backtest/combined` | — | Combined backtest; overrides `sessions`/`skip_may`/`skip_tax`/`risk_pct`. Overrides fold into the cache signature (one cached run per combo) |
 
 ### `routes/alerts.py`
 | Method | Path | Template | Purpose |

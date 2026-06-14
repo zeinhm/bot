@@ -14,6 +14,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 - **2FA recovery**: **one-time backup codes** (10, sha256-hashed, single-use) generated at enrollment, shown once with Copy/Download; accepted anywhere a TOTP code is (challenge/disable/regenerate); "N remaining" shown with a regenerate option. Plus an admin **Reset 2FA** action on the user-detail page (clears 2FA + codes for a lost device).
 - Schema: nullable `users.totp_secret_enc` / `totp_enabled` / `totp_backup_codes` via `_ensure_schema` + alembic `e5a1c2d3f4b7`. New deps `pyotp`, `qrcode`. 2FA is opt-in, so existing users are unaffected.
 
+## [2026-06-13]
+
+### Changed
+- **Bot Control + backtester refined** (supersedes parts of the 2026-06-12 Bot Control entry):
+  - **Reward:Risk locked at the validated 2:1** — the 2:1/3:1 toggle is gone in both Bot Control and the Playground; the bot always uses 2:1.
+  - **Risk per trade is dynamic-% only**, shown as a **1–3% slider** (was static $ / dynamic % up to 5%). Hidden `risk_mode=dynamic`; Reset → 2%.
+  - **Leverage removed from the backtester** — position sizing is risk-%-based, so leverage never affects backtest PnL (it stays in Bot Control, where it gates live margin).
+  - **Seasonal filter split into two independent, clearly-named event toggles** — **"Sell in May"** (`skip_may` → skip May) and **"US tax deadline"** (`skip_tax_deadline` → skip the April tax weeks) — replacing the single `seasonal_filter` key and the curve-fitting-sounding "skip historically underperforming periods" copy (now named events) everywhere (settings, backtester, landing chip/FAQ, docs). Worker + backtester (`_parse_setup_overrides` → `skip_may`/`skip_tax`) updated. Verified both-on reproduces the validated **771** trades; each toggle independently adds trades when off.
+  - **Removed the broken "max trades" rule** — it defaulted to 99 and failed the 1–10 check, erroring on every settings save.
+- **Settings UX**: save-confirmation modal; **Copy IPs** button (space-separated one-liner); equal-width Save/Reset buttons; install card no longer claims "offline-ready".
+- **Landing polish**: green accent on the closing phrase of five section headings; install heading stays on one line on desktop; trimmed/smaller install subtitle; `?v=2` cache-bust on the landing CSS/JS.
+
+### Added
+- **App favicon** (green "Z") on every page — `static/icons/favicon.svg`, linked from `base.html` and the six standalone templates (login/setup/pending/rejected/track-record/404). The app pages previously had no favicon.
+
 ## [2026-06-12]
 
 ### Changed

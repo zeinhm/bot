@@ -175,7 +175,7 @@ State tracked in `BotWorker`: `current_streak`, `consecutive_wins`, `adaptive_ac
 ## Rules
 
 1. **One trade at a time** — `_active_trade_id is not None` blocks new signals
-2. **Max trades per day** — configurable via settings, default 99 (effectively unlimited)
+2. **No daily trade cap** — the old `max_trades_per_day` gate was removed; drawdown/loss-streaks are handled by adaptive sizing instead
 3. **Bot enabled check** — user can disable bot via settings without stopping the worker
 4. **Active symbols** — user can select which symbols to trade
 5. **Only enter during active session** — checked by the strategy itself
@@ -266,12 +266,11 @@ Binance 15m kline WebSocket
   → _on_kline() — only processes closed candles (k.x == true)
     → Append to candle_buffers[symbol], trim to 1000
     → _process_candle(symbol)
-      → Skip month check
+      → Seasonal filter check (skip_may / skip_tax_deadline, read from user state)
       → Bot enabled check
       → Active symbols check
       → No active trade check
-      → Max trades per day check
-      → Build params (merge strategy config + user overrides)
+      → Build params (merge strategy config + user overrides: rr/sessions/seasonal)
       → check_signal(candle_buffer, params)
         → If signal found:
           → _execute_trade(symbol, signal)

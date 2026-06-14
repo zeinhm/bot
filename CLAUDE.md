@@ -123,7 +123,7 @@ bot/
 │   ├── js/websocket.js        # BotWebSocket class with auto-reconnect
 │   ├── manifest.webmanifest   # PWA manifest (installable app, icons, theme)
 │   ├── sw.js                  # Service worker (network-first pages, cache-first static, web-push handlers)
-│   └── icons/                 # PWA app icons (192/512/maskable/apple-touch)
+│   └── icons/                 # PWA app icons (192/512/maskable/apple-touch) + favicon.svg (green "Z", linked on every page)
 │
 ├── landing-page/
 │   ├── landing-page.html      # Marketing page (standalone HTML, no Jinja)

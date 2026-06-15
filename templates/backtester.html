@@ -184,7 +184,7 @@
 <!-- Trade Log -->
 {% if bt_results %}
 <div class="card" style="margin-top:24px">
-    <div class="card-title">Trade Log <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· {{ bt_results|length }} trades</span></div>
+    <div class="card-title">Trade Log <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· <span id="tl-count">{{ bt_results|length }}</span> trades</span></div>
     <div class="tbl-wrap">
     <table class="tbl" id="tl-table">
         <thead><tr>
@@ -301,6 +301,39 @@
     window._tlPage = function(p) {
         page = Math.max(0, Math.min(p, totalPages - 1));
         render();
+    };
+
+    // Replace the table with a fresh trade list (from /api/backtest/tradelog).
+    function setRows(apiRows) {
+        allRows = (apiRows || []).map(function(t) {
+            return {
+                sym: t.symbol, dir: t.direction,
+                entryUtc: t.entryTime ? new Date(t.entryTime * 1000).toISOString() : '',
+                exitUtc: t.exitTime ? new Date(t.exitTime * 1000).toISOString() : '',
+                entryP: t.entryPrice || 0,
+                exitP: t.exitPrice || 0,
+                result: t.result,
+                r: (t.r == null ? null : t.r),
+                targetRr: (t.targetRr == null ? null : t.targetRr),
+                pnl: (t.pnl == null ? null : t.pnl),
+                equity: t.equity
+            };
+        });
+        page = 0;
+        totalPages = Math.ceil(allRows.length / PER_PAGE);
+        var cnt = document.getElementById('tl-count');
+        if (cnt) cnt.textContent = allRows.length;
+        render();
+    }
+
+    // Re-sync the trade log to the current Playground params (called from the
+    // chart IIFE's btReload + once on load). Combined across all 3 assets.
+    window.__btReloadTradeLog = function() {
+        var p = window.__btCombinedParams ? window.__btCombinedParams() : '';
+        fetch('/api/backtest/tradelog?' + p)
+            .then(function(r) { return r.json(); })
+            .then(function(d) { setRows(d.trades || []); })
+            .catch(function() {});
     };
 
     render();
@@ -819,6 +852,7 @@
     function btCombinedParams() {
         return btSetupParams() + '&risk_pct=' + (document.getElementById('bt-risk').value || '2');
     }
+    window.__btCombinedParams = btCombinedParams;  // used by the trade-log IIFE
 
     var _btReloadTimer = null;
     function btReload() {
@@ -826,6 +860,7 @@
         clearTimeout(_btReloadTimer);
         _btReloadTimer = setTimeout(function() {
             loadCombined();
+            if (window.__btReloadTradeLog) window.__btReloadTradeLog();
             fetch('/api/backtest?symbol=' + currentSymbol + '&interval=15m&' + btSetupParams())
                 .then(function(r) { return r.json(); })
                 .then(function(btRes) {
@@ -898,6 +933,7 @@
     chartEl.style.visibility = 'hidden';
     syncPlaygroundHeight();
     loadCombined();
+    if (window.__btReloadTradeLog) window.__btReloadTradeLog();  // sync log to default params
     fetch('/api/backtest?symbol=' + currentSymbol + '&interval=15m&' + btSetupParams())
         .then(function(r) { return r.json(); })
         .then(function(btRes) {

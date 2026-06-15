@@ -616,7 +616,7 @@ def compute_stats(setups: list[dict], rrr: float, equity_cfg: dict | None = None
     return stats
 
 
-def simulate_equity(setups: list[dict], rrr: float, cfg: dict) -> dict:
+def simulate_equity(setups: list[dict], rrr: float, cfg: dict, with_trades: bool = False) -> dict:
     initial = cfg.get("initialCapital", 1000.0)
     risk_pct = cfg.get("riskPct", 0.02)
     commission_rate = cfg.get("commissionRate", 0.0004)
@@ -632,6 +632,7 @@ def simulate_equity(setups: list[dict], rrr: float, cfg: dict) -> dict:
     adaptive_active = False
 
     curve = []
+    trades = [] if with_trades else None
 
     for s in setups:
         if s["result"] not in ("win", "loss"):
@@ -649,6 +650,7 @@ def simulate_equity(setups: list[dict], rrr: float, cfg: dict) -> dict:
             tp_dist = abs(s["tp"] - s["entryPrice"])
             actual_rrr = tp_dist / sl_dist if sl_dist > 0 else rrr
             pnl = risk_amount * actual_rrr - commission
+            r_value = actual_rrr
             loss_streak = 0
             if adaptive_active:
                 consecutive_wins += 1
@@ -657,6 +659,7 @@ def simulate_equity(setups: list[dict], rrr: float, cfg: dict) -> dict:
                     consecutive_wins = 0
         else:
             pnl = -risk_amount - commission
+            r_value = -1.0
             loss_streak += 1
             consecutive_wins = 0
             if loss_streak >= streak_threshold and not adaptive_active:
@@ -669,10 +672,28 @@ def simulate_equity(setups: list[dict], rrr: float, cfg: dict) -> dict:
 
         curve.append({"time": s["entryTime"], "value": round(capital, 2)})
 
-    return {
+        if trades is not None:
+            trades.append({
+                "symbol": s.get("_symbol"),
+                "direction": s.get("direction"),
+                "entryTime": s.get("entryTime"),
+                "exitTime": s.get("exitTime"),
+                "entryPrice": s["entryPrice"],
+                "exitPrice": s["tp"] if s["result"] == "win" else s["sl"],
+                "result": s["result"],
+                "r": round(r_value, 4),
+                "targetRr": s.get("rrrUsed"),
+                "pnl": round(pnl, 4),
+                "equity": round(capital, 2),
+            })
+
+    out = {
         "initialCapital": initial,
         "finalCapital": round(capital, 2),
         "returnPct": round((capital - initial) / initial * 100, 1),
         "maxDdPct": round(max_dd_pct, 1),
         "curve": curve,
     }
+    if trades is not None:
+        out["trades"] = trades
+    return out

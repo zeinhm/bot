@@ -169,6 +169,7 @@ _STRATEGY_ID = "amd_fvg_v1"
 _CACHE_VERSION = "3"                     # bump to invalidate all cached runs (v3: adaptive RR)
 _run_cache: dict[str, dict] = {}        # signature -> {run_id, stats, total, signature}
 _combined_cache: dict[str, dict] = {}   # combo signature -> {stats, perAsset}
+_tradelog_cache: dict[str, dict] = {}   # combo signature -> {trades, total}
 _build_locks: dict[str, asyncio.Lock] = {}  # signature -> lock (one builder per combo)
 
 
@@ -324,4 +325,51 @@ async def run_backtest_combined(
             "candle_count": None, "total_setups": 0, "stats": json.dumps(payload),
         }, [])
         _combined_cache[combo_sig] = payload
+        return JSONResponse(payload)
+
+
+@router.get("/api/backtest/tradelog")
+async def backtest_tradelog(
+    request: Request,
+    sessions: Optional[str] = Query(None),
+    skip_may: Optional[int] = Query(None),
+    skip_tax: Optional[int] = Query(None),
+    risk_pct: Optional[float] = Query(None),
+):
+    """Param-aware combined trade ledger for the Playground's Trade Log: same
+    setup overrides + risk as /api/backtest/combined, but returns the per-trade
+    list (with adaptive-sizing PnL + running equity) instead of just stats."""
+    await require_auth(request)
+
+    setup_ov = _parse_setup_overrides(sessions, skip_may, skip_tax)
+    equity_ov = {"riskPct": risk_pct / 100.0} if risk_pct is not None else None
+
+    metas = {symbol: await _get_or_build_run(symbol, "15m", setup_ov) for symbol in SYMBOLS}
+    combo_sig = hashlib.sha256(
+        ("|".join(metas[s]["signature"] for s in SYMBOLS)
+         + "|" + _params_hash(_equity_cfg(equity_ov)) + "|tradelog").encode()
+    ).hexdigest()
+
+    if combo_sig in _tradelog_cache:
+        return JSONResponse(_tradelog_cache[combo_sig])
+
+    lock = _build_locks.setdefault(combo_sig, asyncio.Lock())
+    async with lock:
+        if combo_sig in _tradelog_cache:
+            return JSONResponse(_tradelog_cache[combo_sig])
+
+        all_setups = []
+        for symbol in SYMBOLS:
+            m = metas[symbol]
+            if m["run_id"] is not None:
+                for s in await db.get_run_setups_all(m["run_id"]):
+                    s["_symbol"] = symbol
+                    all_setups.append(s)
+        all_setups.sort(key=lambda s: s["entryTime"])
+
+        eq = amd_engine.simulate_equity(
+            all_setups, STRATEGY_PARAMS["rrr"], _equity_cfg(equity_ov), with_trades=True)
+        trades = eq.get("trades", [])
+        payload = {"trades": trades, "total": len(trades)}
+        _tradelog_cache[combo_sig] = payload
         return JSONResponse(payload)

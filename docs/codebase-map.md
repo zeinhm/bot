@@ -77,7 +77,7 @@ Backtest/simulation engine. Runs strategy on historical data bar-by-bar.
 - `run(data, cfg)` → list of setup dicts. Takes candle list `{time, open, high, low, close}` (time in **seconds**) and config with **camelCase** keys. When `cfg["dynamicRR"]` is on, picks RR per entry from the trend regime (`rrrTrend` vs `rrrRange`); each setup carries `regime` + `rrrUsed`
 - `_htf_trend_mask(data, cfg)` → per-bar bool: resamples 15m→`htfHours` (6h) candles, computes ADX(`htfAdxPeriod`), flags bars where the **previous completed** HTF bar's ADX ≥ `htfAdxThreshold` (no lookahead) — drives the adaptive 3:1 regime
 - `compute_stats(setups, rrr, equity_cfg)` → stats dict (trades, wins, losses, win_rate, total_r). R is derived per trade, so variable RR is handled unchanged
-- `simulate_equity(setups, rrr, cfg)` → equity curve with adaptive sizing, commission, drawdown tracking
+- `simulate_equity(setups, rrr, cfg, with_trades=False)` → equity curve with adaptive sizing, commission, drawdown tracking. With `with_trades=True`, also returns a per-trade `trades` ledger (symbol from `_symbol`, entry/exit, result, r, targetRr, pnl, running equity) — powers `/api/backtest/tradelog`
 - `_close_trade(trade, idx, time, price, result)` — Marks trade dict as closed
 - `_make_setup(...)` — Creates detailed setup dict with 18+ fields (incl. `regime`/`rrrUsed`)
 
@@ -473,6 +473,7 @@ Sensitive POSTs (`/settings`, `/settings/reset`, `/settings/api-keys`, `/setting
 | GET | `/api/backtest` | — | Run backtest for single symbol; playground overrides `sessions`/`skip_may`/`skip_tax` (RR is adaptive 2:1/3:1 via the 6h trend; no leverage knob — sizing is risk-%-based) |
 | GET | `/api/backtest/setups` | — | Setups by page/range; same overrides |
 | GET | `/api/backtest/combined` | — | Combined backtest; overrides `sessions`/`skip_may`/`skip_tax`/`risk_pct`. Overrides fold into the cache signature (one cached run per combo) |
+| GET | `/api/backtest/tradelog` | — | Param-aware **combined trade ledger** for the Playground's Trade Log (same overrides as `/combined`). Returns `{trades, total}` from `simulate_equity(..., with_trades=True)`; cached in `_tradelog_cache` per combo |
 
 ### `routes/alerts.py`
 | Method | Path | Template | Purpose |

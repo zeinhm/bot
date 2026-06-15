@@ -106,6 +106,12 @@ def _build_cfg(symbol: str, ov: dict | None = None) -> dict:
         "atrLen": STRATEGY_PARAMS["atr_len"],
         "atrMult": STRATEGY_PARAMS["atr_mult"],
         "rrr": STRATEGY_PARAMS["rrr"],
+        "dynamicRR": STRATEGY_PARAMS.get("dynamic_rr", False),
+        "rrrTrend": STRATEGY_PARAMS.get("rrr_trend", 3.0),
+        "rrrRange": STRATEGY_PARAMS.get("rrr_range", STRATEGY_PARAMS["rrr"]),
+        "htfHours": STRATEGY_PARAMS.get("htf_hours", 6),
+        "htfAdxPeriod": STRATEGY_PARAMS.get("htf_adx_period", 14),
+        "htfAdxThreshold": STRATEGY_PARAMS.get("htf_adx_threshold", 40),
         "sweepFilter": STRATEGY_PARAMS["sweep_filter"],
         "sweepLen": STRATEGY_PARAMS.get("sweep_len", 5),
         "sweepMaxBars": STRATEGY_PARAMS.get("sweep_max_bars", 300),
@@ -143,7 +149,8 @@ def _parse_setup_overrides(sessions, skip_may, skip_tax) -> dict:
     """Build the amd_engine cfg overrides from playground query params: the
     sessions and the two seasonal-event toggles (Sell-in-May → skip May;
     US-tax-deadline → skip the April tax weeks). These change the actual setups,
-    so each combo gets its own cached run. RR is fixed at the validated 2:1."""
+    so each combo gets its own cached run. RR is set by the strategy (adaptive
+    2:1/3:1 via the 6h trend filter) and is not a playground knob."""
     ov: dict = {}
     if sessions:
         picked = [s for s in sessions.split(",") if s in ("sydney", "tokyo", "london", "ny")]
@@ -159,7 +166,7 @@ def _parse_setup_overrides(sessions, skip_may, skip_tax) -> dict:
 
 # ── Result cache (run the engine once per strategy+params+data signature) ──────
 _STRATEGY_ID = "amd_fvg_v1"
-_CACHE_VERSION = "2"                     # bump to invalidate all cached runs
+_CACHE_VERSION = "3"                     # bump to invalidate all cached runs (v3: adaptive RR)
 _run_cache: dict[str, dict] = {}        # signature -> {run_id, stats, total, signature}
 _combined_cache: dict[str, dict] = {}   # combo signature -> {stats, perAsset}
 _build_locks: dict[str, asyncio.Lock] = {}  # signature -> lock (one builder per combo)

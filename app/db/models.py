@@ -30,6 +30,7 @@ class Trade(Base):
     quantity = Column(Float)
     result = Column(String(10), default="open")
     r_value = Column(Float)
+    target_rr = Column(Float)        # planned reward:risk (2 or 3) — adaptive RR regime
     pnl_usdt = Column(Float)         # net realized PnL (matches Binance Position History)
     commission = Column(Float)       # trading fee, positive USDT cost
     funding_fee = Column(Float)      # funding over the position's life, signed USDT
@@ -147,6 +148,7 @@ class BacktestResult(Base):
     quantity = Column(Float)
     result = Column(String(10), nullable=False)
     r_value = Column(Float)
+    target_rr = Column(Float)        # planned reward:risk (2 or 3) — adaptive RR regime
     pnl_usdt = Column(Float)
     commission = Column(Float)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

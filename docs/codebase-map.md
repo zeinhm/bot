@@ -31,7 +31,7 @@ Central configuration loaded from environment variables.
 | `STRATEGY_PARAMS` | dict | Full strategy config (see below) |
 | `ACC_RANGE_MODE` | `{BTC:"body", ETH:"wick", SOL:"wick"}` | Per-asset accumulation mode |
 
-**STRATEGY_PARAMS** defaults: `tf_minutes=15`, `acc_len=60`, `acc_mode="atr"`, `atr_mult_acc=5`, `man_look=10`, `fvg_threshold=0.1`, `atr_len=14`, `atr_mult=1.5`, `rrr=2.0`, sessions=all four, `sweep_filter=True`, `sweep_len=5`, `sweep_max_bars=300`, `skip_months=[5]`, `skip_weeks={4:[2,4]}`, `manip_min_mode="atr"`, `manip_min_val=0.4`, `adx_filter=True`, `adx_period=42`, `adx_threshold=35`, `loss_streak_threshold=4`, `reduced_risk_pct=0.25`, `wins_to_recover=2`
+**STRATEGY_PARAMS** defaults: `tf_minutes=15`, `acc_len=60`, `acc_mode="atr"`, `atr_mult_acc=5`, `man_look=10`, `fvg_threshold=0.1`, `atr_len=14`, `atr_mult=1.5`, `rrr=2.0`, `dynamic_rr=True`, `rrr_trend=3.0`, `rrr_range=2.0`, `htf_hours=6`, `htf_adx_period=14`, `htf_adx_threshold=40`, sessions=all four, `sweep_filter=True`, `sweep_len=5`, `sweep_max_bars=300`, `skip_months=[5]`, `skip_weeks={4:[2,4]}`, `manip_min_mode="atr"`, `manip_min_val=0.4`, `adx_filter=True`, `adx_period=42`, `adx_threshold=35`, `loss_streak_threshold=4`, `reduced_risk_pct=0.25`, `wins_to_recover=2`
 
 ---
 
@@ -74,11 +74,12 @@ Key details:
 ### `amd_engine.py`
 Backtest/simulation engine. Runs strategy on historical data bar-by-bar.
 
-- `run(data, cfg)` → list of setup dicts. Takes candle list `{time, open, high, low, close}` (time in **seconds**) and config with **camelCase** keys
-- `compute_stats(setups, rrr, equity_cfg)` → stats dict (trades, wins, losses, win_rate, total_r)
+- `run(data, cfg)` → list of setup dicts. Takes candle list `{time, open, high, low, close}` (time in **seconds**) and config with **camelCase** keys. When `cfg["dynamicRR"]` is on, picks RR per entry from the trend regime (`rrrTrend` vs `rrrRange`); each setup carries `regime` + `rrrUsed`
+- `_htf_trend_mask(data, cfg)` → per-bar bool: resamples 15m→`htfHours` (6h) candles, computes ADX(`htfAdxPeriod`), flags bars where the **previous completed** HTF bar's ADX ≥ `htfAdxThreshold` (no lookahead) — drives the adaptive 3:1 regime
+- `compute_stats(setups, rrr, equity_cfg)` → stats dict (trades, wins, losses, win_rate, total_r). R is derived per trade, so variable RR is handled unchanged
 - `simulate_equity(setups, rrr, cfg)` → equity curve with adaptive sizing, commission, drawdown tracking
 - `_close_trade(trade, idx, time, price, result)` — Marks trade dict as closed
-- `_make_setup(...)` — Creates detailed setup dict with 18+ fields
+- `_make_setup(...)` — Creates detailed setup dict with 18+ fields (incl. `regime`/`rrrUsed`)
 
 Config uses **camelCase** keys (e.g., `accLen`, `fvgThreshold`), while `config.py` uses **underscore** keys. `seed_trades.py` bridges this mapping.
 
@@ -377,6 +378,7 @@ Shared public Binance connection (no API key needed).
 - `start_kline_stream(symbols, interval)` — Background multiplex kline WebSocket
 - `_on_kline(data)` — On closed candle: append to buffer (max 400), save to DB, trim, fire callbacks
 - `get_candles(symbol)` → copy of candle buffer
+- `get_trend_regime(symbol)` → `"trend"` / `"range"` for adaptive RR: fetches recent 6h klines, computes ADX(14) on the previous completed bar; **fail-safe → `"range"` (2:1)** on any error
 - `on_candle_close(callback)` / `remove_candle_callback(callback)` — Register/unregister
 
 ### `app/bot/websocket.py`
@@ -429,7 +431,7 @@ WebSocket connection manager + 7 background push tasks.
 | Method | Path | Template | Purpose |
 |--------|------|----------|---------|
 | GET | `/settings` | `settings.html` | Bot settings, API key status |
-| POST | `/settings` | — | Save bot settings (risk%/sessions/symbols/**leverage**/**skip_may**/**skip_tax_deadline**; RR fixed at 2:1); applies leverage live to a running worker. 2FA-gated |
+| POST | `/settings` | — | Save bot settings (risk%/sessions/symbols/**leverage**/**skip_may**/**skip_tax_deadline**; RR is adaptive 2:1/3:1 via the 6h trend, not user-set); applies leverage live to a running worker. 2FA-gated |
 | POST | `/settings/reset` | — | Reset all bot-control settings for the mode to validated defaults |
 | POST | `/settings/api-keys` | — | Validate (`exchange.validate_api_key`) then save keys, store permission flags, restart bot. 2FA-gated |
 | POST | `/settings/api-keys/validate` | — | Validate keys without persisting (inline form + wizard) |
@@ -468,7 +470,7 @@ Sensitive POSTs (`/settings`, `/settings/reset`, `/settings/api-keys`, `/setting
 |--------|------|----------|---------|
 | GET | `/backtester` | `backtester.html` | Backtester page + **Playground** controls (risk knobs) |
 | GET | `/api/candles` | — | Paginated historical candles from DB |
-| GET | `/api/backtest` | — | Run backtest for single symbol; playground overrides `sessions`/`skip_may`/`skip_tax` (RR fixed at 2:1; no leverage knob — sizing is risk-%-based) |
+| GET | `/api/backtest` | — | Run backtest for single symbol; playground overrides `sessions`/`skip_may`/`skip_tax` (RR is adaptive 2:1/3:1 via the 6h trend; no leverage knob — sizing is risk-%-based) |
 | GET | `/api/backtest/setups` | — | Setups by page/range; same overrides |
 | GET | `/api/backtest/combined` | — | Combined backtest; overrides `sessions`/`skip_may`/`skip_tax`/`risk_pct`. Overrides fold into the cache signature (one cached run per combo) |
 
@@ -583,7 +585,8 @@ Responsive breakpoints: `768px` (hide sidebar, show bottom nav), `767px` (full m
 | `c3e8a1f2b4d6` | Add funding_fee to trades |
 | `d4f9b2c1a8e3` | Add backtest_runs + backtest_setups (result cache) |
 | `e5a1c2d3f4b7` | Add totp_secret_enc / totp_enabled / totp_backup_codes to users (2FA) |
+| `f6b2d4e8a1c9` | Add target_rr to trades + backtest_results (adaptive 2:1/3:1) |
 
-Chain: `None → 18cd → 8ade → b126 → 673d → a2f1 → c3e8 → d4f9 → e5a1`
+Chain: `None → 18cd → 8ade → b126 → 673d → a2f1 → c3e8 → d4f9 → e5a1 → f6b2`
 
 Note: `_ensure_schema()` in `engine.py` also runs idempotent ALTER TABLE statements on startup, so schema changes are applied even without running Alembic.

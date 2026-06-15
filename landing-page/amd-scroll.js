@@ -167,7 +167,7 @@
       dashLine(X(entryIdx) - cw, Y(tp), chartR(), Y(tp), C.green, zA, [5, 4]);
       ctx.save(); ctx.globalAlpha = zA;
       tag(W - 6, Y(sl), 'SL · −1R', C.red, 'right');
-      tag(W - 6, Y(tp), 'TP · +2R', C.green, 'right'); ctx.restore();
+      tag(W - 6, Y(tp), 'TP · 2–3R', C.green, 'right'); ctx.restore();
     }
   }
 
@@ -176,7 +176,7 @@
   var fills = Array.prototype.slice.call(document.querySelectorAll('.amd-step .amd-bar > span'));
   var bounds = [[0, 0.27], [0.27, 0.46], [0.46, 0.6], [0.6, 1.0001]];
   var readout = document.getElementById('amd-readout');
-  var RLABEL = ['Price coils into a range', 'A wick sweeps the lows', 'FVG confirms — entry fires', 'Strong move hits +2R'];
+  var RLABEL = ['Price coils into a range', 'A wick sweeps the lows', 'FVG confirms — entry fires', 'Strong move runs to target'];
 
   function activeIndex(p) {
     for (var i = 0; i < bounds.length; i++) if (p >= bounds[i][0] && p < bounds[i][1]) return i;

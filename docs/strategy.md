@@ -92,11 +92,15 @@ smart_sl = min(atr_sl, manip_extremum)
 
 This ensures the SL is always beyond the manipulation wick — if the manipulation wick was larger than 1.5 ATR, the SL uses the wick level instead.
 
-**Take Profit**:
+**Take Profit** (adaptive reward-to-risk):
 ```
 sl_distance = abs(entry - sl)
-tp = entry ± (sl_distance * 2.0)          # 2:1 reward-to-risk
+rr = 3.0 if prev_completed_6h_ADX(14) >= 40 else 2.0   # strong trend → 3:1, else 2:1
+tp = entry ± (sl_distance * rr)
 ```
+The 6h trend regime is read from the **previous completed** 6h candle (no lookahead), so it is
+constant within each 6h window. Validated via walk-forward: 3:1 only in strong trends beats fixed 2:1
+out-of-sample with lower drawdown.
 
 ### Phase 5: Exit
 
@@ -200,7 +204,13 @@ State tracked in `BotWorker`: `current_streak`, `consecutive_wins`, `adaptive_ac
 | `fvg_threshold` | 0.1 | Min FVG gap as ATR multiplier |
 | `atr_len` | 14 | ATR period for SL/TP calculation |
 | `atr_mult` | 1.5 | ATR multiplier for SL distance |
-| `rrr` | 2.0 | Reward-to-risk ratio |
+| `rrr` | 2.0 | Reward-to-risk ratio (range / fallback) |
+| `dynamic_rr` | true | Adaptive RR: 3:1 in strong 6h trends, else 2:1 |
+| `rrr_trend` | 3.0 | RR used when the 6h trend is strong |
+| `rrr_range` | 2.0 | RR used otherwise |
+| `htf_hours` | 6 | Higher timeframe for the trend regime |
+| `htf_adx_period` | 14 | ADX period on the 6h regime |
+| `htf_adx_threshold` | 40 | 6h ADX ≥ this ⇒ trend ⇒ 3:1 |
 | `sessions` | all 4 | Active trading sessions |
 | `sweep_filter` | true | Sweep zone filter enabled |
 | `sweep_len` | 5 | Pivot detection lookback |
@@ -291,17 +301,19 @@ Binance 15m kline WebSocket
 Using the current production parameters on historical data from January 2020 to April 2026:
 
 ```
-BTCUSDT: 360 trades (158W / 202L) = 43.9% WR
-ETHUSDT: 216 trades (90W / 126L)  = 41.7% WR
-SOLUSDT: 195 trades (82W / 113L)  = 42.1% WR
-Total:   771 trades (330W / 441L) = 42.8% WR
+BTCUSDT: 350 trades (149W / 201L) = 42.6% WR
+ETHUSDT: 214 trades (85W / 129L)  = 39.7% WR
+SOLUSDT: 191 trades (78W / 113L)  = 40.8% WR
+Total:   755 trades (312W / 443L) = 41.3% WR
 
-Final equity: $134,983.60 (+1249.8%)
+Final equity: $183,632.75 (+1736.3%)
+Max drawdown: 19.0%
 Starting:     $10,000
 Risk:         2% dynamic with adaptive sizing
+Reward:risk:  adaptive — 3:1 in strong 6h trends (~17% of trades), else 2:1
 ```
 
-The win rate (~42%) is below 50%, but the 2:1 RRR means each win recovers 2 losses. The strategy is profitable through edge in reward-to-risk, not win rate.
+The win rate (~41%) is below 50%, but the adaptive 2:1/3:1 RRR means each win recovers 2–3 losses. The strategy is profitable through edge in reward-to-risk, not win rate.
 
 ---
 
@@ -317,7 +329,7 @@ Once the trap is set, the bot waits for a Fair Value Gap to form in the opposite
 
 ### Risk Management
 
-Every trade targets a **2:1 reward-to-risk** ratio. The stop loss is volatility-based, always placed beyond the manipulation extreme to avoid getting stopped out by noise. Take profit is set at twice the stop distance from entry.
+Reward-to-risk is **adaptive: 2:1 normally, 3:1 when the higher-timeframe (6h) trend is strong** — letting winners run when the market actually trends, while staying conservative in chop. The stop loss is volatility-based, always placed beyond the manipulation extreme to avoid getting stopped out by noise. Take profit is set at twice — or three times in a strong trend — the stop distance from entry.
 
 During losing streaks, position size scales down dramatically to protect capital. After consecutive wins, it scales back up. This adaptive sizing cut max drawdown nearly in half while preserving returns.
 
@@ -326,12 +338,12 @@ During losing streaks, position size scales down dramatically to protect capital
 - **Liquidity sweep zones** block entries where the move may already be exhausted
 - A **trend filter** skips choppy, directionless markets to avoid whipsaws
 - **Seasonal filter** sits out recurring events that make the market choppy — US tax deadlines and the "sell in May" slump
-- Trades only execute during **active market sessions**
+- Trading can be limited to specific **market sessions** (all four active by default)
 
 ### Track Record
 
-The strategy has been backtested across BTC, ETH, and SOL over 6+ years of historical data with 770+ trades. It trades on the 15-minute timeframe, averaging roughly 10-15 trades per month across all assets.
+The strategy has been backtested across BTC, ETH, and SOL over 6+ years of historical data with 750+ trades. It trades on the 15-minute timeframe, averaging roughly 10-15 trades per month across all assets.
 
 ### What Makes It Different
 
-Most retail strategies chase high win rates. This one accepts losing more often than winning — but when it wins, the payout is double the loss. Combined with adaptive position sizing that protects during drawdowns, the strategy compounds capital through disciplined risk management, not prediction accuracy.
+Most retail strategies chase high win rates. This one accepts losing more often than winning — but when it wins, the payout is two to three times the loss. Combined with adaptive position sizing that protects during drawdowns, the strategy compounds capital through disciplined risk management, not prediction accuracy.

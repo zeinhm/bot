@@ -37,6 +37,14 @@ STRATEGY_PARAMS = {
     "atr_len": 14,
     "atr_mult": 1.5,
     "rrr": 2.0,
+    # Adaptive reward-to-risk: 3:1 when the previous completed 6h candle's
+    # ADX(14) >= 40 (strong trend), else 2:1. Validated via walk-forward.
+    "dynamic_rr": True,
+    "rrr_trend": 3.0,
+    "rrr_range": 2.0,
+    "htf_hours": 6,
+    "htf_adx_period": 14,
+    "htf_adx_threshold": 40,
     "sessions": ["sydney", "tokyo", "london", "ny"],
     "sweep_filter": True,
     "sweep_len": 5,

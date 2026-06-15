@@ -71,7 +71,7 @@ bot/
 │       ├── worker_live.py     # LiveWorker: Binance hooks (real orders, conditional SL/TP, alerts, self-heal, force-close)
 │       ├── worker_paper.py    # PaperWorker: simulated hooks (DB-backed PaperExchange, paper orders)
 │       ├── manager.py         # Multi-user worker lifecycle (start/stop/status); builds Live/Paper via make_worker()
-│       ├── shared_market.py   # Shared Binance connection for candle data (no API key)
+│       ├── shared_market.py   # Shared Binance connection for candle data (no API key); get_trend_regime() → 6h-ADX regime for adaptive RR
 │       └── websocket.py       # WS connection manager + 7 background push tasks (authenticated)
 │
 ├── routes/
@@ -134,7 +134,7 @@ bot/
 │
 ├── alembic/
 │   ├── env.py                 # Migration environment config
-│   └── versions/              # 8 migrations (schema → paper trading → rejection → funding fee → backtest cache → 2FA)
+│   └── versions/              # 9 migrations (schema → paper trading → rejection → funding fee → backtest cache → 2FA → adaptive RR target_rr)
 │
 ├── docs/
 │   ├── architecture.md        # System design overview
@@ -156,7 +156,8 @@ bot/
 | To change...                        | Edit these files                                              |
 |-------------------------------------|---------------------------------------------------------------|
 | **Strategy logic / signal detection** | `strategy.py` (live), `amd_engine.py` (backtest)             |
-| **Strategy parameters / defaults**  | `config.py` → `STRATEGY_PARAMS`, `ACC_RANGE_MODE`            |
+| **Strategy parameters / defaults**  | `config.py` → `STRATEGY_PARAMS` (incl. adaptive-RR: `dynamic_rr`/`rrr_trend`/`htf_adx_threshold`), `ACC_RANGE_MODE` |
+| **Adaptive reward-to-risk (2:1/3:1)** | `amd_engine.py` `_htf_trend_mask()` + `run()` (backtest); `app/bot/shared_market.py` `get_trend_regime()` + `app/bot/worker.py` `_process_candle()` (live); `target_rr` on `trades`/`backtest_results` |
 | **Shared trade loop / signal→execute** | `app/bot/worker.py` (`BaseWorker`) → `_process_candle()`, `_execute_trade()`, `_place_sl_tp()` |
 | **Live-only execution behavior**    | `app/bot/worker_live.py` (`LiveWorker`) → real orders, conditional SL/TP, alerts, `_self_heal_trade()`, force-close |
 | **Paper-only execution behavior**   | `app/bot/worker_paper.py` (`PaperWorker`) → `_resolve_exit()`, `_count_active_sltp()`; `paper_exchange.py` (DB-backed) |
@@ -212,12 +213,12 @@ bot/
 |-------|-------|------------|
 | `User` | `users` | google_id, email, name, is_approved, is_rejected, is_admin, paper_bot_started, totp_secret_enc, totp_enabled, totp_backup_codes |
 | `UserConfig` | `user_configs` | user_id (FK), binance_api_key_enc, binance_api_secret_enc |
-| `Trade` | `trades` | user_id (FK), is_paper, symbol, direction, entry/exit price/time, result, r_value, pnl_usdt (net), commission (USDT fee), funding_fee |
+| `Trade` | `trades` | user_id (FK), is_paper, symbol, direction, entry/exit price/time, result, r_value, pnl_usdt (net), commission (USDT fee), funding_fee, target_rr (2:1/3:1 regime) |
 | `BotState` | `bot_state` | key, value, user_id, is_paper — unique on (key, user_id, is_paper) |
 | `BotEvent` | `bot_events` | user_id, is_paper, level, category, message, details |
 | `HistoricalCandle` | `historical_candles` | symbol, interval, timestamp, OHLCV |
 | `CandleBuffer` | `candle_buffer` | symbol, timestamp, OHLCV |
-| `BacktestResult` | `backtest_results` | symbol, direction, entry/exit, result, r_value, pnl_usdt |
+| `BacktestResult` | `backtest_results` | symbol, direction, entry/exit, result, r_value, pnl_usdt, target_rr |
 | `PaperAccount` | `paper_accounts` | user_id (unique FK), balance (default 10000) |
 | `PaperOrder` | `paper_orders` | user_id, trade_id (FK), symbol, side, order_type, stop_price, status |
 | `RejectionLog` | `rejection_log` | user_id, email, name, status (rejected/allowed) |

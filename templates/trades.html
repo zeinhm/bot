@@ -20,7 +20,7 @@
         <div class="val mono">{{ "%.0f"|format(win_rate) }}%</div>
     </div>
     <div class="stat tip-card">
-        <div class="lbl" data-tip="R = reward-to-risk multiple. A win banks the configured reward:risk (e.g. +2R = 2× the amount risked); a loss is −1R (the amount risked — the entry-to-SL distance).">Total R</div>
+        <div class="lbl" data-tip="R = reward-to-risk multiple. A win banks the trade's target (a 2:1 trade wins +2R, a 3:1 trade wins +3R); a loss is −1R (the amount risked — the entry-to-SL distance).">Total R</div>
         <div class="val mono {{ 'pos' if total_r >= 0 else 'neg' }}">{{ total_r|num(1, true) }}R</div>
     </div>
     <div class="stat">

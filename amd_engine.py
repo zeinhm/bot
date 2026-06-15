@@ -37,6 +37,13 @@ DEFAULT_CFG = {
     "atrLen": 14,
     "atrMult": 1.5,
     "rrr": 2.0,
+    # Adaptive RR: 3:1 when prev completed HTF (6h) ADX >= threshold, else 2:1.
+    "dynamicRR": False,
+    "rrrTrend": 3.0,
+    "rrrRange": 2.0,
+    "htfHours": 6,
+    "htfAdxPeriod": 14,
+    "htfAdxThreshold": 40,
     "sessions": ["sydney", "tokyo", "london", "ny"],
     "sweepFilter": True,
     "sweepLen": 5,
@@ -252,6 +259,43 @@ def _compute_sweep_zones(highs, lows, closes, sweep_len, sweep_max_bars):
     return in_bull, in_bear
 
 
+def _htf_trend_mask(data, htf_hours, adx_period, adx_threshold):
+    """Per-15m-bar bool: was the PREVIOUS completed higher-timeframe bar trending?
+
+    HTF bars are fixed epoch buckets of htf_hours (e.g. 6h). ADX(adx_period) is
+    computed on the resampled HTF series; each 15m bar inherits the trend state of
+    the most recently *completed* HTF bar (no lookahead).
+    """
+    n = len(data)
+    bucket_sec = int(htf_hours * 3600)
+    bars = []  # [o, h, l, c] per HTF bucket
+    last_key = None
+    bar_bucket_idx = [0] * n
+    for i, d in enumerate(data):
+        key = int(d["time"]) // bucket_sec
+        if key != last_key:
+            bars.append([d["open"], d["high"], d["low"], d["close"]])
+            last_key = key
+        else:
+            b = bars[-1]
+            b[1] = max(b[1], d["high"])
+            b[2] = min(b[2], d["low"])
+            b[3] = d["close"]
+        bar_bucket_idx[i] = len(bars) - 1
+
+    bh = [b[1] for b in bars]
+    bl = [b[2] for b in bars]
+    bc = [b[3] for b in bars]
+    adx, _, _ = _adx(bh, bl, bc, adx_period)
+    bucket_trend = [a >= adx_threshold for a in adx]
+
+    mask = [False] * n
+    for i in range(n):
+        k = bar_bucket_idx[i]
+        mask[i] = bucket_trend[k - 1] if k - 1 >= 0 else False
+    return mask
+
+
 def run(data: list[dict], cfg: dict | None = None) -> list[dict]:
     """Run AMD FVG strategy on candle data (time in seconds)."""
     c = {**DEFAULT_CFG, **(cfg or {})}
@@ -270,6 +314,12 @@ def run(data: list[dict], cfg: dict | None = None) -> list[dict]:
     atr_len = int(c["atrLen"])
     atr_mult = float(c["atrMult"])
     rrr = float(c["rrr"])
+    dynamic_rr = bool(c.get("dynamicRR", False))
+    rrr_trend = float(c.get("rrrTrend", 3.0))
+    rrr_range = float(c.get("rrrRange", rrr))
+    htf_hours = float(c.get("htfHours", 6))
+    htf_adx_period = int(c.get("htfAdxPeriod", 14))
+    htf_adx_threshold = float(c.get("htfAdxThreshold", 40))
     sessions = c.get("sessions", ["sydney", "tokyo", "london", "ny"])
     sweep_filter = c.get("sweepFilter", True)
     sweep_len = int(c.get("sweepLen", 5))
@@ -315,6 +365,11 @@ def run(data: list[dict], cfg: dict | None = None) -> list[dict]:
         adx_vals, plus_di, minus_di = _adx(highs, lows, closes, adx_period)
     else:
         adx_vals = plus_di = minus_di = [0.0] * n
+
+    if dynamic_rr:
+        trend_mask = _htf_trend_mask(data, htf_hours, htf_adx_period, htf_adx_threshold)
+    else:
+        trend_mask = None
 
     setups: list[dict] = []
     acc_high = None
@@ -429,11 +484,14 @@ def run(data: list[dict], cfg: dict | None = None) -> list[dict]:
                     atr_sl = entry + cur_atr * atr_mult
                     smart_sl = max(atr_sl, m_ext)
                     sl_d = smart_sl - entry
-                    tp_val = entry - sl_d * rrr
+                    is_trend = bool(trend_mask[i]) if trend_mask is not None else False
+                    cur_rrr = rrr_trend if is_trend else rrr_range
+                    tp_val = entry - sl_d * cur_rrr
 
                     setups.append(_make_setup(
                         "short", acc_start, acc_end, acc_high, acc_low,
                         m_idx, m_ext, data, i, entry, smart_sl, tp_val,
+                        "trend" if is_trend else "range", cur_rrr,
                     ))
                     active = True
                     is_long = False
@@ -467,11 +525,14 @@ def run(data: list[dict], cfg: dict | None = None) -> list[dict]:
                     atr_sl = entry - cur_atr * atr_mult
                     smart_sl = min(atr_sl, m_ext)
                     sl_d = entry - smart_sl
-                    tp_val = entry + sl_d * rrr
+                    is_trend = bool(trend_mask[i]) if trend_mask is not None else False
+                    cur_rrr = rrr_trend if is_trend else rrr_range
+                    tp_val = entry + sl_d * cur_rrr
 
                     setups.append(_make_setup(
                         "long", acc_start, acc_end, acc_high, acc_low,
                         m_idx, m_ext, data, i, entry, smart_sl, tp_val,
+                        "trend" if is_trend else "range", cur_rrr,
                     ))
                     active = True
                     is_long = True
@@ -498,9 +559,12 @@ def _close_trade(trade, idx, time, price, result):
 
 
 def _make_setup(direction, acc_start, acc_end, acc_high, acc_low,
-                manip_idx, manip_ext, data, i, entry, sl, tp):
+                manip_idx, manip_ext, data, i, entry, sl, tp,
+                regime="range", rrr_used=None):
     return {
         "direction": direction,
+        "regime": regime,
+        "rrrUsed": rrr_used,
         "accStartIdx": acc_start,
         "accEndIdx": acc_end,
         "accStartTime": data[acc_start]["time"],

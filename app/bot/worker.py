@@ -343,10 +343,25 @@ class BaseWorker:
 
         # No daily trade cap — adaptive sizing handles drawdown/loss-streaks.
 
-        rr = await db.get_state("rr_ratio", self.config.strategy_params["rrr"], user_id=self.user_id, is_paper=self.is_paper)
-        sessions = await db.get_state("active_sessions", self.config.strategy_params["sessions"], user_id=self.user_id, is_paper=self.is_paper)
+        # Reward:risk. Range default (2:1) is the `rr_ratio` state override; when the
+        # adaptive-RR feature is on, the previous completed 6h candle's ADX picks 3:1 in
+        # strong trends and 2:1 otherwise (regime helper is fail-safe → 2:1 on any error).
+        sp = self.config.strategy_params
+        rr_range = await db.get_state("rr_ratio", sp["rrr"], user_id=self.user_id, is_paper=self.is_paper)
+        rr = rr_range
+        if sp.get("dynamic_rr", False) and self._shared_market:
+            dyn_on = await db.get_state("dynamic_rr_enabled", True, user_id=self.user_id, is_paper=self.is_paper)
+            if dyn_on:
+                is_trend = await self._shared_market.get_trend_regime(
+                    symbol,
+                    htf_hours=sp.get("htf_hours", 6),
+                    adx_period=sp.get("htf_adx_period", 14),
+                    adx_threshold=sp.get("htf_adx_threshold", 40),
+                )
+                rr = sp.get("rrr_trend", 3.0) if is_trend else sp.get("rrr_range", rr_range)
+        sessions = await db.get_state("active_sessions", sp["sessions"], user_id=self.user_id, is_paper=self.is_paper)
         params = {
-            **self.config.strategy_params,
+            **sp,
             "rrr": rr,
             "sessions": sessions,
             "skip_months": skip_months,
@@ -359,6 +374,7 @@ class BaseWorker:
 
         if signal is None:
             return
+        signal["target_rr"] = rr
 
         log.info("[%s] SIGNAL: %s %s entry=%.2f sl=%.2f tp=%.2f",
                  self._mode_label(), signal["direction"], symbol, signal["entry_price"], signal["sl"], signal["tp"])
@@ -421,6 +437,7 @@ class BaseWorker:
                 "quantity": fill_qty,
                 "result": "open",
                 "commission": entry_comm,
+                "target_rr": signal.get("target_rr"),
                 "entry_order_id": str(order.get("orderId", "")),
             })
 

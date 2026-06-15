@@ -45,6 +45,13 @@ async def _ensure_schema(eng):
         await conn.execute(text(
             "ALTER TABLE trades ADD COLUMN IF NOT EXISTS funding_fee DOUBLE PRECISION"
         ))
+        # planned reward:risk per trade (adaptive RR regime: 2 or 3)
+        await conn.execute(text(
+            "ALTER TABLE trades ADD COLUMN IF NOT EXISTS target_rr DOUBLE PRECISION"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE backtest_results ADD COLUMN IF NOT EXISTS target_rr DOUBLE PRECISION"
+        ))
 
         # bot_events columns
         await conn.execute(text(

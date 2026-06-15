@@ -10,7 +10,8 @@
         <th class="num">Closed</th>
         <th class="num">Size</th>
         <th>Result</th>
-        <th class="num" data-tip="R = reward-to-risk multiple. A win banks the configured reward:risk (e.g. +2R = 2× the amount risked); a loss is −1R (the amount risked — the entry-to-SL distance).">R</th>
+        <th data-tip="Planned reward-to-risk for this trade. 3:1 when the trend was strong at entry; otherwise 2:1.">Target</th>
+        <th class="num" data-tip="R = reward-to-risk multiple. A win banks the trade's target (a 2:1 trade wins +2R, a 3:1 trade wins +3R); a loss is −1R (the amount risked — the entry-to-SL distance).">R</th>
         <th class="num">ROI</th>
         <th class="num">Commission</th>
         <th class="num">Funding Fee</th>
@@ -37,6 +38,9 @@
                 {% else %}
                 <span class="pill blue">OPEN</span>
                 {% endif %}
+            </td>
+            <td class="mono {{ '' if (t.target_rr or 0) >= 2.5 else 'muted' }}">
+                {{ "%.0f"|format(t.target_rr) ~ ":1" if t.target_rr is not none else '—' }}
             </td>
             <td class="num mono {{ 'pos' if (t.r_value or 0) >= 0 else 'neg' }}">
                 {{ "%.1f"|format(t.r_value) if t.r_value is not none else '—' }}R

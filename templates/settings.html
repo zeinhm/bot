@@ -69,13 +69,13 @@
             </div>
             <input type="hidden" name="risk_mode" value="dynamic">
 
-            <!-- RR (fixed at the validated 2:1) -->
+            <!-- RR (adaptive: 2:1 normally, 3:1 in strong trends) -->
             <div class="toggle-row">
                 <div>
                     <div style="font-size:13px;font-weight:600">Reward : Risk</div>
-                    <div class="muted" style="font-size:11px">Take profit at twice the stop distance — fixed by the strategy</div>
+                    <div class="muted" style="font-size:11px">2:1 normally; automatically 3:1 when the trend is strong — set by the strategy</div>
                 </div>
-                <span class="pill gray mono" style="padding:3px 11px">2:1</span>
+                <span class="pill gray mono" style="padding:3px 11px">2:1 / 3:1</span>
             </div>
             <input type="hidden" name="rr_ratio" value="2">
 

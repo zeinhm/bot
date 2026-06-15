@@ -75,7 +75,11 @@ For each bar (starting from `max(accLen, atrLen) - 1`):
 - Additional filters: sweep zone filter, ADX trend filter
 - Entry at candle close price
 - SL: wider of ATR-based SL and manipulation extremum (smart SL)
-- TP: `slDist * rrr` from entry
+- TP: `slDist * rrr` from entry, where `rrr` is adaptive when `dynamicRR` is on —
+  `rrrTrend` (3.0) if the previous completed `htfHours` (6h) ADX(`htfAdxPeriod`) ≥ `htfAdxThreshold`
+  (40), else `rrrRange` (2.0). Each setup stores `regime` ("trend"/"range") and `rrrUsed`.
+- `compute_stats`/`simulate_equity` derive each trade's realized R from its own tp/sl distances, so
+  they handle the per-trade variable RR automatically.
 
 ### `compute_stats(setups, rrr, equity_cfg?) → dict`
 
@@ -115,19 +119,22 @@ venv/bin/python3 seed_trades.py --symbol BTCUSDT  # single asset
    - Risk: 2% of equity per trade
    - Adaptive: after 4 consecutive losses → reduce to 0.25% until 2 consecutive wins
    - Commission: 0.04% per side on full position value
-6. Inserts into `backtest_results` table with: symbol, direction, entry/exit time, entry/exit price, SL, TP, quantity, result, R value, PnL, commission
+6. Inserts into `backtest_results` table with: symbol, direction, entry/exit time, entry/exit price, SL, TP, quantity, result, R value, **target RR (2 or 3)**, PnL, commission
 
-### Verified Results (2020-01 to 2026-04)
+### Verified Results (2020-01 to 2026, adaptive RR)
 
 ```
-BTCUSDT: 360 trades (158W / 202L)
-ETHUSDT: 216 trades (90W / 126L)
-SOLUSDT: 195 trades (82W / 113L)
-Total:   771 trades
-Final equity: $134,983.60 (+1249.8%)
+BTCUSDT: 350 trades (149W / 201L)
+ETHUSDT: 214 trades (85W / 129L)
+SOLUSDT: 191 trades (78W / 113L)
+Total:   755 trades  (41.3% WR)
+Final equity: $183,632.75 (+1736.3%)   Max drawdown: 19.0%
+Adaptive RR: ~17% of trades hit the 3:1 trend regime, rest are 2:1.
 ```
 
-These match the reference trade log at `choosen/amd-fvg-15m-v1/results/trade_log.csv` exactly — same trade count per asset, same entry/exit prices, same PnL per trade, same final equity.
+With `dynamicRR` off, the engine still reproduces the fixed-2:1 baseline (771 trades, $134,983.60)
+that matches the reference trade log at `choosen/amd-fvg-15m-v1/results/trade_log.csv` exactly.
+Production now runs adaptive RR (the numbers above).
 
 ---
 
@@ -157,6 +164,12 @@ The backtester route builds its config from `config.py` → `STRATEGY_PARAMS` an
 | `atr_len` | `atrLen` |
 | `atr_mult` | `atrMult` |
 | `rrr` | `rrr` |
+| `dynamic_rr` | `dynamicRR` |
+| `rrr_trend` | `rrrTrend` |
+| `rrr_range` | `rrrRange` |
+| `htf_hours` | `htfHours` |
+| `htf_adx_period` | `htfAdxPeriod` |
+| `htf_adx_threshold` | `htfAdxThreshold` |
 | `sweep_filter` | `sweepFilter` |
 | `sweep_len` | `sweepLen` |
 | `sweep_max_bars` | `sweepMaxBars` |

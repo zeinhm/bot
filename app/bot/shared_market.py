@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Callable, Awaitable
 
 from binance import AsyncClient, BinanceSocketManager
@@ -20,6 +21,7 @@ class SharedMarketData:
         self._candle_buffers: dict[str, list[dict]] = {}
         self._candle_callbacks: list[Callable[[str, dict], Awaitable[None]]] = []
         self._kline_task: asyncio.Task | None = None
+        self._regime_cache: dict[str, tuple[int, bool]] = {}  # symbol -> (htf_bucket, is_trend)
 
     async def connect(self):
         if self._connected:
@@ -126,6 +128,40 @@ class SharedMarketData:
 
     def get_candles(self, symbol: str) -> list[dict]:
         return list(self._candle_buffers.get(symbol, []))
+
+    async def get_trend_regime(self, symbol: str, htf_hours: float = 6,
+                               adx_period: int = 14, adx_threshold: float = 40) -> bool:
+        """True if the PREVIOUS completed higher-timeframe (e.g. 6h) bar is trending
+        (ADX(adx_period) >= adx_threshold). Drives the adaptive reward:risk: trend → 3:1,
+        else 2:1. Cached once per HTF bucket per symbol. Fail-safe: any error → False (2:1).
+        """
+        bucket_sec = int(htf_hours * 3600)
+        now_bucket = int(time.time()) // bucket_sec
+        cached = self._regime_cache.get(symbol)
+        if cached is not None and cached[0] == now_bucket:
+            return cached[1]
+        try:
+            if not self.market_client:
+                return False
+            raw = await self.market_client.futures_klines(
+                symbol=symbol, interval=f"{int(htf_hours)}h", limit=60
+            )
+            if len(raw) < adx_period * 2 + 2:
+                return False
+            raw = raw[:-1]  # drop the in-progress bar → last is the most recent completed
+            highs = [float(k[2]) for k in raw]
+            lows = [float(k[3]) for k in raw]
+            closes = [float(k[4]) for k in raw]
+            from strategy import _adx
+            adx_vals, _, _ = _adx(highs, lows, closes, adx_period)
+            is_trend = bool(adx_vals[-1] >= adx_threshold)
+            self._regime_cache[symbol] = (now_bucket, is_trend)
+            log.info("SharedMarketData: %s %dh ADX=%.1f → %s", symbol, int(htf_hours),
+                     adx_vals[-1], "TREND 3:1" if is_trend else "range 2:1")
+            return is_trend
+        except Exception as e:
+            log.error("SharedMarketData: trend-regime error for %s: %s → default 2:1", symbol, e)
+            return False
 
     def on_candle_close(self, callback: Callable[[str, dict], Awaitable[None]]):
         self._candle_callbacks.append(callback)

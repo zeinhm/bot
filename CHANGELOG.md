@@ -6,6 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 
 ---
 
+## [2026-06-16]
+
+### Added
+- **Adaptive reward-to-risk (2:1 / 3:1 via 6h trend regime).** Take-profit is now adaptive: **3:1 when the previous completed 6h candle's ADX(14) ≥ 40** (strong directional trend), otherwise **2:1**. Validated via rolling/maximin walk-forward (beats fixed-2:1 out-of-sample with lower drawdown; the 6h/ADX-40 config never had a losing year). New `STRATEGY_PARAMS`: `dynamic_rr=True`, `rrr_trend=3.0`, `rrr_range=2.0`, `htf_hours=6`, `htf_adx_period=14`, `htf_adx_threshold=40`.
+  - **Backtest engine** (`amd_engine.py`): new `_htf_trend_mask()` (resamples 15m→6h, ADX, previous-completed-bar, no lookahead); `run()` picks RR per entry when `dynamicRR` is on; each setup carries `regime`/`rrrUsed`. `compute_stats`/`simulate_equity` already derive R per trade, so they handle variable RR unchanged.
+  - **Live** (`app/bot/shared_market.py` `get_trend_regime()` + `app/bot/worker.py _process_candle`): fetches Binance 6h klines (fail-safe → 2:1 on error), sets `params["rrr"]` per regime; `dynamic_rr_enabled` state key is a kill-switch. Real-money default is **on**.
+  - **Trade log**: new `target_rr` column on `trades` + `backtest_results` (migration `f6b2d4e8a1c9`; also in `_ensure_schema`); backtester and shared live trade tables show a **Target** column (2:1 / 3:1).
+  - **Re-seeded**: 755 trades, 41.3% win rate, +1,736% ($183.6k from $10k), 19% max DD; ~17% of trades hit the 3:1 trend regime.
+  - **Copy refreshed** across landing page, settings, backtester, and docs (`strategy.md`, `backtester.md`, `codebase-map.md`) — no stale "2:1-only" claims remain.
+
+### Changed
+- **Backtester Playground layout** (`templates/backtester.html`): on **desktop** the Playground card is now capped to the chart column's height (`max-height` synced via JS to `#bt-results-col`, re-synced on resize) and scrolls internally, so its bottom aligns 1:1 with the chart instead of running far past it. On **mobile** (≤767px) the layout is unchanged except the **strategy explanation** (Strategy / Risk / Filters / Adaptive Sizing) now collapses behind a single **"Strategy explanation"** toggle (one expander for the whole block, collapsed by default); the risk controls above stay visible. Desktop always shows the full text.
+
 ## [2026-06-15]
 
 ### Added

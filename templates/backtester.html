@@ -161,7 +161,7 @@
         </div>
 
         <!-- Chart -->
-        <div class="chart-wrap" id="chart-wrap">
+        <div class="chart-wrap" id="chart-wrap" style="position:relative">
             <div class="chart-hdr">
                 <span class="pair" id="chart-pair">BTCUSDT</span>
                 <span class="tf">15m</span>
@@ -176,6 +176,8 @@
                 <div id="bt-vol-legend" style="position:absolute;bottom:18%;left:12px;z-index:10;font-size:11px;font-family:var(--mono);pointer-events:none;display:flex;gap:6px"></div>
                 <div id="chart-el" style="height:560px;overflow:hidden;background:#131720"></div>
             </div>
+            <!-- covers the whole card (header + chart) and captures clicks → blocks arrow-spam while loading -->
+            <div id="bt-chart-loading" style="position:absolute;inset:0;background:rgba(8,11,16,.45);z-index:20;opacity:0;visibility:hidden;transition:opacity .15s;cursor:wait"></div>
         </div>
 
     </div>
@@ -363,7 +365,14 @@
 
     // ── Create chart ──
     function initChart() {
-        if (chart) chart.remove();
+        // Remove the tracked instance AND any leftover instance from a prior script
+        // run (HTMX swaps re-execute this inline script with a fresh `chart=undefined`,
+        // which would otherwise stack a 2nd chart in the same container → ghost candles).
+        if (chart) { try { chart.remove(); } catch (e) {} }
+        if (chartEl._lwChart && chartEl._lwChart !== chart) { try { chartEl._lwChart.remove(); } catch (e) {} }
+        // bulletproof: drop any leftover chart canvas/table a prior run left behind
+        // (LightweightCharts renders into <table>/<canvas>; setup boxes are <div>s, untouched)
+        Array.prototype.forEach.call(chartEl.querySelectorAll('table, canvas'), function(n) { n.remove(); });
         boxEls.forEach(function(b) { b.el.remove(); });
         boxEls = [];
 
@@ -379,6 +388,8 @@
             timeScale: { borderColor: 'rgba(139,148,158,.08)', timeVisible: true, secondsVisible: false },
             handleScroll: true, handleScale: true
         });
+
+        chartEl._lwChart = chart;   // track on the element so a re-run can clean it up
 
         candleSeries = chart.addCandlestickSeries({
             upColor: '#00C896', downColor: '#FF4D4D',
@@ -441,13 +452,27 @@
         }
     }
 
+    // ── Loading overlay (dim scrim while candles fetch) ──
+    var chartLoadingEl = document.getElementById('bt-chart-loading');
+    function setChartLoading(on) {
+        if (!chartLoadingEl) return;
+        chartLoadingEl.style.opacity = on ? '1' : '0';
+        chartLoadingEl.style.visibility = on ? 'visible' : 'hidden';
+    }
+
     // ── Fetch candles from API ──
+    var _candleInflight = 0;
     function fetchCandles(end, limit) {
+        _candleInflight++;
+        setChartLoading(true);
         var url = '/api/candles?symbol=' + currentSymbol + '&interval=15m&limit=' + limit;
         if (end != null) url += '&end=' + end;
         return fetch(url).then(function(r) { return r.json(); }).then(function(res) {
             if (res.candles) res.candles.forEach(function(c) { c.time += tzOffsetSec; });
             return res;
+        }).finally(function() {
+            _candleInflight--;
+            if (_candleInflight <= 0) setChartLoading(false);
         });
     }
 
@@ -696,14 +721,28 @@
     document.getElementById('prev-setup').addEventListener('click', navPrev);
     document.getElementById('next-setup').addEventListener('click', navNext);
 
+    // Debounced navigation: spamming the arrows updates the counter instantly but
+    // coalesces the heavy candle-load/render so only the FINAL setup actually fetches
+    // (prevents flooding /api/candles with a queued request per click).
+    var _navTimer = null;
+    function navTo(idx) {
+        if (!setups.length) return;
+        setupIdx = Math.max(0, Math.min(idx, setups.length - 1));
+        var s = setups[setupIdx];
+        var globalIdx = (s._ordinal != null ? s._ordinal : setupIdx);
+        document.getElementById('setup-counter').textContent = (globalIdx + 1) + ' / ' + (totalSetups || setups.length);
+        clearTimeout(_navTimer);
+        _navTimer = setTimeout(function() { goToSetup(setupIdx); }, 160);
+    }
+
     function navNext() {
-        if (setupIdx < setups.length - 1) goToSetup(setupIdx + 1);
+        if (setupIdx < setups.length - 1) navTo(setupIdx + 1);
     }
     function navPrev() {
-        if (setupIdx > 0) { goToSetup(setupIdx - 1); return; }
+        if (setupIdx > 0) { navTo(setupIdx - 1); return; }
         // at the oldest loaded setup — pull the previous page, then step older
-        if (loadedSetupCount < totalSetups) {
-            loadOlderSetups().then(function() { goToSetup(setupIdx - 1); });
+        if (loadedSetupCount < totalSetups && !loadingSetups) {
+            loadOlderSetups().then(function() { navTo(setupIdx - 1); });
         }
     }
 

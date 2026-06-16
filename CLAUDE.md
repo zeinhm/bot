@@ -141,14 +141,22 @@ bot/
 │   ├── strategy.md            # Strategy rules
 │   ├── backtester.md          # Backtester docs
 │   ├── order-safety.md        # Order safety mechanisms
+│   ├── research-log.md        # ★ Tested hypotheses + verdicts — read before strategy experiments
 │   └── codebase-map.md        # Detailed function-level reference (see this file)
+│
+├── research/                  # Strategy R&D harness (tracked; see Research & Ops below)
+│   ├── harness.py             # Harness: load candles, run engine, equity sim, by_year
+│   ├── sweep.py               # CLI: python -m research.sweep --param ... --values ...
+│   └── walkforward.py         # CLI: python -m research.walkforward [--dynamic|--rrr N]
+├── scripts/
+│   └── db_inspect.py          # CLI: python -m scripts.db_inspect [summary|trades|backtest|...]
 │
 ├── .env.example               # Environment variable template
 ├── requirements.txt           # Python dependencies (16 packages)
 ├── Procfile                   # Railway deployment command
 ├── nixpacks.toml              # Railway build config
 ├── alembic.ini                # Alembic configuration
-└── BUILD_PLAN.md              # Original build specification
+└── BUILD_PLAN.md              # ARCHIVED original build spec (historical, stale; see CLAUDE.md/docs for current state)
 ```
 
 ## Feature → File Lookup
@@ -184,7 +192,9 @@ bot/
 | **PWA (install/offline/icons)**     | `static/manifest.webmanifest`, `static/sw.js`, `static/icons/`, `main.py` (`/sw.js` route), `templates/base.html` (head links + SW registration) |
 | **Design tokens / colors**          | `static/css/app.css` → CSS custom properties at top           |
 | **Historical data import**          | `import_candles.py` (CLI tool, raw psycopg2)                 |
-| **Seed backtest results**           | `seed_trades.py` (CLI tool)                                  |
+| **Seed backtest results**           | `seed_trades.py` (CLI tool, gitignored) — see Research & Ops |
+| **Strategy experiments / sweeps**   | `research/` harness + `docs/research-log.md` (read first!)   |
+| **Inspect local DB**                | `python -m scripts.db_inspect`                               |
 | **CSRF / security middleware**      | `app/middleware/csrf.py`, `main.py` (middleware order)        |
 | **Session config / cookies**        | `main.py` → SessionMiddleware config                         |
 | **Deployment config**               | `Procfile`, `nixpacks.toml`, `.env`                          |
@@ -224,6 +234,24 @@ bot/
 | `RejectionLog` | `rejection_log` | user_id, email, name, status (rejected/allowed) |
 | `BacktestRun` | `backtest_runs` | signature (unique), strategy, symbol, interval, params_hash, data fingerprint, total_setups, stats (JSON) — backtester result cache |
 | `BacktestSetup` | `backtest_setups` | run_id (FK, cascade), ordinal, entry_time, data (JSON setup); indexed (run_id,ordinal) + (run_id,entry_time) |
+
+## Research & Ops
+
+**Before any strategy experiment, read [`docs/research-log.md`](docs/research-log.md)** — it records
+every hypothesis we've tested with its verdict and a reproduce command. Don't re-run a settled dead
+end; if it's there, quote the conclusion. Append a row after any new experiment.
+
+**Strategy research tooling** (run from `bot/`, durable replacement for throwaway scratch scripts):
+- `python -m research.sweep --param <camelCaseCfgKey> --values a,b,c [--param2 ... --values2 ...] [--dynamic] [--risk N]` — param sweep table.
+- `python -m research.walkforward [--rrr N | --dynamic --htfAdxThreshold N] [--split YEAR] [--set k=v]` — year-by-year + out-of-sample split.
+- `research/harness.py` — `Harness` (load candles once, `run_all(overrides)`, `equity(setups, ...)`, `by_year`). Equity sim mirrors `seed_trades.py`; baseline reproduces 755 / $183,632.75. Reuse it for ad-hoc analysis instead of re-deriving.
+- `python -m scripts.db_inspect [summary|trades|backtest|users|candles]` — quick read-only DB checks (no inline SQL).
+
+**Backtest / seeding gotchas** (tribal knowledge — now written down):
+- `seed_trades.py` is **gitignored** (local-only); it writes `backtest_results`. Re-seed with `python seed_trades.py --clear`. Prod re-seeds separately (run locally against prod `DATABASE_URL`).
+- Public **track-record / dashboard read the `trades` table**. The admin's seeded "live history" = backtest copied into `trades` (`user_id=1, is_paper=false`). To refresh it: delete `where user_id=1 and is_paper=false` then insert from `backtest_results` — **scoped so real paper/live trades are untouched**.
+- New `target_rr` column (2 or 3) is on `trades` + `backtest_results` (migration `f6b2d4e8a1c9` + `_ensure_schema`).
+- Local DB has `historical_candles` (1m + 15m for BTC/ETH/SOL). `import_candles.py` (tracked) loads/resamples 1m CSVs.
 
 ## SOP — Keeping Docs Updated
 

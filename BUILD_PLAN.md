@@ -1,5 +1,11 @@
 # AMD FVG Trading Bot — Build Plan
 
+> ⚠️ **ARCHIVE — original build spec from project inception. Not maintained; parts are stale**
+> (e.g. it lists 3 DB tables vs the current 14, and calls the strategy params "fixed / do NOT change"
+> before adaptive RR shipped). Kept only for provenance / original intent.
+> **Current source of truth:** [`CLAUDE.md`](CLAUDE.md), [`docs/`](docs/),
+> [`docs/research-log.md`](docs/research-log.md).
+
 ## What to build
 
 A live trading bot for the AMD FVG 15m strategy with a web dashboard. Single Python service that:

@@ -237,6 +237,13 @@ bot/
 
 ## Research & Ops
 
+**SIMULATION OUTPUT RULE (always):** when running ANY simulation/backtest/sweep, **lead with the full
+results table** — every config tested as its own row, with `trades · win% · totalR · final$ · ret% ·
+maxDD` plus any sim-specific columns (e.g. whipsaw% for hedges), the **baseline/comparison row**, and a
+**per-asset and/or per-year breakdown** when relevant. Show the data first, interpretation second and
+brief. Never replace the numbers with a summary or an opinion — the user wants the raw table every
+time without having to ask.
+
 **Before any strategy experiment, read [`docs/research-log.md`](docs/research-log.md)** — it records
 every hypothesis we've tested with its verdict and a reproduce command. Don't re-run a settled dead
 end; if it's there, quote the conclusion. Append a row after any new experiment.

@@ -14,6 +14,10 @@ adaptive sizing (4 losses → 0.25% until 2 wins). Baseline backtest: **755 trad
 
 | Date | Hypothesis / change | Result | Verdict | Reproduce |
 |------|--------------------|--------|---------|-----------|
+| 2026-06-16 | **Flip the strategy** (trade opposite of every AMD signal, break-&-retest) | WR 29% vs 42.8%; −96R, −62%, 64% DD at every rr | ❌ AMD direction IS the edge | `python -m research.flip` |
+| 2026-06-16 | Loss anatomy (are stop-outs wicks or valid?) | ~75% of losses run ≥1× SL *past* the stop (valid); only ~24% reverse to TP, and slowly (~120 bars) | ℹ️ stops are honest; can't fade them (flip's own stop trips on the path) | `python -m research.loss_anatomy` |
+| 2026-06-16 | Hedge every signal (long+short), Scheme C structural stops | best rr=4: +101% but ~9× worse than directional, 2× DD; counter leg is dead weight | ❌ | `python -m research.hedge --scheme range` |
+| 2026-06-16 | Hedge every signal, symmetric ATR×1.5 SL | all rr negative (−6% to −77%), 65–78% DD — whipsaws both legs in chop | ❌ | `python -m research.hedge --scheme sym` |
 | 2026-06-16 | **Dynamic RR via HTF-ADX regime** (trend→3:1, else 2:1) | 4–6h + ADX 35–40 is a robust plateau; 6h/40 best floor (no losing year), $184k @ 19% DD; beats fixed-2:1 OOS | ✅ **SHIPPED** (6h/ADX-40) | `python -m research.walkforward --dynamic --htfAdxThreshold 40` |
 | 2026-06-16 | Daily (24h) ADX regime for dynamic RR | in-sample-best threshold (20) is OOS-worst; only thr-40 squeaks a win, unselectable | ❌ too slow/noisy | `python -m research.sweep --param htfAdxThreshold --values 20,30,40 --dynamic` (24h needs htfHours=24) |
 | 2026-06-16 | Rolling WF selection: greedy (best past) vs maximin (best worst-year) | greedy → $65k (loses to 2:1 $84k); maximin → $141k, converges to 6h/35-40 | ✅ **pick for reliability, not peak** | (selection logic; see detail) |

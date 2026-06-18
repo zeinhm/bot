@@ -19,6 +19,10 @@
 .yr-btn { display:inline-flex; align-items:center; justify-content:center; height:26px; padding:0 10px; border-radius:4px; font-size:11px; color:var(--text-3); background:none; border:1px solid transparent; cursor:pointer; font-family:var(--mono); transition:all .1s; }
 .yr-btn:hover { color:var(--text-1); background:rgba(139,148,158,.08); }
 .yr-btn.active { color:#00C896; border-color:rgba(0,200,150,.3); background:rgba(0,200,150,.08); }
+/* 15m/5m strategy toggle — same pill style as the live position timeframe selector */
+.tf-btn { padding:4px 10px; border-radius:4px; border:none; background:transparent; color:var(--muted); font-size:11px; font-weight:600; font-family:var(--mono); cursor:pointer; white-space:nowrap; }
+.tf-btn:hover { background:rgba(255,255,255,.06); color:var(--fg); }
+.tf-btn.active { background:var(--accent); color:#fff; }
 .setup-nav { display:flex; align-items:center; gap:6px; }
 .setup-nav button { height:26px; padding:0 8px; border-radius:4px; font-size:11px; background:rgba(139,148,158,.08); border:1px solid var(--border); color:var(--text-2); cursor:pointer; font-family:var(--mono); }
 .setup-nav button:hover { color:var(--text-1); background:rgba(139,148,158,.15); }
@@ -167,7 +171,10 @@
         <div class="chart-wrap" id="chart-wrap" style="position:relative">
             <div class="chart-hdr">
                 <span class="pair" id="chart-pair">BTCUSDT</span>
-                <span class="tf">15m</span>
+                <span id="tf-seg" style="display:inline-flex;gap:2px">
+                    <button type="button" class="tf-btn" data-strat="amd_15m">15m</button>
+                    <button type="button" class="tf-btn" data-strat="trend_5m">5m</button>
+                </span>
                 <div class="setup-nav" id="setup-nav" style="display:none">
                     <button id="prev-setup">◀</button>
                     <span id="setup-counter">1 / 0</span>
@@ -364,6 +371,11 @@
     var tzOffsetSec = -(new Date().getTimezoneOffset()) * 60;
     var chart, candleSeries, volSeries;
     var currentSymbol = 'BTCUSDT';
+    // Drill-down strategy: amd_15m (15m chart) or trend_5m (5m chart). Drives the
+    // candle interval, the setups fetched, and the bar size for nav padding.
+    var currentStrategy = 'amd_15m';
+    function curInterval() { return currentStrategy === 'trend_5m' ? '5m' : '15m'; }
+    function curBarSec() { return currentStrategy === 'trend_5m' ? 300 : 900; }
     var allData = [];
     var setups = [];             // loaded setups (newest-first suffix), each with _ordinal
     var setupIdx = 0;            // index into the loaded `setups`
@@ -478,7 +490,7 @@
     function fetchCandles(end, limit) {
         _candleInflight++;
         setChartLoading(true);
-        var url = '/api/candles?symbol=' + currentSymbol + '&interval=15m&limit=' + limit;
+        var url = '/api/candles?symbol=' + currentSymbol + '&interval=' + curInterval() + '&limit=' + limit;
         if (end != null) url += '&end=' + end;
         return fetch(url).then(function(r) { return r.json(); }).then(function(res) {
             if (res.candles) res.candles.forEach(function(c) { c.time += tzOffsetSec; });
@@ -633,7 +645,7 @@
         btn.disabled = true;
         btn.textContent = 'Running…';
 
-        var params = 'symbol=' + currentSymbol + '&interval=15m&' + btSetupParams();
+        var params = 'symbol=' + currentSymbol + '&strategy=' + currentStrategy + '&' + btSetupParams();
 
         fetch('/api/backtest?' + params)
             .then(function(r) { return r.json(); })
@@ -698,7 +710,6 @@
     }
 
     // ── Setup navigation ──
-    var BAR_SEC = 15 * 60;
     function goToSetup(idx) {
         if (!setups.length) return;
         setupIdx = Math.max(0, Math.min(idx, setups.length - 1));
@@ -706,7 +717,7 @@
         var globalIdx = (s._ordinal != null ? s._ordinal : setupIdx);
         document.getElementById('setup-counter').textContent = (globalIdx + 1) + ' / ' + (totalSetups || setups.length);
 
-        var padSec = 20 * BAR_SEC;
+        var padSec = 20 * curBarSec();
         var fromTime = s.accStartTime - padSec;
         var toTime = (s.exitTime || s.entryTime) + padSec;
 
@@ -714,6 +725,9 @@
         function ensureLoaded() {
             if (!allData.length || allData[0].time <= fromTime || !hasMore) {
                 chart.timeScale().setVisibleRange({ from: fromTime, to: toTime });
+                // Re-enable vertical auto-scale: a manual price-axis drag turns it off,
+                // which would leave the setup's candles off-screen vertically on nav.
+                candleSeries.priceScale().applyOptions({ autoScale: true });
                 chartEl.style.visibility = '';
                 setTimeout(updateBoxes, 50);
                 return;
@@ -748,14 +762,37 @@
         _navTimer = setTimeout(function() { goToSetup(setupIdx); }, 160);
     }
 
+    // Pull all remaining older setups in one request (so a wrap-to-first lands correctly).
+    function ensureAllLoaded() {
+        if (loadedSetupCount >= totalSetups || loadingSetups) return Promise.resolve();
+        loadingSetups = true;
+        return loadSetupPageRaw(loadedSetupCount, totalSetups - loadedSetupCount).then(function(older) {
+            if (older.length) {
+                setups = older.concat(setups);
+                loadedSetupCount += older.length;
+                setupIdx += older.length;   // keep the current pointer stable
+            }
+            loadingSetups = false;
+        });
+    }
+
     function navNext() {
-        if (setupIdx < setups.length - 1) navTo(setupIdx + 1);
+        if (setupIdx < setups.length - 1) { navTo(setupIdx + 1); return; }
+        // at the newest setup — wrap around to the first (oldest), loading it if needed
+        if (loadedSetupCount < totalSetups) {
+            ensureAllLoaded().then(function() { navTo(0); });
+        } else {
+            navTo(0);
+        }
     }
     function navPrev() {
         if (setupIdx > 0) { navTo(setupIdx - 1); return; }
         // at the oldest loaded setup — pull the previous page, then step older
         if (loadedSetupCount < totalSetups && !loadingSetups) {
             loadOlderSetups().then(function() { navTo(setupIdx - 1); });
+        } else {
+            // everything loaded and we're at the first — wrap around to the last (newest)
+            navTo(setups.length - 1);
         }
     }
 
@@ -801,7 +838,7 @@
         }
         if (setups.length > 0) {
             var s = setups[setups.length - 1];
-            var endSec = (s.exitTime || s.entryTime) - tzOffsetSec + 30 * BAR_SEC;
+            var endSec = (s.exitTime || s.entryTime) - tzOffsetSec + 30 * curBarSec();
             fetchCandles(endSec, 2000).then(done);
         } else {
             fetchCandles(null, CHUNK).then(done);
@@ -810,7 +847,7 @@
 
     // ── Lazy setup loading (paged from /api/backtest/setups) ──
     function loadSetupPageRaw(offset, limit) {
-        return fetch('/api/backtest/setups?symbol=' + currentSymbol + '&interval=15m&offset=' + offset + '&limit=' + limit + '&' + btSetupParams())
+        return fetch('/api/backtest/setups?symbol=' + currentSymbol + '&strategy=' + currentStrategy + '&offset=' + offset + '&limit=' + limit + '&' + btSetupParams())
             .then(function(r) { return r.json(); })
             .then(function(res) {
                 if (res.total != null) totalSetups = res.total;
@@ -867,6 +904,19 @@
     document.addEventListener('click', function(e) {
         if (assetMenu && !assetMenu.contains(e.target)) assetMenu.style.display = 'none';
     });
+    // Reload the per-asset drill-down for the current symbol + strategy (chart + setups + stats).
+    function reloadDrilldown() {
+        return fetch('/api/backtest?symbol=' + currentSymbol + '&strategy=' + currentStrategy + '&' + btSetupParams())
+            .then(function(r) { return r.json(); })
+            .then(function(btRes) {
+                applyBtStats(btRes.stats || {});
+                totalSetups = btRes.total || 0;
+                initChart();
+                chartEl.style.visibility = 'hidden';
+                loadInitialSetups();
+            });
+    }
+
     assetMenu.addEventListener('click', function(e) {
         e.stopPropagation();
         var opt = e.target.closest('[data-sym]');
@@ -877,17 +927,25 @@
         document.getElementById('asset-label').textContent = currentSymbol;
         document.getElementById('chart-pair').textContent = currentSymbol;
         assetMenu.style.display = 'none';
-
-        fetch('/api/backtest?symbol=' + currentSymbol + '&interval=15m&' + btSetupParams())
-            .then(function(r) { return r.json(); })
-            .then(function(btRes) {
-                applyBtStats(btRes.stats || {});
-                totalSetups = btRes.total || 0;
-                initChart();
-                chartEl.style.visibility = 'hidden';
-                loadInitialSetups();
-            });
+        reloadDrilldown();
     });
+
+    // ── 15m / 5m strategy toggle (drill-down only; the combined headline is unaffected) ──
+    var tfBtns = document.querySelectorAll('#tf-seg .tf-btn');
+    function setTfActive() {
+        tfBtns.forEach(function(b) {
+            b.classList.toggle('active', b.dataset.strat === currentStrategy);
+        });
+    }
+    tfBtns.forEach(function(b) {
+        b.addEventListener('click', function() {
+            if (b.dataset.strat === currentStrategy) return;   // already selected
+            currentStrategy = b.dataset.strat;
+            setTfActive();
+            reloadDrilldown();
+        });
+    });
+    setTfActive();
 
     // ── Run button ──
     document.getElementById('run-btn').addEventListener('click', function() { runBacktest(); });
@@ -930,7 +988,7 @@
 
     // Run all three param-dependent fetches; resolve once they all settle.
     function btReload() {
-        var pSingle = fetch('/api/backtest?symbol=' + currentSymbol + '&interval=15m&' + btSetupParams())
+        var pSingle = fetch('/api/backtest?symbol=' + currentSymbol + '&strategy=' + currentStrategy + '&' + btSetupParams())
             .then(function(r) { return r.json(); })
             .then(function(btRes) {
                 applyBtStats(btRes.stats || {});
@@ -1017,7 +1075,7 @@
     syncPlaygroundHeight();
     loadCombined();
     if (window.__btReloadTradeLog) window.__btReloadTradeLog();  // sync log to default params
-    fetch('/api/backtest?symbol=' + currentSymbol + '&interval=15m&' + btSetupParams())
+    fetch('/api/backtest?symbol=' + currentSymbol + '&strategy=' + currentStrategy + '&' + btSetupParams())
         .then(function(r) { return r.json(); })
         .then(function(btRes) {
             applyBtStats(btRes.stats || {});

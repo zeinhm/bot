@@ -23,9 +23,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 - **Backtester trade log orders newest-first** (running equity is still accumulated chronologically; the top row shows the final equity).
 - **Track-record page:** logo + wordmark now link to the landing page; "verified by Binance" badge and "Recent Verified Trades" heading trimmed to "Live" / "Recent Trades" (the "pulled directly from Binance, nothing self-reported" line already conveys it); PnL/Entry/Exit use thousand separators (registered the shared `num` Jinja filter on the route); removed the per-row win/loss left border (the DIR badge + colored R/PnL already convey outcome).
 - **Position chart** default pinned timeframes now include **5m** and drop **1W** (`1m · 5m · 15m · 1H · 4H · 1D`), reflecting the 5m strategy.
+- **Backtester 15m/5m drill-down toggle.** The per-asset chart now has a `15m`/`5m` pill toggle (same style as the live position timeframe selector): `15m` shows the `amd_15m` setups on 15m candles, `5m` shows the `trend_5m` setups on 5m candles. The candle loader stays windowed/paginated, so 5m's ~3× candles never load all at once. The combined headline is unaffected.
 
 ### Fixed
 - **Combined backtest endpoint 500.** The combined run was labelled `15m+5m` (6 chars) for a `VARCHAR(5)` column → `StringDataRightTruncationError`. Shortened the internal cache label to `combo`.
+- **Backtester setup nav — candles off-screen after a manual zoom.** `goToSetup` only reset the time axis; dragging the price axis disables vertical auto-scale, so next/prev left the setup's candles off-screen vertically. Now re-enables price auto-scale on navigation.
+- **Backtester setup nav wrap-around.** `▶` on the last setup wraps to the first (loading the remaining older setups if needed), and `◀` on the first wraps to the last.
 
 ## [2026-06-16]
 

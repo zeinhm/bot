@@ -280,7 +280,7 @@ class LiveWorker(BaseWorker):
         self._active_trades.pop(symbol, None)
         self._sltp_missing_since.pop(symbol, None)
         self._sltp_last_alert.pop(symbol, None)
-        self._on_trade_result(False)
+        self._on_trade_result(self._resolve_strategy(trade), False)
 
         await db.log_event(
             f"Force-closed {symbol}: price breached SL with no stop order on exchange",
@@ -348,8 +348,8 @@ class LiveWorker(BaseWorker):
                     update["exit_price"] = binance_exit_price
                 correct_result = "loss" if binance_is_sl else "win"
                 if trade.result != correct_result:
-                    rr = await db.get_state("rr_ratio", self.config.strategy_params["rrr"],
-                                            user_id=self.user_id, is_paper=self.is_paper)
+                    rr = trade.target_rr or await db.get_state(
+                        "rr_ratio", self.config.strategy_params["rrr"], user_id=self.user_id, is_paper=self.is_paper)
                     update["result"] = correct_result
                     update["r_value"] = r_value_for_exit(binance_is_sl, update.get("entry_price", trade.entry_price),
                                                          trade.sl_price, trade.tp_price, rr)

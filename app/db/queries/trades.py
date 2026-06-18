@@ -3,12 +3,31 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 
 from app.db.engine import get_session
 from app.db.models import Trade
 
 log = logging.getLogger(__name__)
+
+
+async def clear_user_trades(user_id: int, is_paper: bool = False):
+    """Delete a user's trades for one mode. Used by the seeder to refresh the
+    admin's seeded 'live history' (user_id=1, is_paper=False) — strictly scoped so
+    real paper/live trades for other users are untouched."""
+    async with get_session() as session:
+        await session.execute(
+            delete(Trade).where(Trade.user_id == user_id, Trade.is_paper == is_paper)
+        )
+        await session.commit()
+
+
+async def bulk_create_trades(rows: list[dict]):
+    """Insert many fully-formed Trade rows (used by the seeder)."""
+    async with get_session() as session:
+        for r in rows:
+            session.add(Trade(**r))
+        await session.commit()
 
 
 async def create_trade(trade_data: dict) -> Trade:

@@ -9,11 +9,11 @@
   /* deterministic rng */
   function rng(seed) { let s = seed; return () => { s = (s * 9301 + 49297) % 233280; return s / 233280; }; }
 
-  /* ---- equity curve: $10k -> $184k, ~76 months, log-ish compounding with drawdowns ---- */
+  /* ---- equity curve: $10k -> $383k (combined 15m+5m), ~76 months, log-ish compounding with drawdowns ---- */
   function buildEquity() {
     const r = rng(7);
     const months = 76; // Jan 2020 -> 2026
-    const start = 10000, end = 184000;
+    const start = 10000, end = 383000;
     const pts = [];
     // exponential base path in log space + noise + periodic drawdowns
     const logStart = Math.log(start), logEnd = Math.log(end);
@@ -94,7 +94,7 @@
     const x = i => padL + (i / (data.length - 1)) * (W - padL - padR);
     const y = v => padT + (H - padT - padB) - ((v - min) / (max - min)) * (H - padT - padB);
     // gridlines + $ labels (log-ish ticks)
-    const ticks = [10000, 50000, 100000, 150000, 184000];
+    const ticks = [10000, 100000, 200000, 300000, 383000];
     ticks.forEach(tk => {
       const yy = y(tk);
       svg.appendChild(el('line', { x1: padL, y1: yy, x2: W - padR, y2: yy, stroke: '#1c222b', 'stroke-width': 1 }));

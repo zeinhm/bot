@@ -61,6 +61,61 @@ STRATEGY_PARAMS = {
     "wins_to_recover": 2,
 }
 
+# --- Strategy registry -------------------------------------------------------
+# Each entry is a fully self-contained, named strategy config carrying its own
+# `interval` and its own adaptive-sizing params. The engine and worker stay
+# strategy-agnostic: to add or change a strategy, edit only this dict (SOLID —
+# Single-Responsibility per strategy, Open/Closed for the engine).
+#
+#   amd_15m  — the validated 15m production strategy (adaptive 2:1/3:1 RR).
+#   trend_5m — the 5m trend-sniper: take the AMD setup on 5m ONLY while the 6h
+#              ADX(14) >= 50 regime is trending, fixed 2:1, SL 1.5 ATR. Overlaid
+#              on amd_15m it shares one wallet, one position per symbol, and its
+#              OWN adaptive-sizing streak (see app/bot/worker.py).
+STRATEGIES = {
+    "amd_15m": {
+        "interval": "15m",
+        **STRATEGY_PARAMS,
+    },
+    "trend_5m": {
+        "interval": "5m",
+        "tf_minutes": 5,
+        "acc_len": 20,
+        "acc_mode": "atr",
+        "atr_mult_acc": 5,
+        "atr_mult_acc_min": 0.0,
+        "acc_width": 0.2,
+        "acc_width_min": 0.0,
+        "man_look": 10,
+        "fvg_threshold": 0.1,
+        "atr_len": 14,
+        "atr_mult": 1.5,
+        "rrr": 2.0,
+        # Trend-only: enter exclusively while the 6h ADX(14) >= htf_adx_threshold
+        # regime is trending. Enforced in the worker (live check_signal has no
+        # trend_only flag) and in the engine (trendOnly) for the backtest.
+        "dynamic_rr": False,
+        "trend_only": True,
+        "htf_hours": 6,
+        "htf_adx_period": 14,
+        "htf_adx_threshold": 50,
+        "sessions": ["sydney", "tokyo", "london", "ny"],
+        "sweep_filter": True,
+        "sweep_len": 5,
+        "sweep_max_bars": 300,
+        "skip_months": [5],
+        "skip_weeks": {4: [2, 4]},
+        "manip_min_mode": "atr",
+        "manip_min_val": 1.5,
+        "adx_filter": True,
+        "adx_period": 42,
+        "adx_threshold": 35,
+        "loss_streak_threshold": 4,
+        "reduced_risk_pct": 0.25,
+        "wins_to_recover": 2,
+    },
+}
+
 ACC_RANGE_MODE = {
     "BTCUSDT": "body",
     "ETHUSDT": "wick",

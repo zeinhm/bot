@@ -28,10 +28,13 @@ Central configuration loaded from environment variables.
 | `COMMISSION_PCT` | `0.0004` | 0.04% taker fee |
 | `SLIPPAGE_TICKS` | `2` | Ticks of slippage applied on entry |
 | `CANDLE_BUFFER_SIZE` | `1000` | Max klines to fetch on startup |
-| `STRATEGY_PARAMS` | dict | Full strategy config (see below) |
+| `STRATEGY_PARAMS` | dict | The 15m strategy body (see below); also `STRATEGIES["amd_15m"]` |
+| `STRATEGIES` | dict | Strategy registry: `amd_15m` (15m) + `trend_5m` (5m). Each is self-contained with its own `interval` + adaptive params |
 | `ACC_RANGE_MODE` | `{BTC:"body", ETH:"wick", SOL:"wick"}` | Per-asset accumulation mode |
 
 **STRATEGY_PARAMS** defaults: `tf_minutes=15`, `acc_len=60`, `acc_mode="atr"`, `atr_mult_acc=5`, `man_look=10`, `fvg_threshold=0.1`, `atr_len=14`, `atr_mult=1.5`, `rrr=2.0`, `dynamic_rr=True`, `rrr_trend=3.0`, `rrr_range=2.0`, `htf_hours=6`, `htf_adx_period=14`, `htf_adx_threshold=40`, sessions=all four, `sweep_filter=True`, `sweep_len=5`, `sweep_max_bars=300`, `skip_months=[5]`, `skip_weeks={4:[2,4]}`, `manip_min_mode="atr"`, `manip_min_val=0.4`, `adx_filter=True`, `adx_period=42`, `adx_threshold=35`, `loss_streak_threshold=4`, `reduced_risk_pct=0.25`, `wins_to_recover=2`
+
+**STRATEGIES["trend_5m"]** overrides: `interval="5m"`, `tf_minutes=5`, `acc_len=20`, `atr_mult=1.5`, `rrr=2.0`, `dynamic_rr=False`, `trend_only=True`, `htf_adx_threshold=50`, `manip_min_val=1.5` (rest mirror the 15m body). The engine/worker are strategy-agnostic — `backtest_combine.py` overlays them (gating + per-strategy adaptive sizing).
 
 ---
 
@@ -74,14 +77,25 @@ Key details:
 ### `amd_engine.py`
 Backtest/simulation engine. Runs strategy on historical data bar-by-bar.
 
-- `run(data, cfg)` → list of setup dicts. Takes candle list `{time, open, high, low, close}` (time in **seconds**) and config with **camelCase** keys. When `cfg["dynamicRR"]` is on, picks RR per entry from the trend regime (`rrrTrend` vs `rrrRange`); each setup carries `regime` + `rrrUsed`
+- `run(data, cfg)` → list of setup dicts. Takes candle list `{time, open, high, low, close}` (time in **seconds**) and config with **camelCase** keys. When `cfg["dynamicRR"]` is on, picks RR per entry from the trend regime (`rrrTrend` vs `rrrRange`); when `cfg["trendOnly"]` is on, enters ONLY where the HTF regime is trending (the 5m strategy — note: a fixed-RR trend-only config must set `rrrTrend==rrrRange`, since all entries are in-trend). Each setup carries `regime` + `rrrUsed`
 - `_htf_trend_mask(data, cfg)` → per-bar bool: resamples 15m→`htfHours` (6h) candles, computes ADX(`htfAdxPeriod`), flags bars where the **previous completed** HTF bar's ADX ≥ `htfAdxThreshold` (no lookahead) — drives the adaptive 3:1 regime
 - `compute_stats(setups, rrr, equity_cfg)` → stats dict (trades, wins, losses, win_rate, total_r). R is derived per trade, so variable RR is handled unchanged
 - `simulate_equity(setups, rrr, cfg, with_trades=False)` → equity curve with adaptive sizing, commission, drawdown tracking. With `with_trades=True`, also returns a per-trade `trades` ledger (symbol from `_symbol`, entry/exit, result, r, targetRr, pnl, running equity) — powers `/api/backtest/tradelog`
 - `_close_trade(trade, idx, time, price, result)` — Marks trade dict as closed
 - `_make_setup(...)` — Creates detailed setup dict with 18+ fields (incl. `regime`/`rrrUsed`)
 
-Config uses **camelCase** keys (e.g., `accLen`, `fvgThreshold`), while `config.py` uses **underscore** keys. `seed_trades.py` bridges this mapping.
+Config uses **camelCase** keys (e.g., `accLen`, `fvgThreshold`), while `config.py` uses **underscore** keys. `seed_trades.py` and `routes/backtester.py._build_cfg()` bridge this mapping (both per-strategy).
+
+---
+
+### `backtest_combine.py`
+Overlays multiple strategies into one backtest — the single source of truth for how `amd_15m` and
+`trend_5m` combine. Used by `routes/backtester.py` (combined/tradelog endpoints) and `seed_trades.py`.
+
+- `gate(setups)` → cross-strategy position gating: one open position per symbol across all strategies (first-come). Setups carry `_symbol`, `_strategy`, `entryTime`, `exitTime`
+- `adaptive_params(strategy)` → that strategy's loss-streak / reduced-risk / wins-to-recover
+- `simulate(setups, cfg, with_trades=False)` → gates, then walks equity with a **separate adaptive streak per strategy** over one shared wallet. Same output shape as `amd_engine.simulate_equity` plus a per-trade `strategy` tag (and quantity/commission/sl/tp when `with_trades`)
+- `compute_stats(setups, cfg=None)` → combined headline stats over the gated set (+ `perStrategy` breakdown, + `equity` when cfg given)
 
 ---
 
@@ -150,11 +164,12 @@ CLI tool: imports 1m CSV → PostgreSQL, resamples to higher TFs.
 ---
 
 ### `seed_trades.py`
-CLI tool: runs strategy on historical candles → inserts as BacktestResult rows.
+CLI tool: runs the COMBINED two-strategy overlay on historical candles → inserts BacktestResult rows
+(and optionally refreshes the seeded `trades` live history). Gitignored (local-only).
 
-- `_build_cfg(symbol)` — Converts underscore config keys to camelCase for amd_engine
-- `seed(symbols, clear)` — Loads 15m candles, runs amd_engine.run(), simulates equity with adaptive sizing, inserts results
-- INITIAL_CAPITAL=10000, RISK_PCT=0.02
+- `_build_cfg(symbol, scfg)` — Converts a `STRATEGIES` entry (underscore) to camelCase for amd_engine (fixed-RR trend-only strategies get `rrrTrend==rrrRange`)
+- `seed(symbols, clear, live_history)` — For each strategy: loads its interval candles, runs `amd_engine.run()`, tags setups; then `backtest_combine.simulate(with_trades=True)` gates + sizes; writes `backtest_results` (tagged `strategy`). With `live_history`, also `db.clear_user_trades(1, False)` + `db.bulk_create_trades(...)`
+- CLI: `--clear`, `--live-history`, `--symbol`. Combined baseline: 886 trades, $383,441
 
 ---
 
@@ -340,19 +355,22 @@ Bot accessors and config builders.
 ### `app/bot/worker.py` — `BaseWorker`
 Mode-agnostic trading loop for a single user/mode. **No `is_paper` branching** — every mode difference goes through a hook overridden by `LiveWorker` / `PaperWorker`.
 
-**BotConfig** (dataclass): api_key, api_secret, symbols, strategy_params, leverage, commission, slippage, tick_sizes, lot_sizes, buffer_size, telegram_*, is_paper, paper_balance, loss_streak_threshold, reduced_risk_pct, wins_to_recover
+**BotConfig** (dataclass): api_key, api_secret, symbols, strategy_params (15m body, back-compat), leverage, commission, slippage, tick_sizes, lot_sizes, buffer_size, telegram_*, is_paper, paper_balance, loss_streak_threshold, reduced_risk_pct, wins_to_recover, **strategies** (the `STRATEGIES` registry — falls back to a single 15m strategy from strategy_params)
 
 **Module helpers**: `make_worker(user_id, config, ...)` builds `LiveWorker` or `PaperWorker` by `config.is_paper`. `BotWorker` is an alias of `BaseWorker` (back-compat).
 
 **Shared methods (BaseWorker)**:
 - `start()` / `stop()` — Connect exchange (`_create_exchange`) → crash recovery → candle callback → user stream + poll; alerts via `_alert_started`/`_alert_stopped`
 - `_crash_recovery()` / `_recover_one_trade(trade)` — Reconcile DB vs exchange across all open trades, then `_sweep_orphan_positions()` (hook). Closed-trade exits resolved via `_resolve_exit()` (hook); open-trade SL/TP via `_count_active_sltp()` (hook)
-- `_process_candle(symbol)` — skip periods, bot_enabled, active symbols, per-asset DB guard → `check_signal()` → `_execute_trade`
-- `_execute_trade(symbol, signal)` — sizing (static/dynamic + adaptive) → `_prepare_entry()` (hook) → market order → `_entry_commission()` (hook) → record → `_place_sl_tp` → broadcast → `_alert_entry()` (hook)
+- `_on_shared_candle(symbol, interval, candle)` → `_process_candle(symbol, interval)`
+- `_process_candle(symbol, interval)` — user gates (bot_enabled, active symbols) → per-symbol `asyncio.Lock` → cross-strategy one-position-per-symbol DB guard → loop the strategies on THIS interval, calling `_detect_for_strategy`; first signal wins the symbol → `_execute_trade`
+- `_detect_for_strategy(symbol, name, scfg, skip_may, skip_tax)` — owns the strategy's seasonal calendar, trend regime (`get_trend_regime`), **trend-only gate** (skip if not trending — live `check_signal` has no such flag), and reward:risk (adaptive for 15m, fixed for 5m) → `check_signal()`; stamps `target_rr`
+- `_execute_trade(symbol, signal, strategy)` — per-strategy sizing (`_get_effective_risk(strategy)`) → `_prepare_entry()` (hook) → market order → `_entry_commission()` (hook) → record (tagged with `strategy`) → `_place_sl_tp` → broadcast → `_alert_entry()` (hook)
 - `_place_sl_tp(...)` — `_before_place_sl_tp()` (hook) then 3-retry place; returns `(sl_ok, tp_ok)`
-- `_on_user_event(data)` — ORDER_TRADE_UPDATE: resolve trade by symbol, `_exit_fill()` (hook) for price/comm, close, adaptive, broadcast, `_on_trade_closed()` (hook)
+- `_on_user_event(data)` — ORDER_TRADE_UPDATE: resolve trade by symbol, `_exit_fill()` (hook), close, route result to the trade's strategy streak, broadcast, `_on_trade_closed()` (hook)
 - `_run_position_poll()` / `_poll_one_trade(trade)` — safety-net poll; closed → `_resolve_exit()` + de-biased fallback; still-open → `_poll_open_position()` (hook)
-- `_get_effective_risk()` / `_on_trade_result(won)` — adaptive-sizing state machine
+- `_resolve_strategy(trade)` — the trade's strategy (legacy/NULL rows → default 15m), for routing adaptive results
+- `_get_effective_risk(strategy)` / `_on_trade_result(strategy, won)` — adaptive-sizing state machine, tracked **per strategy** in `self._adaptive`
 - **Hooks** (defaults in base): data hooks `_create_exchange`, `_resolve_exit`, `_count_active_sltp` (abstract); value hooks `_entry_commission`, `_exit_fill` (computed default); side-effect hooks `_alert_started/_alert_stopped/_alert_entry`, `_on_trade_closed`, `_sweep_orphan_positions`, `_prepare_entry`, `_before_place_sl_tp`, `_poll_open_position` (no-op default)
 
 ### `app/bot/worker_live.py` — `LiveWorker(BaseWorker)`
@@ -374,12 +392,12 @@ Multi-user bot lifecycle. `start_bot()` builds the worker via `make_worker()` (L
 Shared public Binance connection (no API key needed).
 
 - `connect()` — Creates anonymous AsyncClient
-- `load_history(symbols, interval, limit)` — Fetches klines, populates candle buffers (drops last incomplete candle)
-- `start_kline_stream(symbols, interval)` — Background multiplex kline WebSocket
-- `_on_kline(data)` — On closed candle: append to buffer (max 400), save to DB, trim, fire callbacks
-- `get_candles(symbol)` → copy of candle buffer
-- `get_trend_regime(symbol)` → `"trend"` / `"range"` for adaptive RR: fetches recent 6h klines, computes ADX(14) on the previous completed bar; **fail-safe → `"range"` (2:1)** on any error
-- `on_candle_close(callback)` / `remove_candle_callback(callback)` — Register/unregister
+- `load_history(symbols, interval, limit)` — Fetches klines, populates the `(symbol, interval)` buffer (drops last incomplete candle). Called once per interval (15m + 5m) from `main.py`
+- `start_kline_stream(symbols, interval)` — Background multiplex kline WebSocket (one task per interval, collected in `_kline_tasks`)
+- `_on_kline(data, interval)` — On closed candle: append to the `(symbol, interval)` buffer (max 400); **persist to DB only for 15m** (the `candle_buffer` table is symbol-keyed); fire 3-arg `(symbol, interval, candle)` callbacks
+- `get_candles(symbol, interval="15m")` → copy of that interval's buffer
+- `get_trend_regime(symbol, htf_hours, adx_period, adx_threshold)` → bool (trending) for the trend gate / adaptive RR: fetches recent 6h klines, computes ADX on the previous completed bar; cache keyed by `(symbol, htf_hours, adx_threshold)` (15m gates on 40, 5m on 50); **fail-safe → False (range / 2:1)** on any error
+- `on_candle_close(callback)` / `remove_candle_callback(callback)` — Register/unregister (callbacks take `symbol, interval, candle`)
 
 ### `app/bot/websocket.py`
 WebSocket connection manager + 7 background push tasks.
@@ -587,7 +605,8 @@ Responsive breakpoints: `768px` (hide sidebar, show bottom nav), `767px` (full m
 | `d4f9b2c1a8e3` | Add backtest_runs + backtest_setups (result cache) |
 | `e5a1c2d3f4b7` | Add totp_secret_enc / totp_enabled / totp_backup_codes to users (2FA) |
 | `f6b2d4e8a1c9` | Add target_rr to trades + backtest_results (adaptive 2:1/3:1) |
+| `a7c9e1b3d5f2` | Add strategy (amd_15m/trend_5m) to trades + backtest_results (multi-strategy) |
 
-Chain: `None → 18cd → 8ade → b126 → 673d → a2f1 → c3e8 → d4f9 → e5a1 → f6b2`
+Chain: `None → 18cd → 8ade → b126 → 673d → a2f1 → c3e8 → d4f9 → e5a1 → f6b2 → a7c9`
 
 Note: `_ensure_schema()` in `engine.py` also runs idempotent ALTER TABLE statements on startup, so schema changes are applied even without running Alembic.

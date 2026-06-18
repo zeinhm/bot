@@ -6,6 +6,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 
 ---
 
+## [2026-06-19]
+
+### Added
+- **Second strategy: 5m trend overlay (`trend_5m`), running alongside the 15m (`amd_15m`).** The same AMD setup is now hunted on the 5-minute timeframe too, but taken **only while the 6h ADX(14) ≥ 50 regime is trending** (fixed 2:1, SL 1.5 ATR, accLen 20, atrMultAcc 5, manipMin 1.5). The two strategies share one wallet, allow **one position per symbol across both** (first-come), and each keeps its **own** adaptive-sizing streak. Combined backtest: **886 trades, 42.3% win rate, +3,734% ($383,441 from $10k), 32.3% max DD** (15m alone was +1,736%/$184k). Validated via `research/overlay.py`; SEPARATE per-strategy streaks are essential (a global/mixed streak only reached ~$223k).
+  - **Strategy registry** (`config.py` → `STRATEGIES`): each strategy is a self-contained named config with its own `interval` + adaptive params. The engine and worker stay strategy-agnostic (SOLID — add a strategy by editing only this dict).
+  - **Backtest overlay** (`backtest_combine.py`, new): single source of truth for cross-strategy position gating + per-strategy adaptive equity. Used by both the backtester route and the seeder.
+  - **Live** (`app/bot/worker.py`): `_process_candle(symbol, interval)` runs each strategy on its own timeframe behind a per-symbol lock; `_detect_for_strategy()` enforces the 5m trend-only gate (live `check_signal` has no such flag); adaptive sizing is tracked **per strategy** (`_get_effective_risk(strategy)` / `_on_trade_result(strategy, won)`); each `Trade` is tagged with its `strategy`.
+  - **Dual candle feed** (`app/bot/shared_market.py`): buffers keyed by `(symbol, interval)`, a kline stream per interval, `get_candles(symbol, interval)`; the 5m feed is in-memory only (the `candle_buffer` table is symbol-keyed, so only 15m persists). `get_trend_regime` cache now keys on the ADX threshold (15m gates on 40, 5m on 50).
+  - **Schema**: new `strategy` column on `trades` + `backtest_results` (migration `a7c9e1b3d5f2` + `_ensure_schema`). Backtester trade log shows a **Strat** (15m/5m) column; combined endpoints return a `perStrategy` breakdown.
+  - **Re-seeded** the combined result into `backtest_results` + the seeded live history (`seed_trades.py --clear --live-history`).
+  - **Copy refreshed** across the landing page (880+ trades / 42% WR / +3,734% / $383k, dual-timeframe wording, exact 5m params kept private) and docs (`research-log.md`, `strategy.md`, `backtester.md`, `codebase-map.md`).
+
+### Changed
+- **Backtester Playground is now Apply-gated.** Risk / sessions / seasonal changes are staged and only run when **Apply** is clicked; the button shows an "Applying…" loading state and is disabled while the current config equals the last applied one, so an identical config is never re-fetched.
+- **Backtester trade log orders newest-first** (running equity is still accumulated chronologically; the top row shows the final equity).
+- **Track-record page:** logo + wordmark now link to the landing page; "verified by Binance" badge and "Recent Verified Trades" heading trimmed to "Live" / "Recent Trades" (the "pulled directly from Binance, nothing self-reported" line already conveys it); PnL/Entry/Exit use thousand separators (registered the shared `num` Jinja filter on the route); removed the per-row win/loss left border (the DIR badge + colored R/PnL already convey outcome).
+- **Position chart** default pinned timeframes now include **5m** and drop **1W** (`1m · 5m · 15m · 1H · 4H · 1D`), reflecting the 5m strategy.
+
+### Fixed
+- **Combined backtest endpoint 500.** The combined run was labelled `15m+5m` (6 chars) for a `VARCHAR(5)` column → `StringDataRightTruncationError`. Shortened the internal cache label to `combo`.
+
 ## [2026-06-16]
 
 ### Added

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Callable, Awaitable, TYPE_CHECKING
 
@@ -23,7 +23,7 @@ class BotConfig:
     api_key: str
     api_secret: str
     symbols: list[str]
-    strategy_params: dict
+    strategy_params: dict          # canonical 15m body (back-compat: recovery, defaults)
     leverage: int
     commission_pct: float
     slippage_ticks: int
@@ -37,6 +37,11 @@ class BotConfig:
     wins_to_recover: int = 2
     is_paper: bool = False
     paper_balance: float = 10000.0
+    # name -> self-contained strategy config (each with its own `interval` + adaptive
+    # params). The worker runs every entry here; one position per symbol across all of
+    # them; each keeps its OWN adaptive-sizing streak. Defaults to the single 15m
+    # strategy built from strategy_params for back-compat.
+    strategies: dict = field(default_factory=dict)
 
 
 class BaseWorker:
@@ -61,6 +66,14 @@ class BaseWorker:
         self.config = config
         self.is_paper = self.MODE == "paper"
 
+        # Strategy registry. Fall back to a single 15m strategy from strategy_params
+        # so older callers that don't pass `strategies` keep working unchanged.
+        self._strategies: dict[str, dict] = config.strategies or {
+            "amd_15m": {"interval": "15m", **config.strategy_params},
+        }
+        # The strategy legacy/NULL-tagged trades belong to (the original single one).
+        self._default_strategy: str = next(iter(self._strategies))
+
         self._shared_market = shared_market
 
         self.exchange = self._create_exchange()
@@ -77,9 +90,15 @@ class BaseWorker:
         self._sltp_last_alert: dict[str, float] = {}
         self._broadcast_fn = broadcast_fn
 
-        self.current_streak: int = 0
-        self.adaptive_active: bool = False
-        self.consecutive_wins: int = 0
+        # Adaptive position sizing is tracked PER STRATEGY (15m and 5m keep separate
+        # loss-streaks / reduced-risk state) over one shared wallet.
+        self._adaptive: dict[str, dict] = {
+            name: {"current_streak": 0, "adaptive_active": False, "consecutive_wins": 0}
+            for name in self._strategies
+        }
+        # Serializes same-symbol candle closes (15m vs 5m) so two strategies can't both
+        # open a position on one symbol in the gap between the gate check and trade create.
+        self._symbol_locks: dict[str, asyncio.Lock] = {}
 
         self._tasks: list[asyncio.Task] = []
 
@@ -135,41 +154,62 @@ class BaseWorker:
         await self.exchange.close()
         log.info("BotWorker[user=%d/%s] stopped", self.user_id, self._mode_label())
 
-    def _get_effective_risk(self) -> float:
-        if self.adaptive_active:
-            return self.config.reduced_risk_pct
+    def _resolve_strategy(self, trade) -> str:
+        """The strategy a trade belongs to, for routing adaptive-sizing results.
+        Legacy/NULL-tagged rows (predating the multi-strategy platform) map to the
+        default strategy."""
+        s = getattr(trade, "strategy", None)
+        return s if s in self._adaptive else self._default_strategy
+
+    def _strategy_risk(self, strategy: str) -> dict:
+        """The reduced-risk / streak thresholds for a strategy, falling back to the
+        BotConfig-level defaults when the strategy doesn't declare its own."""
+        scfg = self._strategies.get(strategy, {})
+        return {
+            "reduced_risk_pct": scfg.get("reduced_risk_pct", self.config.reduced_risk_pct),
+            "loss_streak_threshold": scfg.get("loss_streak_threshold", self.config.loss_streak_threshold),
+            "wins_to_recover": scfg.get("wins_to_recover", self.config.wins_to_recover),
+        }
+
+    def _get_effective_risk(self, strategy: str) -> float | None:
+        if self._adaptive[strategy]["adaptive_active"]:
+            return self._strategy_risk(strategy)["reduced_risk_pct"]
         return None
 
-    def _on_trade_result(self, won: bool):
+    def _on_trade_result(self, strategy: str, won: bool):
+        st = self._adaptive[strategy]
+        thresholds = self._strategy_risk(strategy)
         if not won:
-            self.current_streak += 1
-            self.consecutive_wins = 0
-            if self.current_streak >= self.config.loss_streak_threshold:
-                if not self.adaptive_active:
-                    self.adaptive_active = True
+            st["current_streak"] += 1
+            st["consecutive_wins"] = 0
+            if st["current_streak"] >= thresholds["loss_streak_threshold"]:
+                if not st["adaptive_active"]:
+                    st["adaptive_active"] = True
                     log.info(
-                        "BotWorker[user=%d/%s] adaptive sizing ACTIVATED after %d consecutive losses",
-                        self.user_id, self._mode_label(), self.current_streak,
+                        "BotWorker[user=%d/%s] adaptive sizing ACTIVATED for %s after %d consecutive losses",
+                        self.user_id, self._mode_label(), strategy, st["current_streak"],
                     )
                     asyncio.create_task(self._broadcast({
                         "type": "adaptive_sizing",
+                        "strategy": strategy,
                         "active": True,
-                        "streak": self.current_streak,
-                        "wins_needed": self.config.wins_to_recover,
+                        "streak": st["current_streak"],
+                        "wins_needed": thresholds["wins_to_recover"],
                     }))
         else:
-            self.current_streak = 0
-            if self.adaptive_active:
-                self.consecutive_wins += 1
-                if self.consecutive_wins >= self.config.wins_to_recover:
-                    self.adaptive_active = False
-                    self.consecutive_wins = 0
+            st["current_streak"] = 0
+            if st["adaptive_active"]:
+                st["consecutive_wins"] += 1
+                if st["consecutive_wins"] >= thresholds["wins_to_recover"]:
+                    st["adaptive_active"] = False
+                    st["consecutive_wins"] = 0
                     log.info(
-                        "BotWorker[user=%d/%s] adaptive sizing DEACTIVATED after %d wins",
-                        self.user_id, self._mode_label(), self.config.wins_to_recover,
+                        "BotWorker[user=%d/%s] adaptive sizing DEACTIVATED for %s after %d wins",
+                        self.user_id, self._mode_label(), strategy, thresholds["wins_to_recover"],
                     )
                     asyncio.create_task(self._broadcast({
                         "type": "adaptive_sizing",
+                        "strategy": strategy,
                         "active": False,
                         "streak": 0,
                         "wins_needed": 0,
@@ -260,7 +300,7 @@ class BaseWorker:
                 exit_price, is_sl, exit_comm = 0.0, True, 0.0
 
             result = "loss" if is_sl else "win"
-            rr = self.config.strategy_params.get("rrr", 2.0)
+            rr = open_trade.target_rr or self.config.strategy_params.get("rrr", 2.0)
             r_value = r_value_for_exit(is_sl, open_trade.entry_price, open_trade.sl_price, open_trade.tp_price, rr)
             total_comm = (open_trade.commission or 0) + exit_comm
 
@@ -305,26 +345,15 @@ class BaseWorker:
 
     # --- Candle handling (shared) ---
 
-    async def _on_shared_candle(self, symbol: str, candle: dict):
+    async def _on_shared_candle(self, symbol: str, interval: str, candle: dict):
         if not self.running:
             return
         if symbol not in self.config.symbols:
             return
-        await self._process_candle(symbol)
+        await self._process_candle(symbol, interval)
 
-    async def _process_candle(self, symbol: str):
-        now = datetime.now(timezone.utc)
-
-        # Seasonal events are per-user, independently toggleable (default on = today's
-        # behavior): "Sell in May" → skip May; "US tax deadline" → skip the April tax weeks.
-        skip_may = await db.get_state("skip_may", True, user_id=self.user_id, is_paper=self.is_paper)
-        skip_tax = await db.get_state("skip_tax_deadline", True, user_id=self.user_id, is_paper=self.is_paper)
-        skip_months = self.config.strategy_params.get("skip_months", []) if skip_may else []
-        skip_weeks = self.config.strategy_params.get("skip_weeks", {}) if skip_tax else {}
-
-        if now.month in skip_months:
-            return
-
+    async def _process_candle(self, symbol: str, interval: str):
+        # User-level gates (apply to every strategy on this symbol).
         bot_enabled = await db.get_state("bot_enabled", True, user_id=self.user_id, is_paper=self.is_paper)
         if not bot_enabled:
             return
@@ -333,35 +362,74 @@ class BaseWorker:
         if symbol not in active_symbols:
             return
 
-        # One open trade per asset: block only if THIS symbol already has one.
-        # Other symbols can still open (BTC/ETH/SOL run concurrently). Checked
-        # against the DB (source of truth) to avoid any in-memory race.
-        if symbol in self._active_trades:
-            return
-        if await db.get_open_trade_for_symbol(self.user_id, symbol, self.is_paper) is not None:
-            return
+        # Seasonal events are per-user, independently toggleable (default on): "Sell in
+        # May" → skip May; "US tax deadline" → skip the April tax weeks. Read once here,
+        # applied per strategy in _detect_for_strategy (each carries its own calendar).
+        skip_may = await db.get_state("skip_may", True, user_id=self.user_id, is_paper=self.is_paper)
+        skip_tax = await db.get_state("skip_tax_deadline", True, user_id=self.user_id, is_paper=self.is_paper)
 
-        # No daily trade cap — adaptive sizing handles drawdown/loss-streaks.
+        # Serialize same-symbol closes so a 15m and 5m candle can't both pass the gate
+        # and open two positions on one symbol. Different symbols use different locks.
+        lock = self._symbol_locks.setdefault(symbol, asyncio.Lock())
+        async with lock:
+            # One open trade per asset, ACROSS all strategies (first-come). Block if THIS
+            # symbol already has any open trade. Checked against the DB (source of truth).
+            if symbol in self._active_trades:
+                return
+            if await db.get_open_trade_for_symbol(self.user_id, symbol, self.is_paper) is not None:
+                return
 
-        # Reward:risk. Range default (2:1) is the `rr_ratio` state override; when the
-        # adaptive-RR feature is on, the previous completed 6h candle's ADX picks 3:1 in
-        # strong trends and 2:1 otherwise (regime helper is fail-safe → 2:1 on any error).
-        sp = self.config.strategy_params
-        rr_range = await db.get_state("rr_ratio", sp["rrr"], user_id=self.user_id, is_paper=self.is_paper)
-        rr = rr_range
-        if sp.get("dynamic_rr", False) and self._shared_market:
+            # Run only the strategies that trade THIS interval. First one to fire takes
+            # the symbol; the rest are blocked by the gate next time.
+            for name, scfg in self._strategies.items():
+                if scfg["interval"] != interval:
+                    continue
+                signal = await self._detect_for_strategy(symbol, name, scfg, skip_may, skip_tax)
+                if signal is not None:
+                    await self._execute_trade(symbol, signal, name)
+                    return
+
+    async def _detect_for_strategy(self, symbol, name, scfg, skip_may, skip_tax) -> dict | None:
+        """Run one strategy on its own timeframe and return a signal, or None.
+        Owns this strategy's seasonal calendar, trend gate, and reward:risk."""
+        now = datetime.now(timezone.utc)
+        skip_months = scfg.get("skip_months", []) if skip_may else []
+        skip_weeks = scfg.get("skip_weeks", {}) if skip_tax else {}
+        if now.month in skip_months:
+            return None
+
+        sessions = await db.get_state("active_sessions", scfg["sessions"], user_id=self.user_id, is_paper=self.is_paper)
+
+        # Trend regime (only fetched when this strategy needs it: adaptive-RR or trend-only).
+        is_trend = None
+        if (scfg.get("dynamic_rr") or scfg.get("trend_only")) and self._shared_market:
+            is_trend = await self._shared_market.get_trend_regime(
+                symbol,
+                htf_hours=scfg.get("htf_hours", 6),
+                adx_period=scfg.get("htf_adx_period", 14),
+                adx_threshold=scfg.get("htf_adx_threshold", 40),
+            )
+
+        # Trend-only strategies (the 5m sniper) enter ONLY while the regime is trending.
+        # Enforced here because the live check_signal has no trend_only flag.
+        if scfg.get("trend_only") and not is_trend:
+            return None
+
+        # Reward:risk. For the adaptive-RR strategy (15m) the range default is the user's
+        # `rr_ratio` override (2:1), and a strong 6h trend picks 3:1; the kill-switch
+        # `dynamic_rr_enabled` forces range. Fixed-RR strategies (5m) use their own rrr.
+        if scfg.get("dynamic_rr"):
+            rr_range = await db.get_state("rr_ratio", scfg.get("rrr_range", scfg["rrr"]),
+                                          user_id=self.user_id, is_paper=self.is_paper)
+            rr = rr_range
             dyn_on = await db.get_state("dynamic_rr_enabled", True, user_id=self.user_id, is_paper=self.is_paper)
-            if dyn_on:
-                is_trend = await self._shared_market.get_trend_regime(
-                    symbol,
-                    htf_hours=sp.get("htf_hours", 6),
-                    adx_period=sp.get("htf_adx_period", 14),
-                    adx_threshold=sp.get("htf_adx_threshold", 40),
-                )
-                rr = sp.get("rrr_trend", 3.0) if is_trend else sp.get("rrr_range", rr_range)
-        sessions = await db.get_state("active_sessions", sp["sessions"], user_id=self.user_id, is_paper=self.is_paper)
+            if dyn_on and is_trend is not None:
+                rr = scfg.get("rrr_trend", 3.0) if is_trend else rr_range
+        else:
+            rr = scfg["rrr"]
+
         params = {
-            **sp,
+            **scfg,
             "rrr": rr,
             "sessions": sessions,
             "skip_months": skip_months,
@@ -369,26 +437,25 @@ class BaseWorker:
             "acc_range_mode": ACC_RANGE_MODE.get(symbol, "wick"),
         }
 
-        candles = self._shared_market.get_candles(symbol) if self._shared_market else []
+        candles = self._shared_market.get_candles(symbol, scfg["interval"]) if self._shared_market else []
         signal = check_signal(candles, params)
-
         if signal is None:
-            return
+            return None
         signal["target_rr"] = rr
 
-        log.info("[%s] SIGNAL: %s %s entry=%.2f sl=%.2f tp=%.2f",
-                 self._mode_label(), signal["direction"], symbol, signal["entry_price"], signal["sl"], signal["tp"])
-
-        await self._execute_trade(symbol, signal)
+        log.info("[%s] SIGNAL %s: %s %s entry=%.2f sl=%.2f tp=%.2f rr=%.0f",
+                 self._mode_label(), name, signal["direction"], symbol,
+                 signal["entry_price"], signal["sl"], signal["tp"], rr)
+        return signal
 
     # --- Trade Execution ---
 
-    async def _execute_trade(self, symbol: str, signal: dict):
+    async def _execute_trade(self, symbol: str, signal: dict, strategy: str):
         try:
             risk_mode = await db.get_state("risk_mode", "static", user_id=self.user_id, is_paper=self.is_paper)
             risk_value = await db.get_state("risk_value", 10.0, user_id=self.user_id, is_paper=self.is_paper)
 
-            effective_risk = self._get_effective_risk()
+            effective_risk = self._get_effective_risk(strategy)
 
             if risk_mode == "dynamic":
                 balance = await self.exchange.get_balance()
@@ -438,6 +505,7 @@ class BaseWorker:
                 "result": "open",
                 "commission": entry_comm,
                 "target_rr": signal.get("target_rr"),
+                "strategy": strategy,
                 "entry_order_id": str(order.get("orderId", "")),
             })
 
@@ -450,6 +518,7 @@ class BaseWorker:
                 "trade": {
                     "id": trade.id,
                     "symbol": symbol,
+                    "strategy": strategy,
                     "direction": signal["direction"],
                     "entry_price": fill_price,
                     "sl": signal["sl"],
@@ -534,8 +603,10 @@ class BaseWorker:
 
         is_sl = order_type == "STOP_MARKET"
         result = "loss" if is_sl else "win"
-        rr = await db.get_state("rr_ratio", self.config.strategy_params["rrr"],
-                                user_id=self.user_id, is_paper=self.is_paper)
+        # The reward on a win is the RR the trade was actually opened at (per strategy);
+        # fall back to the 15m range default for legacy rows with no target_rr.
+        rr = trade.target_rr or await db.get_state(
+            "rr_ratio", self.config.strategy_params["rrr"], user_id=self.user_id, is_paper=self.is_paper)
         r_value = -1.0 if is_sl else rr
 
         fill_price, exit_comm = await self._exit_fill(symbol, order_id, fill_price, trade.quantity)
@@ -563,7 +634,7 @@ class BaseWorker:
         self._sltp_missing_since.pop(symbol, None)
         self._sltp_last_alert.pop(symbol, None)
 
-        self._on_trade_result(result == "win")
+        self._on_trade_result(self._resolve_strategy(trade), result == "win")
 
         log.info("[%s] Trade #%d closed: %s (%.2f USDT)", self._mode_label(), trade.id, result, pnl)
 
@@ -641,8 +712,8 @@ class BaseWorker:
                 exit_comm = exit_price * trade.quantity * self.config.commission_pct
 
             result = "loss" if is_sl else "win"
-            rr = await db.get_state("rr_ratio", self.config.strategy_params["rrr"],
-                                    user_id=self.user_id, is_paper=self.is_paper)
+            rr = trade.target_rr or await db.get_state(
+                "rr_ratio", self.config.strategy_params["rrr"], user_id=self.user_id, is_paper=self.is_paper)
             r_value = r_value_for_exit(is_sl, trade.entry_price, trade.sl_price, trade.tp_price, rr)
 
             total_comm = (trade.commission or 0) + exit_comm
@@ -667,7 +738,7 @@ class BaseWorker:
             self._sltp_missing_since.pop(symbol, None)
             self._sltp_last_alert.pop(symbol, None)
 
-            self._on_trade_result(result == "win")
+            self._on_trade_result(self._resolve_strategy(trade), result == "win")
 
             log.info("Position poll: trade #%d resolved as %s", trade.id, result)
 

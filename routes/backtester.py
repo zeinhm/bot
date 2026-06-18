@@ -11,8 +11,9 @@ from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import require_auth
-from config import STRATEGY_PARAMS, ACC_RANGE_MODE, LEVERAGE, COMMISSION_PCT, SLIPPAGE_TICKS
+from config import STRATEGY_PARAMS, STRATEGIES, ACC_RANGE_MODE, LEVERAGE, COMMISSION_PCT, SLIPPAGE_TICKS
 import amd_engine
+import backtest_combine
 import app.db as db
 from app.core.context import get_global_context
 
@@ -93,36 +94,42 @@ async def get_candles(
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
 
 
-def _build_cfg(symbol: str, ov: dict | None = None) -> dict:
+def _build_cfg(symbol: str, ov: dict | None = None, strategy: str = "amd_15m") -> dict:
+    sp = STRATEGIES.get(strategy, STRATEGIES["amd_15m"])
+    dyn = sp.get("dynamic_rr", False)
+    rrr = sp["rrr"]
     cfg = {
-        "accLen": STRATEGY_PARAMS["acc_len"],
-        "accMode": STRATEGY_PARAMS["acc_mode"],
-        "atrMultAcc": STRATEGY_PARAMS["atr_mult_acc"],
-        "atrMultAccMin": STRATEGY_PARAMS.get("atr_mult_acc_min", 0.0),
-        "accWidth": STRATEGY_PARAMS.get("acc_width", 0.2),
-        "accWidthMin": STRATEGY_PARAMS.get("acc_width_min", 0.0),
-        "manLook": STRATEGY_PARAMS["man_look"],
-        "fvgThreshold": STRATEGY_PARAMS["fvg_threshold"],
-        "atrLen": STRATEGY_PARAMS["atr_len"],
-        "atrMult": STRATEGY_PARAMS["atr_mult"],
-        "rrr": STRATEGY_PARAMS["rrr"],
-        "dynamicRR": STRATEGY_PARAMS.get("dynamic_rr", False),
-        "rrrTrend": STRATEGY_PARAMS.get("rrr_trend", 3.0),
-        "rrrRange": STRATEGY_PARAMS.get("rrr_range", STRATEGY_PARAMS["rrr"]),
-        "htfHours": STRATEGY_PARAMS.get("htf_hours", 6),
-        "htfAdxPeriod": STRATEGY_PARAMS.get("htf_adx_period", 14),
-        "htfAdxThreshold": STRATEGY_PARAMS.get("htf_adx_threshold", 40),
-        "sweepFilter": STRATEGY_PARAMS["sweep_filter"],
-        "sweepLen": STRATEGY_PARAMS.get("sweep_len", 5),
-        "sweepMaxBars": STRATEGY_PARAMS.get("sweep_max_bars", 300),
-        "skipMonths": STRATEGY_PARAMS["skip_months"],
-        "skipWeeks": {int(k): v for k, v in STRATEGY_PARAMS.get("skip_weeks", {}).items()},
+        "accLen": sp["acc_len"],
+        "accMode": sp["acc_mode"],
+        "atrMultAcc": sp["atr_mult_acc"],
+        "atrMultAccMin": sp.get("atr_mult_acc_min", 0.0),
+        "accWidth": sp.get("acc_width", 0.2),
+        "accWidthMin": sp.get("acc_width_min", 0.0),
+        "manLook": sp["man_look"],
+        "fvgThreshold": sp["fvg_threshold"],
+        "atrLen": sp["atr_len"],
+        "atrMult": sp["atr_mult"],
+        "rrr": rrr,
+        "dynamicRR": dyn,
+        "trendOnly": sp.get("trend_only", False),
+        # Trend-only strategies always run in-trend, so a fixed-RR one must pin both
+        # trend/range RR to its single rrr (else the engine would use rrrTrend=3:1).
+        "rrrTrend": sp.get("rrr_trend", 3.0) if dyn else rrr,
+        "rrrRange": sp.get("rrr_range", rrr) if dyn else rrr,
+        "htfHours": sp.get("htf_hours", 6),
+        "htfAdxPeriod": sp.get("htf_adx_period", 14),
+        "htfAdxThreshold": sp.get("htf_adx_threshold", 40),
+        "sweepFilter": sp["sweep_filter"],
+        "sweepLen": sp.get("sweep_len", 5),
+        "sweepMaxBars": sp.get("sweep_max_bars", 300),
+        "skipMonths": sp["skip_months"],
+        "skipWeeks": {int(k): v for k, v in sp.get("skip_weeks", {}).items()},
         "accRangeMode": ACC_RANGE_MODE.get(symbol, "wick"),
-        "manipMinMode": STRATEGY_PARAMS.get("manip_min_mode", "off"),
-        "manipMinVal": STRATEGY_PARAMS.get("manip_min_val", 0.0),
-        "adxFilter": STRATEGY_PARAMS.get("adx_filter", False),
-        "adxPeriod": STRATEGY_PARAMS.get("adx_period", 42),
-        "adxThreshold": STRATEGY_PARAMS.get("adx_threshold", 35),
+        "manipMinMode": sp.get("manip_min_mode", "off"),
+        "manipMinVal": sp.get("manip_min_val", 0.0),
+        "adxFilter": sp.get("adx_filter", False),
+        "adxPeriod": sp.get("adx_period", 42),
+        "adxThreshold": sp.get("adx_threshold", 35),
     }
     # Playground overrides — ONLY the risk knobs (rrr, sessions, seasonal). The
     # detection params above are never overridable (protect the edge). Unset = defaults.
@@ -166,7 +173,7 @@ def _parse_setup_overrides(sessions, skip_may, skip_tax) -> dict:
 
 # ── Result cache (run the engine once per strategy+params+data signature) ──────
 _STRATEGY_ID = "amd_fvg_v1"
-_CACHE_VERSION = "3"                     # bump to invalidate all cached runs (v3: adaptive RR)
+_CACHE_VERSION = "4"                     # bump to invalidate all cached runs (v4: 15m+5m combined)
 _run_cache: dict[str, dict] = {}        # signature -> {run_id, stats, total, signature}
 _combined_cache: dict[str, dict] = {}   # combo signature -> {stats, perAsset}
 _tradelog_cache: dict[str, dict] = {}   # combo signature -> {trades, total}
@@ -183,12 +190,13 @@ def _signature(symbol: str, interval: str, params_hash: str,
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-async def _get_or_build_run(symbol: str, interval: str, ov: dict | None = None) -> dict:
+async def _get_or_build_run(symbol: str, interval: str, ov: dict | None = None,
+                            strategy: str = "amd_15m") -> dict:
     """Return cached metadata {run_id, stats, total, signature} for this
     (strategy, params, data) combo — running amd_engine only on a cache miss.
     `ov` carries playground risk overrides (rrr/sessions/seasonal); each distinct
     combo becomes its own cached run. Setups are fetched by page/range from the DB."""
-    cfg = _build_cfg(symbol, ov)
+    cfg = _build_cfg(symbol, ov, strategy)
     params_hash = _params_hash(cfg)
     first_ts, last_ts = await db.get_historical_candle_range(symbol, interval)
     count = await db.get_historical_candle_count(symbol, interval)
@@ -221,7 +229,7 @@ async def _get_or_build_run(symbol: str, interval: str, ov: dict | None = None) 
         setups = amd_engine.run(data, cfg)
         stats = amd_engine.compute_stats(setups, cfg["rrr"])
         run_id = await db.save_backtest_run({
-            "signature": sig, "strategy": _STRATEGY_ID, "symbol": symbol, "interval": interval,
+            "signature": sig, "strategy": strategy, "symbol": symbol, "interval": interval,
             "params_hash": params_hash, "data_first_ts": first_ts, "data_last_ts": last_ts,
             "candle_count": count, "total_setups": len(setups), "stats": json.dumps(stats),
         }, setups)
@@ -231,19 +239,39 @@ async def _get_or_build_run(symbol: str, interval: str, ov: dict | None = None) 
         return meta
 
 
+def _strategy_interval(strategy: str) -> str:
+    return STRATEGIES.get(strategy, STRATEGIES["amd_15m"])["interval"]
+
+
+async def _collect_combined_setups(metas: dict) -> list[dict]:
+    """Pull every run's setups, tagged with _symbol and _strategy, for the overlay
+    (backtest_combine gates + sizes them). `metas` is keyed by (strategy, symbol)."""
+    all_setups = []
+    for (strat, symbol), m in metas.items():
+        if m["run_id"] is None:
+            continue
+        for s in await db.get_run_setups_all(m["run_id"]):
+            s["_symbol"] = symbol
+            s["_strategy"] = strat
+            all_setups.append(s)
+    all_setups.sort(key=lambda s: s["entryTime"])
+    return all_setups
+
+
 @router.get("/api/backtest")
 async def run_backtest(
     request: Request,
     symbol: str = Query("BTCUSDT"),
-    interval: str = Query("15m"),
+    strategy: str = Query("amd_15m"),
     sessions: Optional[str] = Query(None),
     skip_may: Optional[int] = Query(None),
     skip_tax: Optional[int] = Query(None),
 ):
-    """Stats + total setup count only. Setups are loaded lazily via /api/backtest/setups."""
+    """Single-strategy stats + total setup count (drill-down). Setups are loaded lazily
+    via /api/backtest/setups. The headline combined result is /api/backtest/combined."""
     await require_auth(request)
     ov = _parse_setup_overrides(sessions, skip_may, skip_tax)
-    meta = await _get_or_build_run(symbol, interval, ov)
+    meta = await _get_or_build_run(symbol, _strategy_interval(strategy), ov, strategy)
     return JSONResponse({"stats": meta["stats"], "total": meta["total"]})
 
 
@@ -251,7 +279,7 @@ async def run_backtest(
 async def backtest_setups(
     request: Request,
     symbol: str = Query("BTCUSDT"),
-    interval: str = Query("15m"),
+    strategy: str = Query("amd_15m"),
     from_ts: Optional[int] = Query(None, alias="from"),
     to_ts: Optional[int] = Query(None, alias="to"),
     limit: int = Query(10, ge=1, le=500),
@@ -264,7 +292,7 @@ async def backtest_setups(
     page (limit/offset, for nav). Each setup carries its `_ordinal` (global index)."""
     await require_auth(request)
     ov = _parse_setup_overrides(sessions, skip_may, skip_tax)
-    meta = await _get_or_build_run(symbol, interval, ov)
+    meta = await _get_or_build_run(symbol, _strategy_interval(strategy), ov, strategy)
     if meta["run_id"] is None:
         return JSONResponse({"setups": [], "total": 0})
     if from_ts is not None and to_ts is not None:
@@ -286,12 +314,13 @@ async def run_backtest_combined(
 
     setup_ov = _parse_setup_overrides(sessions, skip_may, skip_tax)
     equity_ov = {"riskPct": risk_pct / 100.0} if risk_pct is not None else None
-    eff_rrr = STRATEGY_PARAMS["rrr"]
 
-    metas = {symbol: await _get_or_build_run(symbol, "15m", setup_ov) for symbol in SYMBOLS}
+    # Build a run per (strategy, symbol) on each strategy's own timeframe.
+    metas = {(strat, symbol): await _get_or_build_run(symbol, _strategy_interval(strat), setup_ov, strat)
+             for strat in STRATEGIES for symbol in SYMBOLS}
     combo_sig = hashlib.sha256(
-        ("|".join(metas[s]["signature"] for s in SYMBOLS)
-         + "|" + _params_hash(_equity_cfg(equity_ov))).encode()
+        ("|".join(sorted(m["signature"] for m in metas.values()))
+         + "|" + _params_hash(_equity_cfg(equity_ov)) + "|combined").encode()
     ).hexdigest()
 
     # combined result is itself cached (mem → persisted COMBINED run row)
@@ -308,19 +337,17 @@ async def run_backtest_combined(
             _combined_cache[combo_sig] = payload
             return JSONResponse(payload)
 
-        all_setups = []
-        per_asset = {}
-        for symbol in SYMBOLS:
-            m = metas[symbol]
-            per_asset[symbol.replace("USDT", "")] = m["stats"]
-            if m["run_id"] is not None:
-                all_setups.extend(await db.get_run_setups_all(m["run_id"]))
-        all_setups.sort(key=lambda s: s["entryTime"])
-        combined_stats = amd_engine.compute_stats(all_setups, eff_rrr, _equity_cfg(equity_ov))
+        all_setups = await _collect_combined_setups(metas)
+        # Headline stats: cross-strategy gated + per-strategy adaptive equity.
+        combined_stats = backtest_combine.compute_stats(all_setups, _equity_cfg(equity_ov))
+        # Per-asset breakdown over the GATED set (what actually traded).
+        taken = backtest_combine.gate(all_setups)
+        per_asset = {sym.replace("USDT", ""): amd_engine.compute_stats(
+            [s for s in taken if s["_symbol"] == sym], STRATEGY_PARAMS["rrr"]) for sym in SYMBOLS}
         payload = {"stats": combined_stats, "perAsset": per_asset}
 
         await db.save_backtest_run({
-            "signature": combo_sig, "strategy": _STRATEGY_ID, "symbol": "COMBINED", "interval": "15m",
+            "signature": combo_sig, "strategy": _STRATEGY_ID, "symbol": "COMBINED", "interval": "combo",
             "params_hash": _params_hash(_equity_cfg(equity_ov)), "data_first_ts": None, "data_last_ts": None,
             "candle_count": None, "total_setups": 0, "stats": json.dumps(payload),
         }, [])
@@ -344,9 +371,10 @@ async def backtest_tradelog(
     setup_ov = _parse_setup_overrides(sessions, skip_may, skip_tax)
     equity_ov = {"riskPct": risk_pct / 100.0} if risk_pct is not None else None
 
-    metas = {symbol: await _get_or_build_run(symbol, "15m", setup_ov) for symbol in SYMBOLS}
+    metas = {(strat, symbol): await _get_or_build_run(symbol, _strategy_interval(strat), setup_ov, strat)
+             for strat in STRATEGIES for symbol in SYMBOLS}
     combo_sig = hashlib.sha256(
-        ("|".join(metas[s]["signature"] for s in SYMBOLS)
+        ("|".join(sorted(m["signature"] for m in metas.values()))
          + "|" + _params_hash(_equity_cfg(equity_ov)) + "|tradelog").encode()
     ).hexdigest()
 
@@ -358,17 +386,9 @@ async def backtest_tradelog(
         if combo_sig in _tradelog_cache:
             return JSONResponse(_tradelog_cache[combo_sig])
 
-        all_setups = []
-        for symbol in SYMBOLS:
-            m = metas[symbol]
-            if m["run_id"] is not None:
-                for s in await db.get_run_setups_all(m["run_id"]):
-                    s["_symbol"] = symbol
-                    all_setups.append(s)
-        all_setups.sort(key=lambda s: s["entryTime"])
-
-        eq = amd_engine.simulate_equity(
-            all_setups, STRATEGY_PARAMS["rrr"], _equity_cfg(equity_ov), with_trades=True)
+        all_setups = await _collect_combined_setups(metas)
+        # Gate across strategies + size with per-strategy adaptive streaks.
+        eq = backtest_combine.simulate(all_setups, _equity_cfg(equity_ov), with_trades=True)
         trades = eq.get("trades", [])
         payload = {"trades": trades, "total": len(trades)}
         _tradelog_cache[combo_sig] = payload

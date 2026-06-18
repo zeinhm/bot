@@ -5,9 +5,11 @@ from fastapi.templating import Jinja2Templates
 
 import app.db as db
 from app.core.context import get_global_context
+from app.core.template_filters import register_filters
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
+register_filters(templates)
 
 BASE_CAPITAL = 10000
 

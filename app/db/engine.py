@@ -52,6 +52,13 @@ async def _ensure_schema(eng):
         await conn.execute(text(
             "ALTER TABLE backtest_results ADD COLUMN IF NOT EXISTS target_rr DOUBLE PRECISION"
         ))
+        # which strategy opened the trade / produced the setup (amd_15m / trend_5m)
+        await conn.execute(text(
+            "ALTER TABLE trades ADD COLUMN IF NOT EXISTS strategy VARCHAR(20)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE backtest_results ADD COLUMN IF NOT EXISTS strategy VARCHAR(20)"
+        ))
 
         # bot_events columns
         await conn.execute(text(

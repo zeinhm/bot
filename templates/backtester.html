@@ -39,7 +39,7 @@
 <div class="page-head">
     <div>
         <h1 class="page-title">Backtester</h1>
-        <p class="page-sub">AMD FVG strategy — 15m · {{ data_range }}</p>
+        <p class="page-sub">AMD FVG strategy — 15m + 5m · {{ data_range }}</p>
     </div>
 </div>
 
@@ -100,6 +100,9 @@
             <span class="lbl" style="color:var(--text-2)" data-tip="US tax-filing season (mid-to-late April) — forced liquidations and choppy, two-sided price action.">US tax deadline</span>
             <button type="button" class="switch on" id="bt-skip-tax" aria-pressed="true"></button>
         </div>
+
+        <button type="button" class="btn btn-primary" id="bt-apply" disabled
+                style="width:100%;margin-top:12px;justify-content:center;opacity:.5;cursor:not-allowed">Apply</button>
 
         <button type="button" class="bt-explain-toggle" id="bt-explain-toggle" aria-expanded="false" aria-controls="bt-explain">
             <span>Strategy explanation</span>
@@ -191,6 +194,7 @@
     <table class="tbl" id="tl-table">
         <thead><tr>
             <th>Pair</th>
+            <th data-tip="Which strategy opened the trade: 15m (the core AMD setup) or 5m (the trend-only sniper, taken only in strong trends).">Strat</th>
             <th>Date</th>
             <th>Dir</th>
             <th class="num">Entry</th>
@@ -216,6 +220,7 @@
         {% for t in bt_results %}
         {
             sym: "{{ t.symbol }}",
+            strat: "{{ t.strategy or 'amd_15m' }}",
             dir: "{{ t.direction }}",
             entryUtc: "{{ t.entry_time.strftime('%Y-%m-%dT%H:%M:%SZ') if t.entry_time else '' }}",
             exitUtc: "{{ t.exit_time.strftime('%Y-%m-%dT%H:%M:%SZ') if t.exit_time else '' }}",
@@ -234,10 +239,15 @@
         if (t.pnl !== null) equity += t.pnl;
         t.equity = Math.round(equity * 100) / 100;
     });
+    // Running equity is accumulated chronologically above; show newest trade first.
+    allRows.reverse();
 
     var PER_PAGE = 10;
     var page = 0;
     var totalPages = Math.ceil(allRows.length / PER_PAGE);
+
+    var STRAT_TF = { amd_15m: '15m', trend_5m: '5m' };
+    function stratLabel(s) { return STRAT_TF[s] || '15m'; }
 
     function fmtDate(utc) {
         if (!utc) return '—';
@@ -267,6 +277,7 @@
             var resPill = t.result === 'win' ? '<span class="pill green">WIN</span>' : '<span class="pill red">LOSS</span>';
             html += '<tr>'
                 + '<td class="mono">'+t.sym+'<span style="font-size:10px;color:var(--muted);background:var(--card-3);padding:1px 5px;border-radius:3px;margin-left:6px">'+LEVERAGE+'x</span></td>'
+                + '<td><span class="pill" style="font-size:10px">'+stratLabel(t.strat)+'</span></td>'
                 + '<td class="mono" style="font-size:11px;line-height:1.6">'
                     + '<div><span class="muted" style="display:inline-block;min-width:52px">Open:</span>'+fmtDate(t.entryUtc)+'</div>'
                     + '<div><span class="muted" style="display:inline-block;min-width:52px">Closed:</span>'+fmtDate(t.exitUtc)+'</div>'
@@ -309,7 +320,7 @@
     function setRows(apiRows) {
         allRows = (apiRows || []).map(function(t) {
             return {
-                sym: t.symbol, dir: t.direction,
+                sym: t.symbol, strat: t.strategy || 'amd_15m', dir: t.direction,
                 entryUtc: t.entryTime ? new Date(t.entryTime * 1000).toISOString() : '',
                 exitUtc: t.exitTime ? new Date(t.exitTime * 1000).toISOString() : '',
                 entryP: t.entryPrice || 0,
@@ -321,6 +332,8 @@
                 equity: t.equity
             };
         });
+        // API returns trades chronologically (equity already accumulated); show newest first.
+        allRows.reverse();
         page = 0;
         totalPages = Math.ceil(allRows.length / PER_PAGE);
         var cnt = document.getElementById('tl-count');
@@ -332,7 +345,7 @@
     // chart IIFE's btReload + once on load). Combined across all 3 assets.
     window.__btReloadTradeLog = function() {
         var p = window.__btCombinedParams ? window.__btCombinedParams() : '';
-        fetch('/api/backtest/tradelog?' + p)
+        return fetch('/api/backtest/tradelog?' + p)
             .then(function(r) { return r.json(); })
             .then(function(d) { setRows(d.trades || []); })
             .catch(function() {});
@@ -591,7 +604,7 @@
     }
 
     function loadCombined() {
-        fetch('/api/backtest/combined?' + btCombinedParams())
+        return fetch('/api/backtest/combined?' + btCombinedParams())
             .then(function(r) { return r.json(); })
             .then(function(res) {
                 var st = res.stats || {};
@@ -893,54 +906,85 @@
     }
     window.__btCombinedParams = btCombinedParams;  // used by the trade-log IIFE
 
-    var _btReloadTimer = null;
-    function btReload() {
-        // Debounce so dragging a slider doesn't fire a burst of engine builds.
-        clearTimeout(_btReloadTimer);
-        _btReloadTimer = setTimeout(function() {
-            loadCombined();
-            if (window.__btReloadTradeLog) window.__btReloadTradeLog();
-            fetch('/api/backtest?symbol=' + currentSymbol + '&interval=15m&' + btSetupParams())
-                .then(function(r) { return r.json(); })
-                .then(function(btRes) {
-                    applyBtStats(btRes.stats || {});
-                    totalSetups = btRes.total || 0;
-                    initChart();
-                    chartEl.style.visibility = 'hidden';
-                    loadInitialSetups();
-                });
-        }, 250);
+    // Playground changes are staged and only run when Apply is clicked. The button
+    // stays disabled while the current config equals the last applied one (so the
+    // same config is never re-fetched), and shows a loading state during the fetch.
+    var btApply = document.getElementById('bt-apply');
+    var lastAppliedParams = btCombinedParams();   // page loads already showing defaults
+
+    function setApplyState(state) {  // 'idle' | 'pending' | 'loading'
+        if (state === 'loading') {
+            btApply.disabled = true; btApply.textContent = 'Applying…';
+            btApply.style.opacity = '.6'; btApply.style.cursor = 'wait';
+        } else if (state === 'pending') {
+            btApply.disabled = false; btApply.textContent = 'Apply';
+            btApply.style.opacity = '1'; btApply.style.cursor = 'pointer';
+        } else {
+            btApply.disabled = true; btApply.textContent = 'Apply';
+            btApply.style.opacity = '.5'; btApply.style.cursor = 'not-allowed';
+        }
+    }
+    function refreshApplyState() {
+        setApplyState(btCombinedParams() === lastAppliedParams ? 'idle' : 'pending');
     }
 
-    // Risk % slider (affects equity sim → combined only, but reload both for simplicity)
+    // Run all three param-dependent fetches; resolve once they all settle.
+    function btReload() {
+        var pSingle = fetch('/api/backtest?symbol=' + currentSymbol + '&interval=15m&' + btSetupParams())
+            .then(function(r) { return r.json(); })
+            .then(function(btRes) {
+                applyBtStats(btRes.stats || {});
+                totalSetups = btRes.total || 0;
+                initChart();
+                chartEl.style.visibility = 'hidden';
+                loadInitialSetups();
+            });
+        var pCombined = loadCombined() || Promise.resolve();
+        var pTradelog = (window.__btReloadTradeLog && window.__btReloadTradeLog()) || Promise.resolve();
+        return Promise.all([pSingle, pCombined, pTradelog]);
+    }
+
+    function applyPlayground() {
+        var p = btCombinedParams();
+        if (p === lastAppliedParams) return;   // identical config — never re-fetch
+        setApplyState('loading');
+        btReload().catch(function() {}).then(function() {
+            lastAppliedParams = p;
+            refreshApplyState();
+        });
+    }
+    btApply.addEventListener('click', applyPlayground);
+
+    // Controls only stage changes (update visuals + Apply state); no fetch here.
     var btRisk = document.getElementById('bt-risk');
-    btRisk.addEventListener('input', function() { document.getElementById('bt-risk-val').textContent = parseFloat(btRisk.value).toFixed(1) + '%'; });
-    btRisk.addEventListener('change', btReload);
-    // Session chips
+    btRisk.addEventListener('input', function() {
+        document.getElementById('bt-risk-val').textContent = parseFloat(btRisk.value).toFixed(1) + '%';
+        refreshApplyState();
+    });
     document.querySelectorAll('[data-bt-session]').forEach(function(chip) {
         chip.addEventListener('click', function() {
             // keep at least one session selected
             if (chip.classList.contains('on') && document.querySelectorAll('[data-bt-session].on').length <= 1) return;
             chip.classList.toggle('on');
-            btReload();
+            refreshApplyState();
         });
     });
-    // Seasonal event toggles (Sell in May, US tax deadline)
     ['bt-skip-may', 'bt-skip-tax'].forEach(function(id) {
         var t = document.getElementById(id);
         t.addEventListener('click', function() {
             var on = !t.classList.contains('on');
             t.classList.toggle('on', on);
             t.setAttribute('aria-pressed', on ? 'true' : 'false');
-            btReload();
+            refreshApplyState();
         });
     });
-    // Reset
+    // Reset reverts the controls to defaults, then applies (only fetches if changed).
     document.getElementById('bt-reset').addEventListener('click', function() {
         btRisk.value = DEFAULTS.risk; document.getElementById('bt-risk-val').textContent = parseFloat(DEFAULTS.risk).toFixed(1) + '%';
         document.querySelectorAll('[data-bt-session]').forEach(function(c) { c.classList.add('on'); });
         ['bt-skip-may', 'bt-skip-tax'].forEach(function(id) { var t = document.getElementById(id); t.classList.add('on'); t.setAttribute('aria-pressed', 'true'); });
-        btReload();
+        refreshApplyState();
+        applyPlayground();
     });
 
     // ── Desktop: cap the Playground card to the chart column height + scroll ──

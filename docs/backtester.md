@@ -15,10 +15,11 @@ Both produce identical signals from the same engine. The difference is what happ
 
 ```
 Binance 1m CSVs (data/*.csv)
-  → import_candles.py (resample to 15m, insert into historical_candles table)
-    → amd_engine.run() (signal detection + bar-by-bar simulation)
-      → seed_trades.py (equity simulation → backtest_results table)
-      → /api/backtest (JSON response → frontend chart)
+  → import_candles.py (resample to 5m + 15m, insert into historical_candles table)
+    → amd_engine.run() (signal detection + bar-by-bar simulation, per strategy)
+      → backtest_combine.simulate() (gate across strategies + per-strategy adaptive equity)
+        → seed_trades.py (→ backtest_results / trades tables)
+        → /api/backtest/combined + /tradelog (JSON response → frontend chart)
 ```
 
 ### Historical Candle Data
@@ -29,7 +30,8 @@ Source: downloaded 1m Binance klines stored as CSVs in `data/` directory.
 
 Table schema: `symbol`, `interval`, `timestamp` (epoch seconds), OHLCV fields. Unique constraint on `(symbol, interval, timestamp)`.
 
-Current data: ~650k rows across BTCUSDT, ETHUSDT, SOLUSDT at 15m intervals spanning 2020-01 to 2026-04.
+Current data: BTCUSDT, ETHUSDT, SOLUSDT at 1m, **5m and 15m** intervals spanning 2020-01 to 2026-06
+(the 5m interval feeds the `trend_5m` strategy; import with `python import_candles.py --intervals 5m 15m`).
 
 ---
 
@@ -104,32 +106,35 @@ CLI tool that populates the `backtest_results` table. Run manually when strategy
 
 ```bash
 cd bot/
-venv/bin/python3 seed_trades.py --clear          # all 3 assets, clear first
-venv/bin/python3 seed_trades.py --symbol BTCUSDT  # single asset
+venv/bin/python3 seed_trades.py --clear                 # both strategies, clear first
+venv/bin/python3 seed_trades.py --clear --live-history  # also refresh the seeded trades table
+venv/bin/python3 seed_trades.py --symbol BTCUSDT        # single asset
 ```
 
 ### How It Works
 
-1. Connects to local DB via `DATABASE_URL` from `.env`
-2. For each symbol: loads all historical 15m candles from DB, runs `amd_engine.run()`
-3. Filters to closed trades (win/loss only)
-4. Sorts all trades across assets by entry time (chronological order for equity simulation)
-5. Simulates equity with adaptive sizing:
-   - Initial capital: $10,000
-   - Risk: 2% of equity per trade
-   - Adaptive: after 4 consecutive losses → reduce to 0.25% until 2 consecutive wins
-   - Commission: 0.04% per side on full position value
-6. Inserts into `backtest_results` table with: symbol, direction, entry/exit time, entry/exit price, SL, TP, quantity, result, R value, **target RR (2 or 3)**, PnL, commission
+The seeder runs the **combined two-strategy overlay** (`config.STRATEGIES`) and shares its gating +
+equity logic with the backtester route via `backtest_combine.py`.
 
-### Verified Results (2020-01 to 2026, adaptive RR)
+1. Connects to local DB via `DATABASE_URL` from `.env`
+2. For each strategy in `STRATEGIES` (amd_15m / trend_5m), for each symbol: loads that strategy's
+   interval candles (15m / 5m), runs `amd_engine.run()`, tags each setup with `_strategy` + `_symbol`
+3. **`backtest_combine.simulate()`** gates across strategies (one position per symbol, first-come) and
+   walks equity with a **separate adaptive streak per strategy** over one shared wallet:
+   - Initial capital: $10,000 · Risk: 2% of equity per trade
+   - Adaptive: after 4 consecutive losses → 0.25% until 2 consecutive wins (per strategy)
+   - Commission: 0.04% per side on full position value
+4. Inserts into `backtest_results` (tagged with `strategy` + `target_rr`). With `--live-history`, also
+   clears + repopulates the seeded `trades` table (`user_id=1, is_paper=false`) for the track-record.
+
+### Verified Results (2020-01 to 2026, combined overlay)
 
 ```
-BTCUSDT: 350 trades (149W / 201L)
-ETHUSDT: 214 trades (85W / 129L)
-SOLUSDT: 191 trades (78W / 113L)
-Total:   755 trades  (41.3% WR)
-Final equity: $183,632.75 (+1736.3%)   Max drawdown: 19.0%
-Adaptive RR: ~17% of trades hit the 3:1 trend regime, rest are 2:1.
+amd_15m:  750 trades (after gating)
+trend_5m: 136 trades (after gating)
+Total:    886 trades  (42.3% WR)
+Final equity: $383,441.27 (+3734.4%)   Max drawdown: 32.3%
+For reference — amd_15m alone: 755 trades, 41.3% WR, $183,632.75 (+1736.3%), 19.0% DD.
 ```
 
 With `dynamicRR` off, the engine still reproduces the fixed-2:1 baseline (771 trades, $134,983.60)

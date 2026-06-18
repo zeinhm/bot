@@ -5,15 +5,20 @@ Append a row to the table (and a detail section for non-trivial results) after e
 experiment, so nothing is re-derived. Reproduce commands use the harness in `research/`
 (run from `bot/`): `python -m research.sweep ...` / `python -m research.walkforward ...`.
 
-Current production config: **AMD FVG 15m, adaptive RR (3:1 when prev-completed 6h ADX(14) ≥ 40,
-else 2:1)**, smart-SL ATR×1.5, sweep + ADX-42 filters, skip May + April wk 2&4, 2% dynamic risk +
-adaptive sizing (4 losses → 0.25% until 2 wins). Baseline backtest: **755 trades, 41.3% WR,
-+1,736% ($183,632.75 from $10k), 19% max DD** (~17% of trades hit the 3:1 regime).
+Current production config: **two strategies overlaid** — (1) **amd_15m**: AMD FVG 15m, adaptive RR
+(3:1 when prev-completed 6h ADX(14) ≥ 40, else 2:1), smart-SL ATR×1.5, sweep + ADX-42 filters; and
+(2) **trend_5m**: the same AMD setup on 5m, taken ONLY while the 6h ADX(14) ≥ 50 regime is trending,
+fixed 2:1, SL 1.5 ATR, accLen 20. Both share one wallet, one position per symbol across both, and
+each keeps its OWN adaptive-sizing streak (4 losses → 0.25% until 2 wins). Both skip May + April wk 2&4,
+2% dynamic risk. Combined backtest: **886 trades, 42.3% WR, +3,734% ($383,441 from $10k), 32.3% max
+DD** (15m alone was 755t / +1,736% / $184k / 19% DD).
 
 ## Summary (latest first)
 
 | Date | Hypothesis / change | Result | Verdict | Reproduce |
 |------|--------------------|--------|---------|-----------|
+| 2026-06-19 | **5m trend overlay** (run the 5m sniper ALONGSIDE 15m, shared wallet, one position per symbol across both, SEPARATE adaptive streak per strategy) | Refined 5m config (6h-ADX-50, accLen 20, atrMultAcc 5, manipMin 1.5, **2:1**, SL 1.5) is mediocre alone ($21k/+110%) but gated+overlaid more than doubles the account: **886 trades, 42.3% WR, +3,734% ($383,441), 32.3% DD, R/DD 116** vs 15m-alone +1,736%/$184k/19% DD. SEPARATE streaks essential (global/mixed streak → ~$223k). Gating is a mild quality filter (blocked signals had below-avg WR) | ✅ **SHIPPED** (combined is the new default; live runs both) | `python -m research.overlay`; seed: `python seed_trades.py --clear --live-history` |
+| 2026-06-18 | **5m trend-sniper (standalone)** (trade 5m ONLY in 6h-trend regime, 3:1/4:1, wider SL) | 5m catches ~3× more trend setups (372 vs 127) but they're low quality (20–26% WR); every standalone variant loses −31% to −52%, 44–58% DD. BUT see 2026-06-19: as an OVERLAY (not standalone) with 2:1 + ADX-50 it becomes a net positive | ❌ standalone / ✅ as overlay | `python -m research.tf5m_trend` (needs 5m candles: `python import_candles.py --intervals 5m`) |
 | 2026-06-16 | **Flip the strategy** (trade opposite of every AMD signal, break-&-retest) | WR 29% vs 42.8%; −96R, −62%, 64% DD at every rr | ❌ AMD direction IS the edge | `python -m research.flip` |
 | 2026-06-16 | Loss anatomy (are stop-outs wicks or valid?) | ~75% of losses run ≥1× SL *past* the stop (valid); only ~24% reverse to TP, and slowly (~120 bars) | ℹ️ stops are honest; can't fade them (flip's own stop trips on the path) | `python -m research.loss_anatomy` |
 | 2026-06-16 | Hedge every signal (long+short), Scheme C structural stops | best rr=4: +101% but ~9× worse than directional, 2× DD; counter leg is dead weight | ❌ | `python -m research.hedge --scheme range` |

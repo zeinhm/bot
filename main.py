@@ -56,9 +56,12 @@ async def lifespan(app: FastAPI):
 
     shared_market = SharedMarketData()
     await shared_market.connect()
-    from config import SYMBOLS as _symbols
-    await shared_market.load_history(_symbols)
-    await shared_market.start_kline_stream(_symbols)
+    from config import SYMBOLS as _symbols, STRATEGIES
+    # One feed per interval any strategy trades (15m + 5m today).
+    _intervals = sorted({s["interval"] for s in STRATEGIES.values()})
+    for _interval in _intervals:
+        await shared_market.load_history(_symbols, interval=_interval)
+        await shared_market.start_kline_stream(_symbols, interval=_interval)
     app.state.shared_market = shared_market
 
     manager = BotManager()

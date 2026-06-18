@@ -10,8 +10,37 @@ The theory: smart money builds positions during accumulation, triggers stop loss
 
 ## Timeframe & Assets
 
-- **Timeframe**: 15 minutes
+- **Timeframes**: two strategies run together (see [Two-strategy overlay](#two-strategy-overlay)):
+  - `amd_15m` — **15 minutes** (the core strategy, adaptive 2:1/3:1 RR)
+  - `trend_5m` — **5 minutes**, taken ONLY while the 6h ADX(14) ≥ 50 regime is trending (fixed 2:1)
 - **Assets**: BTCUSDT, ETHUSDT, SOLUSDT (Binance Futures, USDT-M perpetual)
+
+The signal-detection logic below (accumulation → manipulation → FVG → exit) is identical for both;
+they differ only in timeframe and config (see `config.py` → `STRATEGIES`).
+
+---
+
+## Two-strategy overlay
+
+`config.py → STRATEGIES` holds two self-contained named configs. The engine and the live worker are
+strategy-agnostic — adding or changing a strategy is a config-only edit.
+
+| | `amd_15m` | `trend_5m` |
+|---|---|---|
+| Timeframe | 15m | 5m |
+| Reward:risk | adaptive 2:1 / 3:1 (6h ADX ≥ 40) | fixed 2:1 |
+| Entry gate | always (in session) | only while 6h ADX(14) ≥ 50 is trending |
+| accLen / atrMultAcc | 60 / 5 | 20 / 5 |
+| manipMinVal | 0.4 | 1.5 |
+
+**Overlay rules** (`backtest_combine.py` for backtest; `app/bot/worker.py` for live):
+- **One shared wallet.**
+- **One position per symbol across both strategies** (first-come-first-served — if BTC has an open
+  trade from either strategy, neither opens another on BTC).
+- **Separate adaptive-sizing streak per strategy** (a 15m losing streak shrinks 15m size only, not 5m).
+
+Combined backtest (Jan 2020 – Apr 2026): **886 trades, 42.3% WR, +3,734% ($383,441 from $10k),
+32.3% max DD** — vs the 15m alone at +1,736% / $184k / 19% DD.
 
 ---
 
@@ -298,22 +327,26 @@ Binance 15m kline WebSocket
 
 ## Backtest Results (Verified)
 
-Using the current production parameters on historical data from January 2020 to April 2026:
+Combined two-strategy overlay on historical data from January 2020 to April 2026
+(`python seed_trades.py --clear --live-history`; cross-check `python -m research.overlay`):
 
 ```
-BTCUSDT: 350 trades (149W / 201L) = 42.6% WR
-ETHUSDT: 214 trades (85W / 129L)  = 39.7% WR
-SOLUSDT: 191 trades (78W / 113L)  = 40.8% WR
-Total:   755 trades (312W / 443L) = 41.3% WR
+amd_15m:  750 trades (after gating) — the 15m core
+trend_5m: 136 trades (after gating) — the 5m trend overlay
+Total:    886 trades (375W / 511L) = 42.3% WR
 
-Final equity: $183,632.75 (+1736.3%)
-Max drawdown: 19.0%
+Final equity: $383,441.27 (+3734.4%)
+Max drawdown: 32.3%
 Starting:     $10,000
-Risk:         2% dynamic with adaptive sizing
-Reward:risk:  adaptive — 3:1 in strong 6h trends (~17% of trades), else 2:1
+Risk:         2% dynamic, SEPARATE adaptive streak per strategy
+Reward:risk:  amd_15m adaptive 2:1/3:1; trend_5m fixed 2:1
+
+For reference — amd_15m ALONE: 755 trades, 41.3% WR, +1,736% ($183,632.75), 19.0% max DD.
 ```
 
-The win rate (~41%) is below 50%, but the adaptive 2:1/3:1 RRR means each win recovers 2–3 losses. The strategy is profitable through edge in reward-to-risk, not win rate.
+The win rate (~42%) is below 50%, but the 2:1/3:1 payoff means each win recovers 2–3 losses. The
+strategy is profitable through edge in reward-to-risk, not win rate. The 5m overlay roughly doubles
+the return at a higher (still bounded) drawdown.
 
 ---
 

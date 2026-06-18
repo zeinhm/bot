@@ -39,6 +39,7 @@ DEFAULT_CFG = {
     "rrr": 2.0,
     # Adaptive RR: 3:1 when prev completed HTF (6h) ADX >= threshold, else 2:1.
     "dynamicRR": False,
+    "trendOnly": False,   # research: only enter when the HTF regime is trending
     "rrrTrend": 3.0,
     "rrrRange": 2.0,
     "htfHours": 6,
@@ -315,6 +316,7 @@ def run(data: list[dict], cfg: dict | None = None) -> list[dict]:
     atr_mult = float(c["atrMult"])
     rrr = float(c["rrr"])
     dynamic_rr = bool(c.get("dynamicRR", False))
+    trend_only = bool(c.get("trendOnly", False))   # only enter when the HTF regime is trending
     rrr_trend = float(c.get("rrrTrend", 3.0))
     rrr_range = float(c.get("rrrRange", rrr))
     htf_hours = float(c.get("htfHours", 6))
@@ -366,7 +368,7 @@ def run(data: list[dict], cfg: dict | None = None) -> list[dict]:
     else:
         adx_vals = plus_di = minus_di = [0.0] * n
 
-    if dynamic_rr:
+    if dynamic_rr or trend_only:
         trend_mask = _htf_trend_mask(data, htf_hours, htf_adx_period, htf_adx_threshold)
     else:
         trend_mask = None
@@ -479,6 +481,7 @@ def run(data: list[dict], cfg: dict | None = None) -> list[dict]:
                     and not active
                     and not in_bull_sweep[i]
                     and not adx_skip
+                    and (not trend_only or trend_mask[i])
                 ):
                     entry = closes[i]
                     atr_sl = entry + cur_atr * atr_mult
@@ -520,6 +523,7 @@ def run(data: list[dict], cfg: dict | None = None) -> list[dict]:
                     and not active
                     and not in_bear_sweep[i]
                     and not adx_skip
+                    and (not trend_only or trend_mask[i])
                 ):
                     entry = closes[i]
                     atr_sl = entry - cur_atr * atr_mult

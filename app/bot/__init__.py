@@ -46,7 +46,7 @@ def get_bot_for_user(user_id: int, mode: str = "live") -> BotWorker | None:
 def build_user_config(api_key: str, api_secret: str):
     from app.bot.worker import BotConfig
     from config import (
-        SYMBOLS, STRATEGY_PARAMS, LEVERAGE, COMMISSION_PCT,
+        SYMBOLS, STRATEGY_PARAMS, STRATEGIES, LEVERAGE, COMMISSION_PCT,
         SLIPPAGE_TICKS, TICK_SIZE, CANDLE_BUFFER_SIZE, LOT_SIZE,
     )
     return BotConfig(
@@ -54,6 +54,7 @@ def build_user_config(api_key: str, api_secret: str):
         api_secret=api_secret,
         symbols=SYMBOLS,
         strategy_params=STRATEGY_PARAMS,
+        strategies=STRATEGIES,
         leverage=LEVERAGE,
         commission_pct=COMMISSION_PCT,
         slippage_ticks=SLIPPAGE_TICKS,
@@ -67,7 +68,7 @@ def build_user_config(api_key: str, api_secret: str):
 def build_paper_config(paper_balance: float = 10000.0):
     from app.bot.worker import BotConfig
     from config import (
-        SYMBOLS, STRATEGY_PARAMS, LEVERAGE, COMMISSION_PCT,
+        SYMBOLS, STRATEGY_PARAMS, STRATEGIES, LEVERAGE, COMMISSION_PCT,
         SLIPPAGE_TICKS, TICK_SIZE, CANDLE_BUFFER_SIZE, LOT_SIZE,
     )
     return BotConfig(
@@ -75,6 +76,7 @@ def build_paper_config(paper_balance: float = 10000.0):
         api_secret="",
         symbols=SYMBOLS,
         strategy_params=STRATEGY_PARAMS,
+        strategies=STRATEGIES,
         leverage=LEVERAGE,
         commission_pct=COMMISSION_PCT,
         slippage_ticks=SLIPPAGE_TICKS,

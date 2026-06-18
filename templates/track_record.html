@@ -12,8 +12,10 @@
 
 <!-- Public Topbar -->
 <header class="topbar" style="position:sticky;top:0;z-index:5">
-    <div class="rail-logo" style="width:26px;height:26px;font-size:14px;margin-bottom:0;margin-right:4px">Z</div>
-    <div class="wordmark">ZENITH<span class="dot">.</span></div>
+    <a href="/" style="display:flex;align-items:center;gap:4px;text-decoration:none;color:inherit">
+        <div class="rail-logo" style="width:26px;height:26px;font-size:14px;margin-bottom:0;margin-right:4px">Z</div>
+        <div class="wordmark">ZENITH<span class="dot">.</span></div>
+    </a>
     <div class="topbar-right">
         <a href="/dashboard" class="link muted">← Back to app</a>
     </div>
@@ -22,7 +24,7 @@
 <div style="max-width:1040px;margin:0 auto;padding:40px 24px 60px">
     <!-- Hero -->
     <div style="margin-bottom:28px">
-        <span class="pill green"><span class="led green"></span>Live · verified by Binance</span>
+        <span class="pill green"><span class="led green"></span>Live</span>
         <h1 style="font-size:34px;font-weight:700;letter-spacing:-.5px;margin:14px 0 8px">Live Track Record</h1>
         <p class="muted" style="font-size:14px;margin:0;max-width:560px">All results are pulled directly from Binance. Nothing is self-reported.</p>
     </div>
@@ -61,7 +63,7 @@
 
     <!-- Recent Verified Trades -->
     <div class="card" style="margin-bottom:32px">
-        <div class="card-title">Recent Verified Trades</div>
+        <div class="card-title">Recent Trades</div>
         {% if recent_trades %}
         <div class="tbl-wrap">
         <table class="tbl">
@@ -72,18 +74,18 @@
             </tr></thead>
             <tbody>
                 {% for t in recent_trades %}
-                <tr class="{{ 'row-win' if t.result == 'win' else 'row-loss' }}">
+                <tr>
                     <td class="mono muted">{{ loop.index }}</td>
                     <td class="mono local-time" data-utc="{{ t.entry_time.strftime('%Y-%m-%dT%H:%M:%SZ') if t.entry_time else '' }}" data-fmt="date">{{ t.entry_time.strftime('%Y-%m-%d') if t.entry_time else '—' }}</td>
                     <td class="mono">{{ t.symbol }}</td>
                     <td><span class="dir-badge {{ 'long' if t.direction == 'long' else 'short' }}">{{ t.direction|upper }}</span></td>
-                    <td class="num mono">{{ "%.2f"|format(t.entry_price) if t.entry_price else '—' }}</td>
-                    <td class="num mono">{{ "%.2f"|format(t.exit_price) if t.exit_price else '—' }}</td>
+                    <td class="num mono">{{ t.entry_price | num(2) }}</td>
+                    <td class="num mono">{{ t.exit_price | num(2) }}</td>
                     <td class="num mono {{ 'pos' if (t.r_value or 0) >= 0 else 'neg' }}">
                         {{ "%.1f"|format(t.r_value) if t.r_value is not none else '—' }}R
                     </td>
                     <td class="num mono {{ 'pos' if (t.pnl_usdt or 0) >= 0 else 'neg' }}">
-                        {{ "%.2f"|format(t.pnl_usdt) if t.pnl_usdt is not none else '—' }}
+                        {{ t.pnl_usdt | num(2) }}
                     </td>
                 </tr>
                 {% endfor %}

@@ -34,7 +34,8 @@ bot/
 ├── main.py                    # App entry point, route mounting, bot auto-start
 ├── config.py                  # All env vars, strategy params, asset configs
 ├── strategy.py                # Live signal detector (AMD FVG v1, candle buffer → signal)
-├── amd_engine.py              # Backtest engine (bar-by-bar simulation, stats, equity sim)
+├── amd_engine.py              # Backtest engine (bar-by-bar simulation, stats, equity sim; supports trendOnly + dynamicRR)
+├── backtest_combine.py        # Overlay multiple strategies: cross-strategy gating + per-strategy adaptive equity (shared by backtester route + seeder)
 ├── exchange.py                # Binance Futures API wrapper (live trading)
 ├── paper_exchange.py          # Paper trading exchange (in-memory + DB, polls prices)
 ├── telegram_alert.py          # Telegram trade entry/exit alerts
@@ -71,7 +72,7 @@ bot/
 │       ├── worker_live.py     # LiveWorker: Binance hooks (real orders, conditional SL/TP, alerts, self-heal, force-close)
 │       ├── worker_paper.py    # PaperWorker: simulated hooks (DB-backed PaperExchange, paper orders)
 │       ├── manager.py         # Multi-user worker lifecycle (start/stop/status); builds Live/Paper via make_worker()
-│       ├── shared_market.py   # Shared Binance connection for candle data (no API key); get_trend_regime() → 6h-ADX regime for adaptive RR
+│       ├── shared_market.py   # Shared Binance connection: dual candle feed (15m + 5m) keyed by interval; get_candles(symbol, interval); get_trend_regime() → 6h-ADX regime (cache keyed by threshold)
 │       └── websocket.py       # WS connection manager + 7 background push tasks (authenticated)
 │
 ├── routes/
@@ -164,14 +165,16 @@ bot/
 | To change...                        | Edit these files                                              |
 |-------------------------------------|---------------------------------------------------------------|
 | **Strategy logic / signal detection** | `strategy.py` (live), `amd_engine.py` (backtest)             |
-| **Strategy parameters / defaults**  | `config.py` → `STRATEGY_PARAMS` (incl. adaptive-RR: `dynamic_rr`/`rrr_trend`/`htf_adx_threshold`), `ACC_RANGE_MODE` |
-| **Adaptive reward-to-risk (2:1/3:1)** | `amd_engine.py` `_htf_trend_mask()` + `run()` (backtest); `app/bot/shared_market.py` `get_trend_regime()` + `app/bot/worker.py` `_process_candle()` (live); `target_rr` on `trades`/`backtest_results` |
+| **Strategy parameters / defaults**  | `config.py` → `STRATEGY_PARAMS` (the 15m body) + `STRATEGIES` registry (`amd_15m` 15m, `trend_5m` 5m — each self-contained with its own `interval`), `ACC_RANGE_MODE` |
+| **Add / change a strategy**         | `config.py` → `STRATEGIES` (add a named entry). Engine/worker are strategy-agnostic; nothing else changes for backtest. Live needs its `interval` fed in `main.py` (derived from `STRATEGIES`) |
+| **Combine strategies (overlay)**    | `backtest_combine.py` (gate + per-strategy adaptive equity); live: `app/bot/worker.py` `_process_candle()`/`_detect_for_strategy()` |
+| **Adaptive reward-to-risk (2:1/3:1)** | `amd_engine.py` `_htf_trend_mask()` + `run()` (backtest); `app/bot/shared_market.py` `get_trend_regime()` + `app/bot/worker.py` `_detect_for_strategy()` (live); `target_rr` on `trades`/`backtest_results` |
 | **Shared trade loop / signal→execute** | `app/bot/worker.py` (`BaseWorker`) → `_process_candle()`, `_execute_trade()`, `_place_sl_tp()` |
 | **Live-only execution behavior**    | `app/bot/worker_live.py` (`LiveWorker`) → real orders, conditional SL/TP, alerts, `_self_heal_trade()`, force-close |
 | **Paper-only execution behavior**   | `app/bot/worker_paper.py` (`PaperWorker`) → `_resolve_exit()`, `_count_active_sltp()`; `paper_exchange.py` (DB-backed) |
 | **Add/change a mode difference**    | Add/override a hook in `BaseWorker` (default), then `LiveWorker` / `PaperWorker` — do NOT add `if self.is_paper` |
 | **Crash recovery**                  | `app/bot/worker.py` → `_crash_recovery()`, `_recover_one_trade()` (delegates to mode hooks) |
-| **Adaptive position sizing**        | `app/bot/worker.py` → `_get_effective_risk()`, `_on_trade_result()` |
+| **Adaptive position sizing**        | `app/bot/worker.py` → `_get_effective_risk(strategy)`, `_on_trade_result(strategy, won)` — tracked PER STRATEGY in `self._adaptive` |
 | **Add a new page**                  | 1. `routes/newpage.py` 2. `templates/newpage.html` 3. `main.py` (mount router) 4. `templates/base.html` (add nav link) |
 | **Add an admin page**               | 1. `routes/admin/newpage.py` 2. `templates/admin_newpage.html` 3. `routes/admin/__init__.py` (include router) 4. `templates/base.html` (add admin nav link) |
 | **Add a DB model / table**          | `app/db/models.py` + new migration in `alembic/versions/`    |
@@ -223,12 +226,12 @@ bot/
 |-------|-------|------------|
 | `User` | `users` | google_id, email, name, is_approved, is_rejected, is_admin, paper_bot_started, totp_secret_enc, totp_enabled, totp_backup_codes |
 | `UserConfig` | `user_configs` | user_id (FK), binance_api_key_enc, binance_api_secret_enc |
-| `Trade` | `trades` | user_id (FK), is_paper, symbol, direction, entry/exit price/time, result, r_value, pnl_usdt (net), commission (USDT fee), funding_fee, target_rr (2:1/3:1 regime) |
+| `Trade` | `trades` | user_id (FK), is_paper, symbol, direction, entry/exit price/time, result, r_value, pnl_usdt (net), commission (USDT fee), funding_fee, target_rr (2:1/3:1 regime), strategy (amd_15m/trend_5m) |
 | `BotState` | `bot_state` | key, value, user_id, is_paper — unique on (key, user_id, is_paper) |
 | `BotEvent` | `bot_events` | user_id, is_paper, level, category, message, details |
 | `HistoricalCandle` | `historical_candles` | symbol, interval, timestamp, OHLCV |
 | `CandleBuffer` | `candle_buffer` | symbol, timestamp, OHLCV |
-| `BacktestResult` | `backtest_results` | symbol, direction, entry/exit, result, r_value, pnl_usdt, target_rr |
+| `BacktestResult` | `backtest_results` | symbol, direction, entry/exit, result, r_value, pnl_usdt, target_rr, strategy (amd_15m/trend_5m) |
 | `PaperAccount` | `paper_accounts` | user_id (unique FK), balance (default 10000) |
 | `PaperOrder` | `paper_orders` | user_id, trade_id (FK), symbol, side, order_type, stop_price, status |
 | `RejectionLog` | `rejection_log` | user_id, email, name, status (rejected/allowed) |
@@ -255,10 +258,10 @@ end; if it's there, quote the conclusion. Append a row after any new experiment.
 - `python -m scripts.db_inspect [summary|trades|backtest|users|candles]` — quick read-only DB checks (no inline SQL).
 
 **Backtest / seeding gotchas** (tribal knowledge — now written down):
-- `seed_trades.py` is **gitignored** (local-only); it writes `backtest_results`. Re-seed with `python seed_trades.py --clear`. Prod re-seeds separately (run locally against prod `DATABASE_URL`).
-- Public **track-record / dashboard read the `trades` table**. The admin's seeded "live history" = backtest copied into `trades` (`user_id=1, is_paper=false`). To refresh it: delete `where user_id=1 and is_paper=false` then insert from `backtest_results` — **scoped so real paper/live trades are untouched**.
-- New `target_rr` column (2 or 3) is on `trades` + `backtest_results` (migration `f6b2d4e8a1c9` + `_ensure_schema`).
-- Local DB has `historical_candles` (1m + 15m for BTC/ETH/SOL). `import_candles.py` (tracked) loads/resamples 1m CSVs.
+- `seed_trades.py` is **gitignored** (local-only); it runs BOTH strategies (`config.STRATEGIES`), gates them cross-strategy + sizes with per-strategy adaptive streaks via `backtest_combine.simulate`, and writes `backtest_results` tagged with `strategy`. Re-seed with `python seed_trades.py --clear`. Add `--live-history` to ALSO refresh the seeded `trades` table. Combined baseline: **886 trades, $383,441 (+3,734%)** — cross-check against `python -m research.overlay`.
+- Public **track-record / dashboard read the `trades` table**. The admin's seeded "live history" = backtest copied into `trades` (`user_id=1, is_paper=false`). `seed_trades.py --live-history` does this via `db.clear_user_trades(1, is_paper=False)` + `db.bulk_create_trades(...)` — **scoped so real paper/live trades are untouched**.
+- `target_rr` (2 or 3) and `strategy` (amd_15m/trend_5m) columns are on `trades` + `backtest_results` (migrations `f6b2d4e8a1c9`, `a7c9e1b3d5f2` + `_ensure_schema`).
+- Local DB has `historical_candles` (1m + 5m + 15m for BTC/ETH/SOL). `import_candles.py` (tracked) loads/resamples 1m CSVs (`--intervals 5m 15m`).
 
 ## SOP — Keeping Docs Updated
 

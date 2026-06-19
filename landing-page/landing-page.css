@@ -440,3 +440,63 @@ footer { border-top: 1px solid var(--border); padding: 56px 0 36px; background: 
   .amd-step { position: static; transform: none; opacity: 1; margin-bottom: 10px; box-shadow: none; }
   #amd-chart { height: 300px; }
 }
+
+/* ============================================================
+   TRACK RECORD — interactive equity replay (pin wrapper)
+   The #performance section pins and replays all 886 trades on scroll.
+   Reuses .sec / .sec-head / .perf-grid / .panel / .perf-big / .perf-mini.
+   ============================================================ */
+.perf-pin { position: relative; }
+.perf-track { height: 340vh; }              /* scroll runway — raise to slow the replay */
+.perf-stick { position: sticky; top: 0; min-height: 100vh; display: flex; align-items: center; padding: 56px 0; box-sizing: border-box; }
+.perf-canvas-wrap { height: clamp(240px, 38vh, 320px); margin-top: 12px; }
+#bt-chart { display: block; width: 100%; height: 100%; }
+.perf-hint { text-align: center; font-size: 12px; color: var(--muted); margin-top: 16px; letter-spacing: .3px; transition: opacity .4s; }
+
+/* Mobile: stay pinned + interactive, but reflow to card-on-top / chart-on-bottom,
+   clamp the description, and clear the fixed 64px nav. */
+@media (max-width: 980px) {
+  .perf-track { height: 320vh; }
+  .perf-stick { min-height: 100vh; padding: 76px 0 16px; align-items: flex-start; }  /* clears the fixed 64px nav */
+  #performance .sec-head { margin-bottom: 10px; }
+  #performance .sec-head h2 { font-size: 20px; }
+  #performance .sec-head p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 12.5px; line-height: 1.5; }
+  .perf-grid { gap: 10px; }
+  /* card on top, chart on the bottom */
+  #performance .perf-grid > .panel:nth-child(1) { order: 2; }
+  #performance .perf-grid > .panel:nth-child(2) { order: 1; }
+  #performance .panel { padding: 13px; }
+  .perf-canvas-wrap { height: clamp(120px, 17vh, 150px); margin-top: 8px; }
+  #performance .perf-big { margin-bottom: 4px; }
+  #performance .perf-big .v { font-size: 26px; }
+  .perf-mini { gap: 6px; }
+  #performance .perf-mini .m { padding: 7px 9px; }
+  #performance .perf-mini .v { font-size: 17px; }
+  #performance .perf-mini .l { font-size: 11px; }
+  /* keep the methodology note visible on mobile too */
+  #performance .perf-grid .panel:last-child > div:last-child { margin-top: 11px; padding-top: 11px; }
+  #performance .perf-grid .panel:last-child > div:last-child .panel-title { margin-bottom: 8px !important; }
+  #performance .perf-grid .panel:last-child > div:last-child p { font-size: 12px; line-height: 1.45; }
+  .perf-hint { margin-top: 8px; }
+  #performance .pt-sub { display: none; }   /* mobile: just "Equity curve" + PnL */
+}
+@media (prefers-reduced-motion: reduce) {
+  .perf-track { height: auto; }
+  .perf-stick { position: static; min-height: 0; padding: 72px 0; }
+}
+
+/* ============================================================
+   FORWARD-TEST INVITE (uses the standard .sec-head scaffold)
+   ============================================================ */
+#forward-test { position: relative; overflow: hidden; }
+#forward-test .wrap { position: relative; }   /* sit above the glow */
+.ft-glow { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: 680px; height: 460px; background: radial-gradient(circle, rgba(0,200,150,.10), transparent 65%); pointer-events: none; }
+#forward-test .sec-head { margin-bottom: 22px; }
+.ft-free { display: inline-flex; align-items: center; gap: 8px; margin: 0 auto 16px; padding: 6px 14px 6px 12px; border: 1px solid var(--border); background: rgba(255,255,255,.03); border-radius: 999px; font-size: 13px; color: var(--text-2); }
+.ft-free .led { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); }
+.ft-free b { color: var(--text); font-weight: 600; }
+.ft-schedule { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; margin-bottom: 30px; }
+.ft-sch-or { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+.ft-sch-note { width: 100%; text-align: center; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.ft-actions { display: flex; justify-content: center; }
+.ft-note { text-align: center; margin-top: 18px; font-size: 13px; color: var(--muted); }

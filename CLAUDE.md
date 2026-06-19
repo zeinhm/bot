@@ -131,6 +131,8 @@ bot/
 │   ├── landing-page.css       # Landing page styles
 │   ├── landing-page.js        # SVG charts, candlestick diagrams, animations
 │   ├── amd-scroll.js          # Pinned scroll engine for #how (canvas AMD trade, scroll-driven)
+│   ├── backtester-data.js     # Real equity series (window.ZBT, 886 trades from trade_log.csv) for the #performance replay
+│   ├── backtester.js          # Pinned scroll engine for #performance (canvas equity replay, scroll-driven, bi-directional)
 │   └── og-image.png           # Social preview image
 │
 ├── alembic/
@@ -191,7 +193,7 @@ bot/
 | **2FA (TOTP) / step-up gate**       | `app/auth/twofa.py` (`require_2fa`, backup codes), `routes/twofa.py`, Settings → Security tab (`templates/settings.html`), challenge modal + `guardedFetch` in `templates/base.html`; admin reset in `routes/admin/user_detail.py` |
 | **User approval flow**              | `routes/admin/users.py`, `templates/admin_users.html`        |
 | **Bot start/stop lifecycle**        | `app/bot/manager.py`, `routes/bot_control.py`                |
-| **Landing page**                    | `landing-page/` (html/css/js + `amd-scroll.js` for the #how scroll section, no Jinja) |
+| **Landing page**                    | `landing-page/` (html/css/js + `amd-scroll.js` for the #how scroll section, `backtester.js`/`backtester-data.js` for the #performance equity replay + #forward-test invite, no Jinja) |
 | **PWA (install/offline/icons)**     | `static/manifest.webmanifest`, `static/sw.js`, `static/icons/`, `main.py` (`/sw.js` route), `templates/base.html` (head links + SW registration) |
 | **Design tokens / colors**          | `static/css/app.css` → CSS custom properties at top           |
 | **Historical data import**          | `import_candles.py` (CLI tool, raw psycopg2)                 |

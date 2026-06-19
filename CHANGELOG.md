@@ -18,6 +18,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
   - **Schema**: new `strategy` column on `trades` + `backtest_results` (migration `a7c9e1b3d5f2` + `_ensure_schema`). Backtester trade log shows a **Strat** (15m/5m) column; combined endpoints return a `perStrategy` breakdown.
   - **Re-seeded** the combined result into `backtest_results` + the seeded live history (`seed_trades.py --clear --live-history`).
   - **Copy refreshed** across the landing page (880+ trades / 42% WR / +3,734% / $383k, dual-timeframe wording, exact 5m params kept private) and docs (`research-log.md`, `strategy.md`, `backtester.md`, `codebase-map.md`).
+- **Refresh API key permissions** (Settings → Exchange). Permissions are cached when a key is saved and never auto-update; a new **Refresh** button (`POST /settings/api-keys/refresh`) re-reads the flags for the already-stored key (no re-entry) so changing permissions on Binance — e.g. enabling Futures — is reflected. Read-only re-check (not 2FA-gated); only overwrites the cache when fresh flags are actually read, so a transient Binance error never wipes good badges.
 
 ### Changed
 - **Backtester Playground is now Apply-gated.** Risk / sessions / seasonal changes are staged and only run when **Apply** is clicked; the button shows an "Applying…" loading state and is disabled while the current config equals the last applied one, so an identical config is never re-fetched.

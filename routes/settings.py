@@ -235,6 +235,31 @@ async def validate_api_keys_route(
     return JSONResponse(result)
 
 
+@router.post("/settings/api-keys/refresh")
+async def refresh_api_permissions(request: Request):
+    """Re-read the permission flags for the ALREADY-STORED key and refresh the cached
+    `api_permissions` — so changing permissions on Binance (e.g. enabling Futures) is
+    reflected without re-entering the key. Read-only against the key; not 2FA-gated."""
+    user = await require_auth(request)
+    cfg = await db.get_user_config(user.id)
+    if cfg is None or cfg.binance_api_key_enc is None:
+        return JSONResponse({"ok": False, "error": "No API key configured."}, status_code=400)
+
+    try:
+        api_key = decrypt(cfg.binance_api_key_enc)
+        api_secret = decrypt(cfg.binance_api_secret_enc)
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Could not read the stored key."}, status_code=500)
+
+    result = await validate_api_key(api_key, api_secret)
+    # Only overwrite the cache when we actually READ fresh flags — a transient Binance
+    # error returns empty permissions, and we don't want that to wipe good badges.
+    # (withdrawals-enabled returns ok=False but WITH flags, so the red pill still updates.)
+    if result["permissions"]:
+        await db.set_state("api_permissions", result["permissions"], user_id=user.id, is_paper=False)
+    return JSONResponse({"ok": result["ok"], "permissions": result["permissions"], "error": result["error"]})
+
+
 @router.post("/settings/api-keys/delete")
 async def delete_api_keys(request: Request):
     user = await require_auth(request)

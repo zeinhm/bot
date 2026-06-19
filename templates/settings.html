@@ -166,15 +166,22 @@
                 <div class="mono" style="font-size:12px;color:var(--text-2);margin-top:2px">••••••••••••</div>
             </div>
         </div>
-        {% if api_permissions %}
+        {% if api_key_set %}
         <div style="margin-bottom:12px">
-            <div class="k" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Key permissions</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+                <div class="k" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Key permissions</div>
+                <button type="button" id="btn-refresh-perms" onclick="refreshApiPerms()" data-tip="Re-read this key's permissions from Binance (e.g. after enabling Futures). They're cached when the key is saved and don't auto-update." style="background:none;border:none;padding:0;cursor:pointer;color:var(--green);font-size:11px;font-weight:600;font-family:var(--sans)">Refresh</button>
+            </div>
+            {% if api_permissions %}
             <div style="display:flex;flex-wrap:wrap;gap:6px">
                 <span class="pill {{ 'green' if api_permissions.reading else 'gray' }}" style="font-size:10px">Reading {{ '✓' if api_permissions.reading else '—' }}</span>
                 <span class="pill {{ 'green' if api_permissions.futures else 'gray' }}" style="font-size:10px">Futures {{ '✓' if api_permissions.futures else '—' }}</span>
                 <span class="pill {{ 'red' if api_permissions.withdrawals else 'green' }}" style="font-size:10px">Withdrawals {{ 'enabled' if api_permissions.withdrawals else 'off' }}</span>
                 <span class="pill {{ 'green' if api_permissions.ip_restricted else 'amber' }}" style="font-size:10px">{{ 'IP-restricted' if api_permissions.ip_restricted else 'No IP limit' }}</span>
             </div>
+            {% else %}
+            <div class="muted" style="font-size:11px">Permissions unreadable for this key — Futures access is confirmed by the live connection. Click Refresh to retry.</div>
+            {% endif %}
         </div>
         {% endif %}
         <button type="button" class="btn btn-ghost btn-block" style="font-size:12px;color:var(--red)" onclick="document.getElementById('delete-keys-modal').style.display='flex'">Delete API Keys</button>
@@ -377,6 +384,23 @@ function saveApiKeys(e) {
             btn.textContent = 'Validate & Connect';
         });
     return false;
+}
+function refreshApiPerms() {
+    var btn = document.getElementById('btn-refresh-perms');
+    if (!btn) return;
+    btn.disabled = true;
+    btn.textContent = 'Refreshing…';
+    guardedFetch('/settings/api-keys/refresh', {method:'POST', headers:{'X-CSRF-Token':csrfToken()}})
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            showToast(data.error ? data.error : 'Permissions refreshed.');
+            setTimeout(function() { location.reload(); }, 1000);
+        })
+        .catch(function() {
+            showToast('Network error — try again.');
+            btn.disabled = false;
+            btn.textContent = 'Refresh';
+        });
 }
 function deleteApiKeys() {
     var btn = document.getElementById('btn-delete-keys');

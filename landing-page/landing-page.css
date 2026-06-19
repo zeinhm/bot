@@ -69,12 +69,9 @@ section { position: relative; }
 }
 .nav.scrolled { background: rgba(11,13,18,.82); backdrop-filter: blur(14px); border-bottom-color: var(--border); }
 .nav .wrap { display: flex; align-items: center; width: 100%; }
-.logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; letter-spacing: .5px; }
-.logo .z {
-  width: 32px; height: 32px; border-radius: 8px; background: var(--green); color: #052b20;
-  display: grid; place-items: center; font-weight: 800; font-size: 19px; font-style: italic;
-  box-shadow: 0 0 0 1px var(--green-line), 0 0 20px var(--green-glow);
-}
+/* ZENITH wordmark — full "ZENITH." is the logo (Inter 700, .16em tracking, green dot) */
+.logo { display: inline-flex; align-items: baseline; font-weight: 700; font-size: 18px; letter-spacing: 0.16em; line-height: 1; white-space: nowrap; color: var(--text); }
+.logo .dot { color: var(--green); letter-spacing: 0; }
 .nav-links { display: flex; gap: 32px; margin-left: 48px; }
 .nav-links a { font-size: 14px; color: var(--text-2); font-weight: 500; transition: color .15s; }
 .nav-links a:hover { color: var(--text); }

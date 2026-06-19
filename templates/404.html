@@ -9,7 +9,8 @@
         *{margin:0;padding:0;box-sizing:border-box}
         body{background:#0F1117;color:#E6E8EB;font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;min-height:100vh;display:grid;place-items:center}
         .wrap{text-align:center;padding:24px}
-        .logo{width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,#00C896,#00A67A);display:grid;place-items:center;font-size:20px;font-weight:700;color:#0F1117;margin:0 auto 32px;box-shadow:0 0 24px rgba(0,200,150,.25)}
+        .logo{display:inline-flex;align-items:baseline;font-size:20px;font-weight:700;letter-spacing:.16em;line-height:1;color:#E6E8EB;margin:0 auto 32px}
+        .logo .dot{color:#00C896;letter-spacing:0}
         .code{font-size:64px;font-weight:700;color:#2A2F3A;letter-spacing:-2px;line-height:1}
         .msg{font-size:16px;font-weight:600;margin-top:12px}
         .sub{font-size:13px;color:#8A8F98;margin-top:6px}
@@ -19,7 +20,7 @@
 </head>
 <body>
     <div class="wrap">
-        <div class="logo">Z</div>
+        <div class="logo">ZENITH<span class="dot">.</span></div>
         <div class="code">404</div>
         <div class="msg">Page not found</div>
         <div class="sub">The page you're looking for doesn't exist or has been moved.</div>

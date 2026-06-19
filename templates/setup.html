@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ZENITH — Setup</title>
     <link rel="icon" type="image/svg+xml" href="/static/icons/favicon.svg">
-    <link rel="stylesheet" href="/static/css/app.css">
+    <link rel="stylesheet" href="/static/css/app.css?v=15">
     <meta name="csrf-token" content="{{ request.session.csrf_token }}">
 </head>
 <body class="app" style="display:grid;place-items:center;min-height:100vh">
 
 <div style="max-width:480px;width:100%;padding:0 24px">
     <div style="text-align:center;margin-bottom:28px">
-        <div class="rail-logo" style="width:40px;height:40px;font-size:20px;margin:0 auto 12px">Z</div>
+        <div class="rail-logo" style="width:44px;height:44px;margin:0 auto 14px"></div>
         <h1 style="font-size:22px;font-weight:700;margin:0 0 6px">Connect your exchange</h1>
         <p class="muted" style="font-size:13px;margin:0">
             Welcome, {{ user.name.split(' ')[0] if user.name else 'there' }}. Enter your Binance API credentials to get started.
@@ -47,10 +47,16 @@
                 <span style="font-size:11.5px" class="muted">
                     Create API keys at <strong>Binance &gt; API Management</strong>. Enable Futures only. Whitelist these IPs:
                 </span>
-                <div style="margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--text-2);line-height:1.8;user-select:all">
-                    208.77.246.240<br>
-                    208.77.246.241<br>
-                    208.77.246.242
+                <div style="margin-top:8px;display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+                    <div style="font-family:var(--mono);font-size:11px;color:var(--text-2);line-height:1.8;user-select:all">
+                        208.77.246.240<br>
+                        208.77.246.241<br>
+                        208.77.246.242
+                    </div>
+                    <button type="button" class="btn btn-ghost btn-sm" id="copy-ips" style="font-size:10.5px;padding:3px 9px;flex:none">
+                        <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        <span id="copy-ips-label">Copy</span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -85,6 +91,27 @@ function submitSetup(e) {
     });
     return false;
 }
+// ---- Copy whitelist IPs ----
+(function() {
+    var btn = document.getElementById('copy-ips');
+    if (!btn) return;
+    var IPS = '208.77.246.240 208.77.246.241 208.77.246.242';
+    var label = document.getElementById('copy-ips-label');
+    btn.addEventListener('click', function() {
+        var done = function() {
+            if (label) label.textContent = 'Copied';
+            setTimeout(function() { if (label) label.textContent = 'Copy'; }, 1500);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(IPS).then(done).catch(function() {});
+        } else {
+            var ta = document.createElement('textarea');
+            ta.value = IPS; document.body.appendChild(ta); ta.select();
+            try { document.execCommand('copy'); done(); } catch (e) {}
+            document.body.removeChild(ta);
+        }
+    });
+})();
 </script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 /* ZENITH service worker — installable PWA shell + web push.
    Network-first for pages (live data stays fresh), cache-first for static assets.
    Cache version: bump CACHE_VERSION to invalidate everything on the next visit. */
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const STATIC_CACHE = 'zenith-static-' + CACHE_VERSION;
 const PAGE_CACHE = 'zenith-pages-' + CACHE_VERSION;
 
@@ -9,8 +9,8 @@ const PAGE_CACHE = 'zenith-pages-' + CACHE_VERSION;
 // runtime-cached instead (avoids precaching a stale exact URL).
 const PRECACHE = [
   '/static/manifest.webmanifest',
-  '/static/icons/icon-192.png',
-  '/static/icons/icon-512.png',
+  '/static/icons/icon-192.png?v=2',
+  '/static/icons/icon-512.png?v=2',
 ];
 
 self.addEventListener('install', (event) => {

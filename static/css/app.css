@@ -94,12 +94,12 @@ body {
 }
 .rail-logo {
   width: 34px; height: 34px; border-radius: 8px;
-  background: var(--green); color: #06231b;
+  background: #0F1117 url('/static/icons/icon-192.png') center / cover no-repeat;
   display: grid; place-items: center;
-  font-weight: 700; font-size: 17px; letter-spacing: -1px;
   margin-bottom: 14px;
-  box-shadow: 0 0 0 1px rgba(0,200,150,.4), 0 4px 14px rgba(0,200,150,.18);
+  box-shadow: 0 0 0 1px var(--border);
   text-decoration: none;
+  font-size: 0;  /* hide any legacy text content */
 }
 .rail-group { display: flex; flex-direction: column; gap: 4px; width: 100%; align-items: center; }
 .rail-sep { width: 24px; height: 1px; background: var(--border); margin: 9px 0; }
@@ -155,8 +155,8 @@ th[data-tip]:hover::after { right: 0; }
   display: flex; align-items: center; gap: 18px;
   padding: 0 20px; background: #0d1015;
 }
-.wordmark { font-weight: 700; font-size: 15px; letter-spacing: 1.5px; }
-.wordmark .dot { color: var(--green); }
+.wordmark { font-weight: 700; font-size: 15px; letter-spacing: 0.16em; line-height: 1; white-space: nowrap; }
+.wordmark .dot { color: var(--green); letter-spacing: 0; }
 .topbar-ticker { display: flex; align-items: baseline; gap: 9px; }
 .topbar-ticker .pair { font-size: 11px; color: var(--muted); letter-spacing: .5px; }
 .topbar-ticker .price { font-size: 18px; font-weight: 600; }

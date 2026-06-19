@@ -124,7 +124,8 @@ bot/
 │   ├── js/websocket.js        # BotWebSocket class with auto-reconnect
 │   ├── manifest.webmanifest   # PWA manifest (installable app, icons, theme)
 │   ├── sw.js                  # Service worker (network-first pages, cache-first static, web-push handlers)
-│   └── icons/                 # PWA app icons (192/512/maskable/apple-touch) + favicon.svg (green "Z", linked on every page)
+│   ├── icons/                 # PWA app icons (192/512/maskable/apple-touch) + favicon.svg — all the ZENITH. wordmark-in-a-square (linked on every page)
+│   └── logo/                  # Canonical ZENITH. wordmark logo kit (wordmark.css, favicon.svg, PNG favicons, wordmark PNGs, README/snippets); icons/ above are derived from this
 │
 ├── landing-page/
 │   ├── landing-page.html      # Marketing page (standalone HTML, no Jinja)

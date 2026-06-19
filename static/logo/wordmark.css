@@ -1,0 +1,35 @@
+/* ============================================================
+   ZENITH — Wordmark logo
+   The full "ZENITH." wordmark is the logo, used everywhere
+   (navs, headers, footers, favicon, app icon). No separate mark.
+
+   Font: Inter 700. Tracking: 0.16em. The full stop is signal green.
+   Load Inter once in your <head>:
+   <link rel="stylesheet"
+     href="https://fonts.googleapis.com/css2?family=Inter:wght@700&display=swap">
+   ============================================================ */
+.zenith-wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  white-space: nowrap;
+  color: #E6E8EB;          /* on dark surfaces */
+  text-decoration: none;
+}
+.zenith-wordmark .dot {
+  color: #00C896;          /* signal green */
+  letter-spacing: 0;
+}
+/* On light backgrounds */
+.zenith-wordmark.on-light { color: #11141A; }
+.zenith-wordmark.on-light .dot { color: #00A87D; }
+
+/* Recommended sizes (set font-size on the element):
+     marketing hero ....... 40px
+     landing nav .......... 18px
+     app topbar ........... 15px
+     footer / fine ........ 13–16px
+   The em-based tracking keeps it proportional at every size. */

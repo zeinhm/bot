@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>ZENITH{% block title_suffix %}{% endblock %}</title>
-    <link rel="stylesheet" href="/static/css/app.css?v=14">
+    <link rel="stylesheet" href="/static/css/app.css?v=15">
     <link rel="icon" type="image/svg+xml" href="/static/icons/favicon.svg">
     <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
     <link rel="manifest" href="/static/manifest.webmanifest">
@@ -45,7 +45,7 @@
 
     <!-- ======== Sidebar Rail ======== -->
     <nav class="rail">
-        <a href="{% if admin_mode|default(false) %}/admin{% else %}/{% endif %}" class="rail-logo">Z</a>
+        <a href="{% if admin_mode|default(false) %}/admin{% else %}/{% endif %}" class="rail-logo" aria-label="ZENITH"></a>
 
         {% if admin_mode|default(false) %}
         <!-- ===== Admin Navigation ===== -->

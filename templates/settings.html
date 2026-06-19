@@ -477,13 +477,20 @@ function deleteApiKeys() {
     function openSaveModal() { document.getElementById('save-confirm-modal').style.display = 'flex'; }
     function doSaveBot() {
         var cbtn = document.getElementById('save-confirm-btn');
-        cbtn.disabled = true; cbtn.textContent = 'Saving…';
+        var sbtn = document.getElementById('btn-save-bot');
+        // Close the confirmation popup immediately — if a 2FA challenge is needed it
+        // then shows on its own instead of stacking behind this modal.
+        document.getElementById('save-confirm-modal').style.display = 'none';
+        cbtn.disabled = false; cbtn.textContent = 'Save changes';
+        sbtn.disabled = true; sbtn.textContent = 'Saving…';
+        function restore() { sbtn.disabled = false; sbtn.textContent = 'Save changes'; }
         guardedFetch('/settings', { method: 'POST', headers: {'X-CSRF-Token': csrfToken()}, body: new FormData(form) })
-            .then(function(r) { window.location.href = r.url || '/settings?saved=1'; })
-            .catch(function() {
-                cbtn.disabled = false; cbtn.textContent = 'Save changes';
-                document.getElementById('save-confirm-modal').style.display = 'none';
-            });
+            .then(function(r) {
+                // Saved → follow the redirect. 2FA cancelled / error → restore the button.
+                if (r && r.ok) { window.location.href = r.url || '/settings?saved=1'; return; }
+                restore();
+            })
+            .catch(restore);
     }
     document.getElementById('btn-save-bot').addEventListener('click', openSaveModal);
     form.addEventListener('submit', function(e) { e.preventDefault(); openSaveModal(); });

@@ -6,6 +6,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 
 ---
 
+## [2026-06-20]
+
+### Fixed
+- **2FA step-up prompt stacked behind the "Apply settings?" confirmation popup.** When saving bot-control settings with 2FA active, confirming kept the save-confirm modal open (`z-index:999`) while the step-up modal opened at `z-index:300`, so the 2FA input rendered behind it. Now `doSaveBot()` closes the confirmation popup the moment the save kicks off (saving state moves to the page Save button), so only the 2FA prompt shows; a cancelled challenge restores the button without reloading. Also raised the step-up modal to `z-index:1100` so it's never hidden for any `guardedFetch` caller (e.g. delete API keys).
+
 ## [2026-06-19]
 
 ### Added

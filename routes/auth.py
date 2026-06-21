@@ -85,6 +85,15 @@ async def google_callback(request: Request):
             else:
                 return RedirectResponse("/rejected", status_code=303)
 
+    # Open registration: when the admin has disabled the approval requirement,
+    # auto-approve anyone signing in (new sign-ups and still-pending users alike).
+    if not user.is_approved and not user.is_rejected:
+        require_approval = await db.get_state("require_approval", True)
+        if not require_approval:
+            await db.set_user_approved(user.id, True)
+            user.is_approved = True
+            log.info("Auto-approved user %d (%s) — approval requirement disabled", user.id, user.email)
+
     if user.is_approved and user.paper_bot_started:
         manager = request.app.state.bot_manager
         if manager.get_worker(user.id, "paper") is None:

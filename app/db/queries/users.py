@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.db.engine import get_session
 from app.db.models import User, UserConfig
@@ -11,6 +11,14 @@ from app.db.models import User, UserConfig
 async def get_user(user_id: int) -> User | None:
     async with get_session() as session:
         return await session.get(User, user_id)
+
+
+async def set_user_approved(user_id: int, approved: bool = True) -> None:
+    async with get_session() as session:
+        await session.execute(
+            update(User).where(User.id == user_id).values(is_approved=approved)
+        )
+        await session.commit()
 
 
 async def get_user_by_google_id(google_id: str) -> User | None:

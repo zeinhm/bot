@@ -261,6 +261,7 @@ Key relationships:
 | `get_user(user_id)` | User | By ID |
 | `get_user_by_google_id(google_id)` | User | By Google OAuth ID |
 | `upsert_user_from_google(google_id, email, name, avatar_url)` | User | Create or update on login |
+| `set_user_approved(user_id, approved=True)` | None | Set `is_approved` (used by admin approve + open-registration auto-approve) |
 | `get_user_config(user_id)` | UserConfig | Encrypted API keys |
 | `save_user_config(user_id, api_key_enc, api_secret_enc)` | — | Create or update |
 | `delete_user_api_keys(user_id)` | — | Nulls out encrypted key/secret fields |
@@ -510,7 +511,8 @@ Sensitive POSTs (`/settings`, `/settings/reset`, `/settings/api-keys`, `/setting
 ### `routes/admin/dashboard.py`
 | Method | Path | Template | Purpose |
 |--------|------|----------|---------|
-| GET | `/admin` | `admin_dashboard.html` | Platform overview: users, bots, equity, PnL |
+| GET | `/admin` | `admin_dashboard.html` | Platform overview: users, bots, equity, PnL + Access control toggle |
+| POST | `/admin/settings/require-approval` | JSON | Set platform-wide `require_approval` state (`{enabled: bool}`); off = open registration |
 
 ### `routes/admin/users.py`
 | Method | Path | Purpose |

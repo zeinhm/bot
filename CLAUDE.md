@@ -193,6 +193,7 @@ bot/
 | **API key validation**              | `exchange.py` → `validate_api_key()`; wired in `routes/settings.py` + `routes/auth.py` (setup) |
 | **2FA (TOTP) / step-up gate**       | `app/auth/twofa.py` (`require_2fa`, backup codes), `routes/twofa.py`, Settings → Security tab (`templates/settings.html`), challenge modal + `guardedFetch` in `templates/base.html`; admin reset in `routes/admin/user_detail.py` |
 | **User approval flow**              | `routes/admin/users.py`, `templates/admin_users.html`        |
+| **Require-approval toggle (open registration)** | `routes/admin/dashboard.py` (`POST /admin/settings/require-approval` + `require_approval` state), `templates/admin_dashboard.html` (Access control card), `routes/auth.py` (auto-approve in Google callback when off) |
 | **Bot start/stop lifecycle**        | `app/bot/manager.py`, `routes/bot_control.py`                |
 | **Landing page**                    | `landing-page/` (html/css/js + `amd-scroll.js` for the #how scroll section, `backtester.js`/`backtester-data.js` for the #performance equity replay + #forward-test invite, no Jinja) |
 | **PWA (install/offline/icons)**     | `static/manifest.webmanifest`, `static/sw.js`, `static/icons/`, `main.py` (`/sw.js` route), `templates/base.html` (head links + SW registration) |

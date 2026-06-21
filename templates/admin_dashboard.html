@@ -53,6 +53,19 @@
         </div>
     </div>
 
+    <div class="card" style="margin-bottom:12px">
+        <div class="card-title" style="margin-bottom:10px">Access control</div>
+        <div class="toggle-row" style="padding:0">
+            <div style="padding-right:16px">
+                <div style="font-size:13px;font-weight:600">Require approval for new sign-ups</div>
+                <div class="muted" style="font-size:11.5px;margin-top:2px" id="ra-desc">
+                    {% if require_approval %}New users must be approved by an admin before they can access the platform.{% else %}New users get access immediately after signing in with Google — no approval needed.{% endif %}
+                </div>
+            </div>
+            <button type="button" class="switch {{ 'on' if require_approval else '' }}" id="require-approval-switch" aria-pressed="{{ 'true' if require_approval else 'false' }}"></button>
+        </div>
+    </div>
+
     <div class="card">
         <div class="card-title" style="margin-bottom:12px">Users</div>
         <div class="tbl-wrap">
@@ -113,4 +126,33 @@
         </div>
     </div>
 </div>
+
+<script>
+(function () {
+    var sw = document.getElementById('require-approval-switch');
+    var desc = document.getElementById('ra-desc');
+    if (!sw) return;
+    var ON = 'New users must be approved by an admin before they can access the platform.';
+    var OFF = 'New users get access immediately after signing in with Google — no approval needed.';
+    sw.addEventListener('click', function () {
+        var next = !sw.classList.contains('on');
+        sw.disabled = true;
+        fetch('/admin/settings/require-approval', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+            body: JSON.stringify({ enabled: next })
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            sw.disabled = false;
+            if (d && d.ok) {
+                sw.classList.toggle('on', d.enabled);
+                sw.setAttribute('aria-pressed', d.enabled ? 'true' : 'false');
+                if (desc) desc.textContent = d.enabled ? ON : OFF;
+            }
+        })
+        .catch(function () { sw.disabled = false; });
+    });
+})();
+</script>
 {% endblock %}

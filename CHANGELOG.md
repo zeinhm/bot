@@ -6,6 +6,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 
 ---
 
+## [2026-06-21]
+
+### Added
+- **Admin toggle: require approval for new sign-ups (open registration).** New "Access control" card on the admin dashboard with a switch — ON (default) keeps the existing flow (new Google sign-ups land in the pending queue until an admin approves); OFF means users get access immediately after signing in with Google. Stored as a platform-wide `require_approval` state row (`user_id=NULL`, default `True`). When off, the Google callback auto-approves anyone signing in — new sign-ups and still-pending users alike (rejected users are unaffected). New endpoint `POST /admin/settings/require-approval`; query helper `set_user_approved()`.
+
 ## [2026-06-20]
 
 ### Fixed

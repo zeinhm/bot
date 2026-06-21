@@ -1,10 +1,14 @@
+import logging
+
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
 
 import app.db as db
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
+log = logging.getLogger(__name__)
 
 
 @router.get("/admin")
@@ -19,6 +23,7 @@ async def admin_dashboard(request: Request):
     pending_users = await db.get_pending_users()
     year_pnl = await db.get_platform_year_pnl()
     total_trades = await db.get_platform_trade_count()
+    require_approval = await db.get_state("require_approval", True)
 
     active_bots = sum(1 for running in all_statuses.values() if running)
 
@@ -69,4 +74,22 @@ async def admin_dashboard(request: Request):
         "total_trades": total_trades,
         "total_equity": total_equity,
         "user_rows": user_rows,
+        "require_approval": require_approval,
     })
+
+
+@router.post("/admin/settings/require-approval")
+async def set_require_approval(request: Request):
+    from routes.admin import require_admin
+    await require_admin(request)
+
+    body = await request.json()
+    enabled = bool(body.get("enabled"))
+    await db.set_state("require_approval", enabled)
+
+    log.info("Admin set require_approval=%s", enabled)
+    await db.log_event(
+        f"New-user approval requirement {'enabled' if enabled else 'disabled (open registration)'}",
+        category="system",
+    )
+    return JSONResponse({"ok": True, "enabled": enabled})

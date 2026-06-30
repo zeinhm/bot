@@ -243,6 +243,95 @@ def _strategy_interval(strategy: str) -> str:
     return STRATEGIES.get(strategy, STRATEGIES["amd_15m"])["interval"]
 
 
+async def _build_metas(setup_ov: dict | None) -> dict:
+    """Build (or fetch cached) a run per (strategy, symbol) on each strategy's own
+    timeframe for the given setup overrides. Keyed by (strategy, symbol)."""
+    return {(strat, symbol): await _get_or_build_run(symbol, _strategy_interval(strat), setup_ov, strat)
+            for strat in STRATEGIES for symbol in SYMBOLS}
+
+
+def _combo_signature(metas: dict, equity_ov: dict | None, suffix: str) -> str:
+    """Stable signature for a cross-strategy combo result (combined stats or trade
+    log): the sorted member run signatures + the equity-config hash + a kind suffix."""
+    return hashlib.sha256(
+        ("|".join(sorted(m["signature"] for m in metas.values()))
+         + "|" + _params_hash(_equity_cfg(equity_ov)) + "|" + suffix).encode()
+    ).hexdigest()
+
+
+async def _get_or_build_combined(setup_ov: dict | None, equity_ov: dict | None) -> dict:
+    """Combined headline stats + per-asset breakdown for a playground combo, cached
+    (mem → persisted COMBINED run row keyed by signature). Reused by the route and
+    the cache warmer so warmed signatures match runtime requests exactly."""
+    metas = await _build_metas(setup_ov)
+    combo_sig = _combo_signature(metas, equity_ov, "combined")
+
+    if combo_sig in _combined_cache:
+        return _combined_cache[combo_sig]
+
+    lock = _build_locks.setdefault(combo_sig, asyncio.Lock())
+    async with lock:
+        if combo_sig in _combined_cache:
+            return _combined_cache[combo_sig]
+        run = await db.get_backtest_run(combo_sig)
+        if run is not None:
+            payload = json.loads(run.stats or "{}")
+            _combined_cache[combo_sig] = payload
+            return payload
+
+        all_setups = await _collect_combined_setups(metas)
+        # Headline stats: cross-strategy gated + per-strategy adaptive equity.
+        combined_stats = backtest_combine.compute_stats(all_setups, _equity_cfg(equity_ov))
+        # Per-asset breakdown over the GATED set (what actually traded).
+        taken = backtest_combine.gate(all_setups)
+        per_asset = {sym.replace("USDT", ""): amd_engine.compute_stats(
+            [s for s in taken if s["_symbol"] == sym], STRATEGY_PARAMS["rrr"]) for sym in SYMBOLS}
+        payload = {"stats": combined_stats, "perAsset": per_asset}
+
+        await db.save_backtest_run({
+            "signature": combo_sig, "strategy": _STRATEGY_ID, "symbol": "COMBINED", "interval": "combo",
+            "params_hash": _params_hash(_equity_cfg(equity_ov)), "data_first_ts": None, "data_last_ts": None,
+            "candle_count": None, "total_setups": 0, "stats": json.dumps(payload),
+        }, [])
+        _combined_cache[combo_sig] = payload
+        return payload
+
+
+async def _get_or_build_tradelog(setup_ov: dict | None, equity_ov: dict | None) -> dict:
+    """Combined per-trade ledger for a playground combo, cached (mem → persisted
+    TRADELOG run row keyed by signature). Persisting it means a warmed combo serves
+    the trade log instantly too, instead of re-simulating on the first hit."""
+    metas = await _build_metas(setup_ov)
+    combo_sig = _combo_signature(metas, equity_ov, "tradelog")
+
+    if combo_sig in _tradelog_cache:
+        return _tradelog_cache[combo_sig]
+
+    lock = _build_locks.setdefault(combo_sig, asyncio.Lock())
+    async with lock:
+        if combo_sig in _tradelog_cache:
+            return _tradelog_cache[combo_sig]
+        run = await db.get_backtest_run(combo_sig)
+        if run is not None:
+            payload = json.loads(run.stats or "{}")
+            _tradelog_cache[combo_sig] = payload
+            return payload
+
+        all_setups = await _collect_combined_setups(metas)
+        # Gate across strategies + size with per-strategy adaptive streaks.
+        eq = backtest_combine.simulate(all_setups, _equity_cfg(equity_ov), with_trades=True)
+        trades = eq.get("trades", [])
+        payload = {"trades": trades, "total": len(trades)}
+
+        await db.save_backtest_run({
+            "signature": combo_sig, "strategy": _STRATEGY_ID, "symbol": "TRADELOG", "interval": "combo",
+            "params_hash": _params_hash(_equity_cfg(equity_ov)), "data_first_ts": None, "data_last_ts": None,
+            "candle_count": None, "total_setups": 0, "stats": json.dumps(payload),
+        }, [])
+        _tradelog_cache[combo_sig] = payload
+        return payload
+
+
 async def _collect_combined_setups(metas: dict) -> list[dict]:
     """Pull every run's setups, tagged with _symbol and _strategy, for the overlay
     (backtest_combine gates + sizes them). `metas` is keyed by (strategy, symbol)."""
@@ -314,45 +403,7 @@ async def run_backtest_combined(
 
     setup_ov = _parse_setup_overrides(sessions, skip_may, skip_tax)
     equity_ov = {"riskPct": risk_pct / 100.0} if risk_pct is not None else None
-
-    # Build a run per (strategy, symbol) on each strategy's own timeframe.
-    metas = {(strat, symbol): await _get_or_build_run(symbol, _strategy_interval(strat), setup_ov, strat)
-             for strat in STRATEGIES for symbol in SYMBOLS}
-    combo_sig = hashlib.sha256(
-        ("|".join(sorted(m["signature"] for m in metas.values()))
-         + "|" + _params_hash(_equity_cfg(equity_ov)) + "|combined").encode()
-    ).hexdigest()
-
-    # combined result is itself cached (mem → persisted COMBINED run row)
-    if combo_sig in _combined_cache:
-        return JSONResponse(_combined_cache[combo_sig])
-
-    lock = _build_locks.setdefault(combo_sig, asyncio.Lock())
-    async with lock:
-        if combo_sig in _combined_cache:
-            return JSONResponse(_combined_cache[combo_sig])
-        run = await db.get_backtest_run(combo_sig)
-        if run is not None:
-            payload = json.loads(run.stats or "{}")
-            _combined_cache[combo_sig] = payload
-            return JSONResponse(payload)
-
-        all_setups = await _collect_combined_setups(metas)
-        # Headline stats: cross-strategy gated + per-strategy adaptive equity.
-        combined_stats = backtest_combine.compute_stats(all_setups, _equity_cfg(equity_ov))
-        # Per-asset breakdown over the GATED set (what actually traded).
-        taken = backtest_combine.gate(all_setups)
-        per_asset = {sym.replace("USDT", ""): amd_engine.compute_stats(
-            [s for s in taken if s["_symbol"] == sym], STRATEGY_PARAMS["rrr"]) for sym in SYMBOLS}
-        payload = {"stats": combined_stats, "perAsset": per_asset}
-
-        await db.save_backtest_run({
-            "signature": combo_sig, "strategy": _STRATEGY_ID, "symbol": "COMBINED", "interval": "combo",
-            "params_hash": _params_hash(_equity_cfg(equity_ov)), "data_first_ts": None, "data_last_ts": None,
-            "candle_count": None, "total_setups": 0, "stats": json.dumps(payload),
-        }, [])
-        _combined_cache[combo_sig] = payload
-        return JSONResponse(payload)
+    return JSONResponse(await _get_or_build_combined(setup_ov, equity_ov))
 
 
 @router.get("/api/backtest/tradelog")
@@ -370,26 +421,4 @@ async def backtest_tradelog(
 
     setup_ov = _parse_setup_overrides(sessions, skip_may, skip_tax)
     equity_ov = {"riskPct": risk_pct / 100.0} if risk_pct is not None else None
-
-    metas = {(strat, symbol): await _get_or_build_run(symbol, _strategy_interval(strat), setup_ov, strat)
-             for strat in STRATEGIES for symbol in SYMBOLS}
-    combo_sig = hashlib.sha256(
-        ("|".join(sorted(m["signature"] for m in metas.values()))
-         + "|" + _params_hash(_equity_cfg(equity_ov)) + "|tradelog").encode()
-    ).hexdigest()
-
-    if combo_sig in _tradelog_cache:
-        return JSONResponse(_tradelog_cache[combo_sig])
-
-    lock = _build_locks.setdefault(combo_sig, asyncio.Lock())
-    async with lock:
-        if combo_sig in _tradelog_cache:
-            return JSONResponse(_tradelog_cache[combo_sig])
-
-        all_setups = await _collect_combined_setups(metas)
-        # Gate across strategies + size with per-strategy adaptive streaks.
-        eq = backtest_combine.simulate(all_setups, _equity_cfg(equity_ov), with_trades=True)
-        trades = eq.get("trades", [])
-        payload = {"trades": trades, "total": len(trades)}
-        _tradelog_cache[combo_sig] = payload
-        return JSONResponse(payload)
+    return JSONResponse(await _get_or_build_tradelog(setup_ov, equity_ov))

@@ -171,6 +171,16 @@ CLI tool: runs the COMBINED two-strategy overlay on historical candles → inser
 - `seed(symbols, clear, live_history)` — For each strategy: loads its interval candles, runs `amd_engine.run()`, tags setups; then `backtest_combine.simulate(with_trades=True)` gates + sizes; writes `backtest_results` (tagged `strategy`). With `live_history`, also `db.clear_user_trades(1, False)` + `db.bulk_create_trades(...)`
 - CLI: `--clear`, `--live-history`, `--symbol`. Combined baseline: 886 trades, $383,441
 
+### `warm_backtest_cache.py`
+CLI tool: pre-computes **every Backtester Playground combination** and persists each to `backtest_runs` (signature cache), so the page serves Playground changes from the DB instead of computing on first hit.
+
+- `_session_combos()` — every non-empty subset of `[sydney, tokyo, london, ny]` (15), each ordered to match the frontend's `btSetupParams()` send order (so signatures align)
+- `_setup_combos()` — yields `(sessions_csv, skip_may, skip_tax)` over all 60 setup-override combos
+- `warm(db_url, clear, dry_run)` — for each setup combo × 5 risk levels (1–3%), calls `routes.backtester._get_or_build_combined()` + `_get_or_build_tradelog()` (singles built once per setup combo as a side-effect, reused across risks)
+- `_resolve_db_url()` — picks the target DB: `--database-url <url>` > `--prod` (reads `PROD_DATABASE_URL`) > local `DATABASE_URL`. **Option A — warm prod from local (direct DB)**: `python warm_backtest_cache.py --prod` reads prod's candles + writes prod's `backtest_runs` so signatures match prod requests. Confirms before writing to prod unless `-y`/`--yes`; only host/dbname is printed (never credentials)
+- `warm_via_api(base, cookie, dry_run)` — **Option B — warm a running instance via HTTP**: hits `/api/backtest/combined` + `/api/backtest/tradelog` for every combo so the *deployed app* computes + persists each itself (no DB creds; uses prod candles + deployed code by definition). Needs a logged-in `session` cookie (`--cookie "session=..."` or `WARM_SESSION_COOKIE`). 600 serialized requests, 300s timeout, 3 retries (first-hit combos can exceed the edge timeout but the server still saves → retry hits the cache). Aborts on 401/403
+- CLI: `--prod`, `--database-url <url>`, `--api-base <url> --cookie <c>`, `-y`/`--yes`, `--clear` (wipe `backtest_runs` first), `--dry-run` (print the plan only). ~960 runs cached total (360 single + 300 combined + 300 trade-log)
+
 ---
 
 ## App Layer
@@ -325,13 +335,17 @@ Key relationships:
 | `get_backtest_results(symbol)` | list[BacktestResult] | Optional symbol filter (Trade Log) |
 | `save_backtest_results(results)` | — | Bulk insert |
 | `clear_backtest_results()` | — | Delete all |
+| `clear_backtest_runs()` | — | Delete all cached runs + setups (cascade); used by the cache warmer's `--clear` |
+| `count_backtest_runs()` | int | Total cached run rows (warmer report) |
 | `get_backtest_run(signature)` | BacktestRun \| None | Cache lookup by signature |
 | `save_backtest_run(run, setups)` | run_id | Prunes stale versions for (strategy,symbol,interval); concurrency-safe on unique signature; bulk-inserts setups |
 | `get_run_setups_all(run_id)` | list[dict] | All setups, ordinal asc (Step 1 same-shape) |
 | `get_run_setups_page(run_id, limit, offset)` | list[dict] | Newest-first page → ascending (Step 2 nav) |
 | `get_run_setups_range(run_id, from_ts, to_ts)` | list[dict] | Setups in a time window (Step 2 chart) |
 
-**Backtester result cache** (`routes/backtester.py`): `_get_or_build_run(symbol, interval)` builds a `sha256(strategy + symbol + interval + params_hash + (first_ts,last_ts,count))` signature, checks in-memory `_run_cache` → DB `BacktestRun` → else runs `amd_engine.run` once and persists. `/api/backtest` + `/api/backtest/combined` return the same shape as before, now from cache. Models: `BacktestRun` (one cached run; `symbol="COMBINED"` row holds combined stats) + `BacktestSetup` (one row per setup, indexed for nav + chart-range).
+**Backtester result cache** (`routes/backtester.py`): `_get_or_build_run(symbol, interval)` builds a `sha256(strategy + symbol + interval + params_hash + (first_ts,last_ts,count))` signature, checks in-memory `_run_cache` → DB `BacktestRun` → else runs `amd_engine.run` once and persists. The cross-strategy results reuse this via `_get_or_build_combined()` (combined stats, `symbol="COMBINED"`) and `_get_or_build_tradelog()` (per-trade ledger, `symbol="TRADELOG"`) — both signature-cached the same way (mem → `BacktestRun` row → build). Models: `BacktestRun` (one cached run) + `BacktestSetup` (one row per setup, indexed for nav + chart-range).
+
+**Cache warmer** (`warm_backtest_cache.py`): pre-computes every Playground combo (60 setup combos × 5 risk levels) by calling `_get_or_build_combined`/`_get_or_build_tradelog` for each — the same helpers the routes use, so warmed signatures match runtime lookups exactly. After warming, a user changing Playground knobs hits a persisted `backtest_runs` row instead of triggering a fresh engine + equity sim. Run `python warm_backtest_cache.py [--clear|--dry-run]`.
 
 ---
 
@@ -492,7 +506,7 @@ Sensitive POSTs (`/settings`, `/settings/reset`, `/settings/api-keys`, `/setting
 | GET | `/api/backtest` | — | Run backtest for single symbol; playground overrides `sessions`/`skip_may`/`skip_tax` (RR is adaptive 2:1/3:1 via the 6h trend; no leverage knob — sizing is risk-%-based) |
 | GET | `/api/backtest/setups` | — | Setups by page/range; same overrides |
 | GET | `/api/backtest/combined` | — | Combined backtest; overrides `sessions`/`skip_may`/`skip_tax`/`risk_pct`. Overrides fold into the cache signature (one cached run per combo) |
-| GET | `/api/backtest/tradelog` | — | Param-aware **combined trade ledger** for the Playground's Trade Log (same overrides as `/combined`). Returns `{trades, total}` from `simulate_equity(..., with_trades=True)`; cached in `_tradelog_cache` per combo |
+| GET | `/api/backtest/tradelog` | — | Param-aware **combined trade ledger** for the Playground's Trade Log (same overrides as `/combined`). Returns `{trades, total}` from `simulate_equity(..., with_trades=True)`; signature-cached (mem `_tradelog_cache` → persisted `BacktestRun` row `symbol="TRADELOG"`) per combo, so it survives redeploys and is warmable |
 
 ### `routes/alerts.py`
 | Method | Path | Template | Purpose |

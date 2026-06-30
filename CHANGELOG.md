@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 
 ---
 
+## [2026-06-22]
+
+### Added
+- **Backtester cache warmer: pre-compute every Playground combination.** New CLI `warm_backtest_cache.py` drives every Playground combo — 15 session subsets × skip-May × skip-tax = 60 setup combos, × 5 risk levels (1–3%) — through the exact same route helpers the live page uses, persisting each result to `backtest_runs` keyed by signature. Users changing Playground knobs now get the result served straight from the DB instead of waiting for the engine + equity sim on the first hit. Run `python warm_backtest_cache.py [--clear|--dry-run]`.
+- **Warm prod from local — two ways.** (A, direct DB) `warm_backtest_cache.py --prod` points the warmer at `PROD_DATABASE_URL` (new optional `.env` var) — reads prod's candles + writes prod's `backtest_runs` from your laptop. Also `--database-url <url>` and `-y/--yes`; prints only host/dbname, confirms before any prod write. (B, via HTTP) `warm_backtest_cache.py --api-base https://zenithbot.org --cookie "session=…"` hits the live Playground endpoints so the deployed app computes + persists each combo itself — no DB creds, uses prod candles + deployed code by definition. Serialized, 300s timeout, 3 retries (first-hit combos can exceed the edge timeout but the server still saves → the retry hits the cache).
+
+### Changed
+- **Backtester combined/trade-log build refactored into reusable, DB-persisting helpers.** Extracted `_get_or_build_combined()` and `_get_or_build_tradelog()` in `routes/backtester.py` (shared by the routes + the warmer). The **trade log is now persisted** to `backtest_runs` (symbol `TRADELOG`) like the combined run, so a warmed combo serves the trade log instantly too — previously it was in-memory only and re-simulated on the first hit after a redeploy. New queries `clear_backtest_runs()` and `count_backtest_runs()`.
+
 ## [2026-06-21]
 
 ### Added

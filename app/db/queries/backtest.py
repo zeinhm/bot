@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 from sqlalchemy.exc import IntegrityError
 
 from app.db.engine import get_session
@@ -32,6 +32,19 @@ async def clear_backtest_results():
 
 
 # ── Backtest run cache (keyed by strategy+params+data signature) ──────────────
+
+async def clear_backtest_runs():
+    """Wipe all cached runs + their setups (cascade). Use to force a fresh warm,
+    e.g. after a _CACHE_VERSION bump or a strategy/param change."""
+    async with get_session() as session:
+        await session.execute(delete(BacktestRun))
+        await session.commit()
+
+
+async def count_backtest_runs() -> int:
+    async with get_session() as session:
+        return int((await session.execute(select(func.count(BacktestRun.id)))).scalar_one())
+
 
 async def get_backtest_run(signature: str) -> BacktestRun | None:
     async with get_session() as session:

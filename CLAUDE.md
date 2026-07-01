@@ -41,6 +41,7 @@ bot/
 ├── telegram_alert.py          # Telegram trade entry/exit alerts
 ├── import_candles.py          # CLI: import 1m CSVs → DB, resample to higher TFs
 ├── seed_trades.py             # CLI: run strategy on historical data → backtest_results
+├── warm_backtest_cache.py     # CLI: pre-compute every Backtester Playground combo → backtest_runs (signature cache)
 ├── database.py                # Shim → app/db/
 ├── bot.py                     # Shim → app/bot/
 ├── auth.py                    # Shim → app/auth/
@@ -63,7 +64,7 @@ bot/
 │   │       ├── events.py      # Bot event logging and retrieval
 │   │       ├── state.py       # Key-value state store (per user+mode)
 │   │       ├── paper.py       # Paper account + order management
-│   │       └── backtest.py    # Backtest result storage + run/setup cache (get/save_backtest_run, get_run_setups_*)
+│   │       └── backtest.py    # Backtest result storage + run/setup cache (get/save_backtest_run, get_run_setups_*, clear/count_backtest_runs)
 │   ├── middleware/
 │   │   └── csrf.py            # CSRF protection middleware (session-based token)
 │   └── bot/
@@ -84,7 +85,7 @@ bot/
 │   ├── bot_control.py         # Bot start/stop/status, mode switching
 │   ├── twofa.py               # 2FA endpoints: enroll/verify/disable/challenge + backup-codes/regenerate
 │   ├── analytics.py           # GET /analytics (session/day/monthly breakdowns)
-│   ├── backtester.py          # GET /backtester, /api/backtest (cached {stats,total}), /api/backtest/setups (paged), /api/backtest/combined, /api/candles
+│   ├── backtester.py          # GET /backtester, /api/backtest (cached {stats,total}), /api/backtest/setups (paged), /api/backtest/combined + /tradelog (signature-cached helpers _get_or_build_*), /api/candles
 │   ├── alerts.py              # GET /alerts (event log)
 │   ├── track_record.py        # GET /track-record (public, no auth)
 │   └── admin/
@@ -200,6 +201,7 @@ bot/
 | **Design tokens / colors**          | `static/css/app.css` → CSS custom properties at top           |
 | **Historical data import**          | `import_candles.py` (CLI tool, raw psycopg2)                 |
 | **Seed backtest results**           | `seed_trades.py` (CLI tool, gitignored) — see Research & Ops |
+| **Pre-warm Backtester Playground cache** | `warm_backtest_cache.py` (drives `routes/backtester.py` `_get_or_build_combined`/`_get_or_build_tradelog` over every combo → `backtest_runs`) |
 | **Strategy experiments / sweeps**   | `research/` harness + `docs/research-log.md` (read first!)   |
 | **Inspect local DB**                | `python -m scripts.db_inspect`                               |
 | **CSRF / security middleware**      | `app/middleware/csrf.py`, `main.py` (middleware order)        |

@@ -19,6 +19,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 - **Balance resets to 0 when disconnected.** Deleting the API key or stopping the live bot now zeroes the live balance everywhere (`reset_live_balance()`: clears `last_balance` state + pushes balance=0). Removed the client-side localStorage balance restore that resurrected a stale figure on reload.
 
 ### Fixed
+- **Drawdown chart went blank when Binance transfers hadn't synced.** `load_capital_events` now falls back to the account's real starting capital (`last_balance − realized PnL`, exact for no-deposit accounts) instead of returning nothing, so analytics/dashboard/track-record always render a real drawdown; upgrades to the full transfer timeline once the poll syncs. Still never a $10k notional.
+- **Backfilled historical R to static.** `scripts/backfill_static_r.py` sets closed trades' stored `r_value` to the planned `target_rr` for wins (−1 for losses) so existing trades stop showing geometry values like 1.8R. Only touches rows with a known `target_rr`; PnL untouched.
 - **Trade tables: open trades pinned to top, then closed by exit time.** `get_recent_trades` / `get_trades_filtered` ordered by `id` (creation), so an older still-open trade sank below newer closed ones. Now open trades sort first, then closed most-recent-first by `exit_time` (fallback `entry_time`).
 - **Position chart price axis stuck on the previous symbol.** After manually zooming a chart (which disables lightweight-charts' price autoscale), switching symbols left the price axis on the old symbol's range (e.g. SOL's ~47–92 on a BTC chart). `loadChart()` now re-applies `autoScale: true` to the right price scale on every symbol load.
 

@@ -4,14 +4,33 @@ import app.db as db
 
 
 async def load_capital_events(user_id: int, is_paper: bool, closed_trades) -> list[tuple[int, float]]:
-    """Capital events for the drawdown curve. Paper: its real $10k virtual start.
-    Live: the account's real Binance transfer history (synced into state by the
-    balance poll). Empty for a live account whose transfers haven't synced yet →
-    `compute_drawdown` returns None → the UI shows '—' rather than a fake number."""
+    """Capital events for the drawdown curve.
+
+    Paper: its real $10k virtual start. Live, in priority order:
+      1. Real Binance transfer history (synced into `capital_transfers` state by the
+         balance poll) — the accurate source; handles deposits/withdrawals.
+      2. Fallback: a single funding event = `balance − realized PnL` (the account's
+         real starting capital, from the last-polled balance). Exact for accounts
+         with no mid-stream deposits; used until transfers sync so the chart is never
+         blank. NOT a $10k notional — it's derived from the real balance.
+      3. Nothing known → [] → compute_drawdown returns None → UI shows '—'.
+    """
     if is_paper:
         return paper_capital_events(closed_trades)
+
     transfers = await db.get_state("capital_transfers", None, user_id=user_id, is_paper=False) or []
-    return [(int(x["time"]) // 1000, float(x["amount"])) for x in transfers]
+    if transfers:
+        return [(int(x["time"]) // 1000, float(x["amount"])) for x in transfers]
+
+    bal = await db.get_state("last_balance", None, user_id=user_id, is_paper=False)
+    if bal and bal > 0:
+        total_pnl = sum(float(t.pnl_usdt or 0) for t in closed_trades)
+        start_equity = bal - total_pnl
+        if start_equity > 0:
+            first = min((int(t.exit_time.timestamp()) for t in closed_trades if t.exit_time is not None),
+                        default=0)
+            return [(first - 1, start_equity)]
+    return []
 
 
 def compute_drawdown(closed_trades, capital_events) -> dict | None:

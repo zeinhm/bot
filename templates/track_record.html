@@ -43,14 +43,14 @@
             <div class="l">Trades</div>
         </div>
         <div class="hero-stat">
-            <div class="v mono neg">{{ "%.1f"|format(max_dd) }}%</div>
+            <div class="v mono neg">{{ ("%.1f"|format(max_dd)) ~ "%" if max_dd is not none else "—" }}</div>
             <div class="l">Max Drawdown</div>
         </div>
     </div>
 
     <!-- Equity Curve -->
     <div class="card" style="margin-bottom:24px">
-        <div class="card-title">Equity Curve</div>
+        <div class="card-title">Cumulative P&amp;L (USDT)</div>
         {% if total_trades > 0 %}
         <div id="public-equity-chart" style="height:280px"></div>
         {% else %}
@@ -135,13 +135,13 @@
         height: 280
     });
     var last = data[data.length - 1].value;
-    var isUp = last >= 10000;
+    var isUp = last >= 0;  // cumulative PnL: green when in profit, red when negative
     var series = chart.addAreaSeries({
         lineColor: isUp ? '#00C896' : '#FF4D4D',
         topColor: isUp ? 'rgba(0,200,150,.25)' : 'rgba(255,77,77,.15)',
         bottomColor: isUp ? 'rgba(0,200,150,.02)' : 'rgba(255,77,77,.02)',
         lineWidth: 1.5,
-        priceFormat: { type: 'custom', formatter: function(p) { return p.toLocaleString(undefined, {maximumFractionDigits: 0}); } }
+        priceFormat: { type: 'custom', formatter: function(p) { return (p >= 0 ? '+' : '') + p.toLocaleString(undefined, {maximumFractionDigits: 0}); } }
     });
     series.setData(data);
     chart.timeScale().fitContent();

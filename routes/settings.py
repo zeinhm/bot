@@ -276,6 +276,9 @@ async def delete_api_keys(request: Request):
             pass
 
     await db.delete_user_api_keys(user.id)
+    # No key = no account: zero the live balance so it doesn't show a stale figure.
+    from app.bot.websocket import reset_live_balance
+    await reset_live_balance(user.id)
     log.info("User %d deleted API keys", user.id)
     return JSONResponse({"ok": True})
 

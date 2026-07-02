@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, delete, case
 
 from app.db.engine import get_session
 from app.db.models import Trade
@@ -95,7 +95,12 @@ async def get_recent_trades(limit: int = 50, user_id: int | None = None, is_pape
         q = select(Trade).where(Trade.is_paper == is_paper)
         if user_id is not None:
             q = q.where(Trade.user_id == user_id)
-        q = q.order_by(Trade.id.desc()).limit(limit)
+        # Open (still-running) trades pinned to the top, then closed most-recent
+        # first by exit time — so an older open trade sits above a newer closed one.
+        q = q.order_by(
+            case((Trade.result == "open", 0), else_=1),
+            func.coalesce(Trade.exit_time, Trade.entry_time).desc(),
+        ).limit(limit)
         result = await session.execute(q)
         return list(result.scalars().all())
 
@@ -125,7 +130,11 @@ async def get_trades_filtered(
             q = q.where(Trade.direction == direction)
         if result_filter:
             q = q.where(Trade.result == result_filter)
-        q = q.order_by(Trade.id.desc())
+        # Open trades on top, then closed most-recent-first by exit time.
+        q = q.order_by(
+            case((Trade.result == "open", 0), else_=1),
+            func.coalesce(Trade.exit_time, Trade.entry_time).desc(),
+        )
         result = await session.execute(q)
         return list(result.scalars().all())
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func
 
 from app.db.engine import get_session
 from app.db.models import User, UserConfig
@@ -27,6 +27,14 @@ async def get_user_by_google_id(google_id: str) -> User | None:
             select(User).where(User.google_id == google_id)
         )
         return result.scalar_one_or_none()
+
+
+async def get_user_by_email(email: str) -> User | None:
+    async with get_session() as session:
+        result = await session.execute(
+            select(User).where(func.lower(User.email) == email.lower())
+        )
+        return result.scalars().first()
 
 
 async def upsert_user_from_google(google_id: str, email: str, name: str, avatar_url: str) -> User:

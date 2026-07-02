@@ -20,6 +20,10 @@ ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", "")
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 EMAIL_FROM = os.getenv("EMAIL_FROM", "ZENITH BOT <noreply@zenithbot.org>")
 
+# Account whose real live trades power the public /track-record page. A clean
+# sample account (no pre-bot history). Override per-deploy via env if needed.
+TRACK_RECORD_EMAIL = os.getenv("TRACK_RECORD_EMAIL", "atinaja15@gmail.com")
+
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
 
 TICK_SIZE = {"BTCUSDT": 0.10, "ETHUSDT": 0.01, "SOLUSDT": 0.01}

@@ -24,6 +24,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 - **Trade tables: open trades pinned to top, then closed by exit time.** `get_recent_trades` / `get_trades_filtered` ordered by `id` (creation), so an older still-open trade sank below newer closed ones. Now open trades sort first, then closed most-recent-first by `exit_time` (fallback `entry_time`).
 - **Position chart price axis stuck on the previous symbol.** After manually zooming a chart (which disables lightweight-charts' price autoscale), switching symbols left the price axis on the old symbol's range (e.g. SOL's ~47–92 on a BTC chart). `loadChart()` now re-applies `autoScale: true` to the right price scale on every symbol load.
 
+### Changed
+- **Telegram alert channel scoped to the track-record account.** The shared public channel now only posts entries/exits/status for the `TRACK_RECORD_EMAIL` account (atinaja15), so viewers see one coherent account instead of every user's trades + balances. Other accounts' live trading is unaffected (self-heal etc. still run; owner still gets private force-close notices). `app/bot/worker_live.py`.
+
 ### Removed
 - **BTC ticker in the header/topbar** (price + 24h change) — deleted the element and its price-stream handlers.
 

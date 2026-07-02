@@ -14,9 +14,24 @@ from datetime import datetime, timezone
 
 from exchange import resolve_trade_exit, r_value_for_exit, position_pnl_breakdown, fills_time
 from telegram_alert import alert_entry, alert_exit, alert_bot_started, alert_bot_stopped, send_private
+from config import TRACK_RECORD_EMAIL
 import app.db as db
 
 from app.bot.worker import BaseWorker
+
+
+# The public Telegram channel mirrors the track-record account only, so a viewer
+# sees one coherent account instead of every user's entries + balances. Resolved
+# once (module-level cache); config change → restart.
+_track_user_id: int | None = None
+
+
+async def _is_track_record_user(user_id: int) -> bool:
+    global _track_user_id
+    if _track_user_id is None:
+        u = await db.get_user_by_email(TRACK_RECORD_EMAIL)
+        _track_user_id = u.id if u else -1
+    return user_id == _track_user_id
 
 log = logging.getLogger(__name__)
 
@@ -69,17 +84,21 @@ class LiveWorker(BaseWorker):
 
     # --- Side-effect hooks ---
     async def _alert_started(self):
-        await alert_bot_started()
+        if await _is_track_record_user(self.user_id):
+            await alert_bot_started()
 
     async def _alert_stopped(self, reason: str):
-        await alert_bot_stopped(reason)
+        if await _is_track_record_user(self.user_id):
+            await alert_bot_stopped(reason)
 
     async def _alert_entry(self, symbol, signal, fill_price, fill_qty, balance):
-        await alert_entry(symbol, signal["direction"], fill_price, signal["sl"], signal["tp"], fill_qty, balance)
+        if await _is_track_record_user(self.user_id):
+            await alert_entry(symbol, signal["direction"], fill_price, signal["sl"], signal["tp"], fill_qty, balance)
 
     async def _on_trade_closed(self, trade, result, exit_price, pnl, r_value, balance):
-        await alert_exit(trade.symbol, trade.direction, result, trade.entry_price, exit_price, pnl, r_value, balance)
-        await self._self_heal_trade(trade.id)
+        if await _is_track_record_user(self.user_id):
+            await alert_exit(trade.symbol, trade.direction, result, trade.entry_price, exit_price, pnl, r_value, balance)
+        await self._self_heal_trade(trade.id)  # self-heal always runs, regardless of alerts
 
     async def _prepare_entry(self, symbol):
         existing_orders = await self.exchange.get_open_orders(symbol)
@@ -293,7 +312,8 @@ class LiveWorker(BaseWorker):
         })
 
         balance = await self.exchange.get_balance()
-        await alert_exit(symbol, trade.direction, "loss", trade.entry_price, exit_price, pnl, -1.0, balance)
+        if await _is_track_record_user(self.user_id):
+            await alert_exit(symbol, trade.direction, "loss", trade.entry_price, exit_price, pnl, -1.0, balance)
         await send_private(
             f"🛑 Force-closed {symbol} ({trade.direction.upper()}) @ {exit_price:.4f} — price breached SL "
             f"{trade.sl_price} with no stop order on the exchange"

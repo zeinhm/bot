@@ -202,7 +202,7 @@ async def reconcile_trades(request: Request, user_id: int):
                 correct_result = "loss" if exit_info["is_sl"] else "win"
                 if trade.result != correct_result:
                     update["result"] = correct_result
-                    update["r_value"] = r_value_for_exit(exit_info["is_sl"], entry_p, trade.sl_price, trade.tp_price, trade.r_value)
+                    update["r_value"] = r_value_for_exit(exit_info["is_sl"], entry_p, trade.sl_price, trade.tp_price, trade.target_rr)
                 xt = exit_info.get("exit_time")
                 if xt and (trade.exit_time is None or abs((trade.exit_time - xt).total_seconds()) > 2):
                     update["exit_time"] = xt

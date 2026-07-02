@@ -40,7 +40,7 @@
     </div>
     <div class="stat">
         <div class="lbl">Max Drawdown</div>
-        <div class="val mono neg">{{ "%.1f"|format(max_dd) }}%</div>
+        <div class="val mono neg">{{ ("%.1f"|format(max_dd)) ~ "%" if max_dd is not none else "—" }}</div>
         <div class="sub">{{ max_dd_date.strftime('%b %d, %Y') if max_dd_date else 'all-time' }}</div>
     </div>
 </div>
@@ -48,7 +48,7 @@
 <!-- Equity Curve (full width) -->
 <div class="card" style="margin-bottom:12px">
     <div style="display:flex;align-items:center;justify-content:space-between">
-        <div class="card-title" style="margin:0">Equity Curve</div>
+        <div class="card-title" style="margin:0">Cumulative P&amp;L</div>
         <span class="mono" style="font-size:12px;color:var(--text-2)" id="eq-hover-val"></span>
     </div>
     <div id="equity-chart" style="height:320px;display:grid;place-items:center">
@@ -76,7 +76,6 @@
     var el = document.getElementById('equity-chart');
     var raw = {{ equity_data|safe }};
     if (!el || !raw.length || typeof LightweightCharts === 'undefined') return;
-    var base = raw[0].value;  // starting equity (anchored to real balance), not a fixed 10k
 
     el.innerHTML = '';
 
@@ -115,12 +114,11 @@
     });
 
     function setHover(v) {
-        var pnl = v - base;
-        var pct = base ? (pnl / base * 100).toFixed(2) : '0.00';
-        hoverEl.textContent = v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '  (' + (pnl >= 0 ? '+' : '') + pct + '%)';
-        hoverEl.style.color = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+        // v is cumulative PnL in USDT (starts at 0).
+        hoverEl.textContent = (v >= 0 ? '+' : '') + v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' USDT';
+        hoverEl.style.color = v >= 0 ? 'var(--green)' : 'var(--red)';
     }
-    setHover(raw[raw.length - 1].value);  // default to current equity
+    setHover(raw[raw.length - 1].value);  // default to current cumulative PnL
 
     new ResizeObserver(function() { chart.applyOptions({ width: el.clientWidth }); }).observe(el);
 })();

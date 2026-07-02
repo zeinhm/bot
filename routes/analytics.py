@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 from app.auth import require_auth, get_trading_mode
 import app.db as db
 from app.core.context import get_global_context
+from app.core.metrics import compute_drawdown, load_capital_events
 from app.core.template_filters import register_filters
 
 router = APIRouter()
@@ -89,21 +90,14 @@ async def analytics_page(request: Request):
             cur_win = 0
             longest_loss_streak = max(longest_loss_streak, cur_loss)
 
-    BASE_CAPITAL = 10000
-    drawdown_data = []
-    cumulative = 0.0
-    peak_equity = BASE_CAPITAL
-    max_drawdown = 0.0
-    for t in closed:
-        cumulative += t.pnl_usdt or 0
-        equity = BASE_CAPITAL + cumulative
-        if equity > peak_equity:
-            peak_equity = equity
-        dd_pct = ((peak_equity - equity) / peak_equity * 100) if peak_equity > 0 else 0
-        if dd_pct > max_drawdown:
-            max_drawdown = dd_pct
-        if t.exit_time:
-            drawdown_data.append({"time": int(t.exit_time.timestamp()), "value": round(-dd_pct, 2)})
+    # Drawdown = real-balance high-water-mark: replay real capital events (Binance
+    # transfers; paper's $10k start) + closed-trade PnL in time order. No notional.
+    # None when there's no real capital base yet → UI shows '—'.
+    dd_closed = sorted([t for t in closed if t.exit_time], key=lambda t: t.exit_time)
+    capital_events = await load_capital_events(user.id, is_paper, dd_closed)
+    dd = compute_drawdown(dd_closed, capital_events)
+    max_drawdown = dd["max_pct"] if dd else None
+    drawdown_data = dd["series"] if dd else []
 
     from zoneinfo import ZoneInfo
     ny_tz = ZoneInfo("America/New_York")
@@ -169,7 +163,7 @@ async def analytics_page(request: Request):
         "monthly_net": monthly_net,
         "monthly_year": monthly_year,
         "available_years": available_years,
-        "max_drawdown": round(max_drawdown, 1),
+        "max_drawdown": round(max_drawdown, 1) if max_drawdown is not None else None,
         "page": "analytics",
     })
     return templates.TemplateResponse(request, "analytics.html", ctx)

@@ -60,6 +60,9 @@ async def stop_bot(request: Request):
         return JSONResponse({"ok": False, "error": "Bot not running"}, status_code=404)
 
     await manager.stop_bot(user.id, "live")
+    # Balance is only meaningful while connected — zero it on disconnect.
+    from app.bot.websocket import reset_live_balance
+    await reset_live_balance(user.id)
     log.info("User %d stopped live bot via API", user.id)
     return JSONResponse({"ok": True})
 

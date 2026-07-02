@@ -9,6 +9,7 @@ from app.auth import require_auth, get_trading_mode
 from config import SYMBOLS, LEVERAGE
 import app.db as db
 from app.core.context import get_global_context
+from app.core.metrics import compute_drawdown, load_capital_events
 from app.core.template_filters import register_filters
 
 router = APIRouter()
@@ -37,39 +38,32 @@ async def dashboard(request: Request):
     year_pnl = sum(t.pnl_usdt or 0 for t in year_trades)
     year_trade_count = len(year_trades)
 
-    # Anchor the equity curve to the user's real balance: start so the curve ends
-    # at the current balance (= balance − all trade PnL). Falls back to the last
-    # known balance, then to a flat baseline if we have no reading yet.
-    real_balance = ctx.get("balance") or 0.0
-    if real_balance <= 0:
-        real_balance = await db.get_state("last_balance", 0.0, user_id=user.id, is_paper=is_paper) or 0.0
-    total_pnl_all = sum(t.pnl_usdt or 0 for t in closed)
-    start_equity = (real_balance - total_pnl_all) if real_balance > 0 else 10000.0
-
+    # Visual curve = cumulative PnL from $0 (not balance-anchored, so deposits don't
+    # distort it). Seed at 0 at the first trade's entry.
     by_exit = sorted(closed, key=lambda t: t.exit_time or t.entry_time)
-    equity = start_equity
-    peak_equity = equity
-    max_dd_pct = 0.0
-    max_dd_date = None
+    cum = 0.0
     eq_map = {}
-    # Seed the curve with the starting equity (at the first trade's entry) so it
-    # shows the rise from the start, and the % baseline is the real start balance.
     if by_exit:
         first = by_exit[0]
         seed_t = first.entry_time or first.exit_time
         if seed_t:
-            eq_map[int(seed_t.timestamp())] = round(start_equity, 2)
+            eq_map[int(seed_t.timestamp())] = 0.0
     for t in by_exit:
-        equity += t.pnl_usdt or 0
-        if equity > peak_equity:
-            peak_equity = equity
-        dd_pct = (peak_equity - equity) / peak_equity * 100 if peak_equity > 0 else 0
-        if dd_pct > max_dd_pct:
-            max_dd_pct = dd_pct
-            max_dd_date = t.exit_time
+        cum += t.pnl_usdt or 0
         if t.exit_time:
-            eq_map[int(t.exit_time.timestamp())] = round(equity, 2)
+            eq_map[int(t.exit_time.timestamp())] = round(cum, 2)
     equity_data = [{"time": k, "value": v} for k, v in sorted(eq_map.items())]
+
+    # Max drawdown = real-balance high-water-mark from real capital events (Binance
+    # transfers / paper's $10k start) + closed-trade PnL. None → UI shows '—'.
+    dd_closed = [t for t in by_exit if t.exit_time]
+    dd = compute_drawdown(dd_closed, await load_capital_events(user.id, is_paper, dd_closed))
+    max_dd = dd["max_pct"] if dd else None
+    max_dd_date = None
+    if dd and dd["series"]:
+        worst = min(dd["series"], key=lambda p: p["value"])
+        if worst["value"] < 0:
+            max_dd_date = datetime.fromtimestamp(worst["time"], tz=timezone.utc)
 
     risk_mode = await db.get_state("risk_mode", "static", user_id=user.id, is_paper=is_paper)
     risk_value = await db.get_state("risk_value", 10.0, user_id=user.id, is_paper=is_paper)
@@ -84,7 +78,7 @@ async def dashboard(request: Request):
         "losses": losses,
         "total_r": total_r,
         "win_rate": win_rate,
-        "max_dd": max_dd_pct,
+        "max_dd": max_dd,
         "max_dd_date": max_dd_date,
         "leverage": LEVERAGE,
         "risk_mode": risk_mode,

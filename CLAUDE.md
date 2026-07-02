@@ -52,6 +52,7 @@ bot/
 │   ├── auth/twofa.py          # TOTP 2FA: enroll/verify, require_2fa step-up gate, backup codes, rate limit
 │   ├── core/context.py        # get_global_context() for template rendering
 │   ├── core/template_filters.py # Shared Jinja filters (num: comma+decimals); register_filters()
+│   ├── core/metrics.py        # drawdown_base(): real-equity base (balance − PnL) for DD% (analytics/dashboard/track-record)
 │   ├── email.py               # send_approval_email(), send_rejection_email() via Resend
 │   ├── db/
 │   │   ├── engine.py          # init_db(), get_session(), _ensure_schema() auto-migration
@@ -79,7 +80,7 @@ bot/
 ├── routes/
 │   ├── auth.py                # Google OAuth flow, /setup, /login, /logout
 │   ├── dashboard.py           # GET /dashboard, GET /api/live-candles
-│   ├── position.py            # GET /position (live positions from exchange)
+│   ├── position.py            # GET /position (live positions), POST /api/position/close (close one symbol)
 │   ├── trades.py              # GET /trades (filtered trade history)
 │   ├── settings.py            # GET/POST /settings, API key CRUD, emergency close
 │   ├── bot_control.py         # Bot start/stop/status, mode switching
@@ -87,7 +88,7 @@ bot/
 │   ├── analytics.py           # GET /analytics (session/day/monthly breakdowns)
 │   ├── backtester.py          # GET /backtester, /api/backtest (cached {stats,total}), /api/backtest/setups (paged), /api/backtest/combined + /tradelog (signature-cached helpers _get_or_build_*), /api/candles
 │   ├── alerts.py              # GET /alerts (event log)
-│   ├── track_record.py        # GET /track-record (public, no auth)
+│   ├── track_record.py        # GET /track-record (public, no auth) — account via config.TRACK_RECORD_EMAIL, cumulative-PnL curve
 │   └── admin/
 │       ├── __init__.py        # Admin router, require_admin middleware
 │       ├── dashboard.py       # GET /admin (platform overview)
@@ -196,6 +197,11 @@ bot/
 | **User approval flow**              | `routes/admin/users.py`, `templates/admin_users.html`        |
 | **Require-approval toggle (open registration)** | `routes/admin/dashboard.py` (`POST /admin/settings/require-approval` + `require_approval` state), `templates/admin_dashboard.html` (Access control card), `routes/auth.py` (auto-approve in Google callback when off) |
 | **Bot start/stop lifecycle**        | `app/bot/manager.py`, `routes/bot_control.py`                |
+| **Close a single position**         | `routes/position.py` → `POST /api/position/close`; buttons + `doClosePosition()` in `templates/position.html` |
+| **Balance reset on disconnect**     | `app/bot/websocket.py` → `reset_live_balance()` (called from `routes/bot_control.py` stop + `routes/settings.py` key delete); no client-side balance cache |
+| **Reward:risk shown per trade (static R)** | win = planned `target_rr`, loss = −1R: `exchange.py` `r_value_for_exit()`, `app/bot/worker.py`, `amd_engine.py` + `backtest_combine.py` (display R; PnL stays actual) |
+| **Public track-record account**     | `config.TRACK_RECORD_EMAIL` + `db.get_user_by_email()` in `routes/track_record.py` |
+| **Equity curve = cumulative PnL**   | `routes/track_record.py`, `routes/dashboard.py` (+ templates) — from $0, not balance-anchored |
 | **Landing page**                    | `landing-page/` (html/css/js + `amd-scroll.js` for the #how scroll section, `backtester.js`/`backtester-data.js` for the #performance equity replay + #forward-test invite, no Jinja) |
 | **PWA (install/offline/icons)**     | `static/manifest.webmanifest`, `static/sw.js`, `static/icons/`, `main.py` (`/sw.js` route), `templates/base.html` (head links + SW registration) |
 | **Design tokens / colors**          | `static/css/app.css` → CSS custom properties at top           |

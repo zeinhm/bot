@@ -75,6 +75,30 @@ class BinanceExchange:
                 return float(b["balance"])
         return 0.0
 
+    async def get_transfers(self, start_time: int | None = None) -> list[dict]:
+        """Capital in/out of the USDⓈ-M futures wallet, from income history.
+        `income` > 0 = money moved IN (deposit/funding), < 0 = OUT (withdrawal).
+        Used to reconstruct the real balance curve for drawdown. Returns
+        [{"time": ms, "amount": float}] sorted ascending. Paginated (1000/page)."""
+        out: list[dict] = []
+        # Capital-movement income types (spot↔futures, internal, bonuses).
+        for itype in ("TRANSFER", "INTERNAL_TRANSFER", "WELCOME_BONUS"):
+            start = start_time
+            while True:
+                recs = await self.client.futures_income_history(
+                    incomeType=itype, startTime=start, limit=1000)
+                if not recs:
+                    break
+                for r in recs:
+                    amt = float(r.get("income") or 0)
+                    if amt:
+                        out.append({"time": int(r["time"]), "amount": amt})
+                if len(recs) < 1000:
+                    break
+                start = int(recs[-1]["time"]) + 1
+        out.sort(key=lambda x: x["time"])
+        return out
+
     async def get_position(self, symbol: str) -> dict | None:
         positions = await self.client.futures_position_information(symbol=symbol)
         for p in positions:
@@ -322,15 +346,19 @@ def r_value_for_exit(
     tp_price: float | None,
     fallback_r: float | None = None,
 ) -> float:
-    """R multiple for a resolved trade.
+    """Static R multiple for a resolved trade.
 
-    Loss = -1R. Win = the actual reward:risk implied by the price levels
-    (``|tp-entry| / |entry-sl|``) — which recovers the configured RRR since TP
-    is placed at that multiple. Falls back to ``fallback_r`` (if positive) or 2.0
-    when levels are missing. Guards against the ``-1.0 or 2.0`` truthiness trap.
+    Loss = -1R. Win = the trade's planned target RR (``fallback_r``, e.g. 2 or 3).
+    We deliberately do NOT derive a win's R from the tp/sl geometry
+    (``|tp-entry| / |entry-sl|``): the SL is often widened to the manipulation
+    wick, which would skew the ratio and make wins show odd values like 1.7R/2.4R.
+    Geometry is only a last-resort estimate for legacy rows with no target RR.
+    Guards against the ``-1.0 or 2.0`` truthiness trap.
     """
     if is_sl:
         return -1.0
+    if fallback_r and fallback_r > 0:
+        return float(fallback_r)
     try:
         sl_dist = abs((entry_price or 0) - (sl_price or 0))
         tp_dist = abs((tp_price or 0) - (entry_price or 0))
@@ -338,8 +366,6 @@ def r_value_for_exit(
             return round(tp_dist / sl_dist, 2)
     except Exception:
         pass
-    if fallback_r and fallback_r > 0:
-        return float(fallback_r)
     return 2.0
 
 

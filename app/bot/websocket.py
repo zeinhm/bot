@@ -55,6 +55,20 @@ class ConnectionManager:
 ws_manager = ConnectionManager()
 
 
+async def reset_live_balance(user_id: int):
+    """Zero out the live balance everywhere: clear the persisted `last_balance` and
+    push a balance=0 message to any open tab. Called when the live bot is stopped or
+    its API key is deleted — otherwise the last-polled figure lingers stale (the
+    balance poll can't refresh a bot that's no longer running)."""
+    try:
+        await db.set_state("last_balance", 0.0, user_id=user_id, is_paper=False)
+        await ws_manager.send_to_user(user_id, {
+            "type": "balance", "mode": "live", "usdt_balance": 0.0,
+        })
+    except Exception as e:
+        log.error("reset_live_balance failed for user %d: %s", user_id, e)
+
+
 @router.websocket("/ws/{user_id}")
 async def websocket_endpoint(ws: WebSocket, user_id: int):
     has_session = "session" in ws.scope
@@ -321,6 +335,20 @@ async def _balance_poll(bot_manager):
                 except Exception as e:
                     log.error("Balance poll error for user %d/%s: %s", uid, mode, e)
 
+                # Live only: refresh the real capital-transfer history (deposits/
+                # withdrawals) that anchors the drawdown balance curve. Throttled —
+                # transfers are rare and the call is comparatively expensive.
+                if mode == "live":
+                    try:
+                        last_sync = await db.get_state("transfers_synced_ms", 0, user_id=uid, is_paper=False) or 0
+                        now_ms = int(time.time() * 1000)
+                        if now_ms - last_sync > 600_000:  # 10 min
+                            transfers = await worker.exchange.get_transfers()
+                            await db.set_state("capital_transfers", transfers, user_id=uid, is_paper=False)
+                            await db.set_state("transfers_synced_ms", now_ms, user_id=uid, is_paper=False)
+                    except Exception as e:
+                        log.error("Transfer sync error for user %d: %s", uid, e)
+
         except asyncio.CancelledError:
             break
         except Exception as e:
@@ -513,7 +541,7 @@ async def _trade_anomaly_scanner(bot_manager):
                                     update["r_value"] = r_value_for_exit(
                                         binance_is_sl,
                                         update.get("entry_price", trade.entry_price),
-                                        trade.sl_price, trade.tp_price, trade.r_value,
+                                        trade.sl_price, trade.tp_price, trade.target_rr,
                                     )
 
                             # Net PnL + fees from Binance's income ledger (verified numbers).

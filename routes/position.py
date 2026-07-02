@@ -1,16 +1,20 @@
+import logging
 import time
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import require_auth, get_trading_mode
 from app.bot import get_bot_for_user
-from config import LEVERAGE
+from config import LEVERAGE, COMMISSION_PCT
 import app.db as db
 from app.core.context import get_global_context
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
+log = logging.getLogger(__name__)
 
 
 @router.get("/position")
@@ -85,3 +89,67 @@ async def position_page(request: Request):
         "page": "position",
     })
     return templates.TemplateResponse(request, "position.html", ctx)
+
+
+@router.post("/api/position/close")
+async def close_one_position(request: Request):
+    """Market-close a single open position (live or paper) and cancel its resting
+    SL/TP. Unlike the strategy's TP/SL exits, a discretionary close books the trade
+    at its ACTUAL realized R (pnl / risked amount), since it hit neither level.
+    Not 2FA-gated — same rationale as emergency-close: a fast get-out action."""
+    user = await require_auth(request)
+    mode = get_trading_mode(request)
+    is_paper = (mode == "paper")
+    bot = get_bot_for_user(user.id, mode)
+    if not bot or not bot.exchange.client:
+        return JSONResponse({"ok": False, "error": "Bot not connected to exchange"}, status_code=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    symbol = (body.get("symbol") or "").upper()
+    if not symbol:
+        return JSONResponse({"ok": False, "error": "Missing symbol"}, status_code=400)
+
+    try:
+        positions = await bot.exchange.get_all_positions()
+        pos = next((p for p in positions if p["symbol"] == symbol), None)
+        if pos is None:
+            return JSONResponse({"ok": False, "error": f"No open position for {symbol}"}, status_code=404)
+
+        close_side = "SELL" if pos["side"] == "long" else "BUY"
+        pos_side = "LONG" if pos["side"] == "long" else "SHORT"
+        order = await bot.exchange.place_market_order(symbol, close_side, pos["quantity"], position_side=pos_side)
+        await bot.exchange.cancel_all_orders(symbol)
+        exit_price = float(order.get("avgPrice") or 0) or None
+
+        # If this position is a tracked bot trade, resolve its DB row at the real fill.
+        open_trade = await db.get_open_trade_for_symbol(user.id, symbol, is_paper)
+        if open_trade and exit_price and exit_price > 0:
+            if open_trade.direction == "long":
+                raw_pnl = (exit_price - open_trade.entry_price) * open_trade.quantity
+            else:
+                raw_pnl = (open_trade.entry_price - exit_price) * open_trade.quantity
+            exit_comm = exit_price * open_trade.quantity * COMMISSION_PCT
+            total_comm = (open_trade.commission or 0) + exit_comm
+            pnl = raw_pnl - total_comm
+            risk_amt = abs(open_trade.entry_price - (open_trade.sl_price or open_trade.entry_price)) * open_trade.quantity
+            r_value = round(pnl / risk_amt, 2) if risk_amt > 0 else (1.0 if pnl > 0 else -1.0)
+            await db.update_trade(open_trade.id, {
+                "result": "win" if pnl > 0 else "loss",
+                "r_value": r_value,
+                "exit_time": datetime.now(timezone.utc),
+                "exit_price": exit_price,
+                "pnl_usdt": pnl,
+                "commission": total_comm,
+            })
+
+        await db.log_event(
+            f"Manual close: {symbol}", level="warn", category="trade",
+            user_id=user.id, is_paper=is_paper,
+        )
+        return JSONResponse({"ok": True, "symbol": symbol, "exit_price": exit_price})
+    except Exception as e:
+        log.exception("Close position failed for %s", symbol)
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)

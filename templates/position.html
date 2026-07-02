@@ -131,6 +131,7 @@
                             <th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">ROI</th>
                             <th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">SL / TP</th>
                             <th style="padding:8px 12px;text-align:center;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">Source</th>
+                            <th style="padding:8px 16px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">Action</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -171,6 +172,9 @@
                                 {% else %}
                                 <span class="pill amber" style="font-size:9px;padding:2px 6px">Manual</span>
                                 {% endif %}
+                            </td>
+                            <td style="padding:10px 16px;text-align:right">
+                                <button class="close-pos-btn" data-close-symbol="{{ pos.symbol }}" style="padding:4px 12px;border:1px solid var(--red);background:transparent;color:var(--red);border-radius:5px;font-size:11px;font-weight:600;cursor:pointer">Close</button>
                             </td>
                         </tr>
                         {% endfor %}
@@ -239,6 +243,7 @@
                         <div class="status-cell"><div class="k">Size</div><div class="v">{{ "%.4f"|format(pos.quantity) }} {{ pos.symbol.replace('USDT','') }}</div></div>
                         <div class="status-cell"><div class="k">Leverage</div><div class="v">{{ leverage }}×</div></div>
                     </div>
+                    <button class="close-pos-btn" data-close-symbol="{{ pos.symbol }}" style="width:100%;padding:9px 0;margin-top:4px;border:1px solid var(--red);background:transparent;color:var(--red);border-radius:5px;font-size:11px;font-weight:600;cursor:pointer">Close</button>
                 </div>
                 {% endfor %}
             {% else %}
@@ -353,18 +358,24 @@
         }
     });
 
-    // --- Symbol Dropdown ---
+    // --- Symbol Dropdown (click to toggle; label always tracks the active symbol) ---
     var symDropdown = document.getElementById('sym-dropdown');
+    var symTrigger = document.getElementById('sym-trigger');
     var symMenu = document.getElementById('sym-menu');
     var symLabel = document.getElementById('sym-label');
-    var hideTimeout = null;
+    // (a) Sync the label to the chart's symbol on load — otherwise it stays the
+    // hardcoded BTCUSDT while the chart shows the open position's symbol.
+    symLabel.textContent = activeSymbol;
 
-    symDropdown.addEventListener('mouseenter', function() {
-        clearTimeout(hideTimeout);
-        symMenu.style.display = 'block';
+    // (b) Click toggles the menu; a click outside closes it. (The old hover-only
+    // open/close meant a second click on the trigger couldn't reopen it — you had
+    // to click elsewhere to blur first.)
+    symTrigger.addEventListener('click', function(e) {
+        e.stopPropagation();
+        symMenu.style.display = (symMenu.style.display === 'block') ? 'none' : 'block';
     });
-    symDropdown.addEventListener('mouseleave', function() {
-        hideTimeout = setTimeout(function() { symMenu.style.display = 'none'; }, 200);
+    document.addEventListener('click', function(e) {
+        if (!symDropdown.contains(e.target)) symMenu.style.display = 'none';
     });
 
     document.querySelectorAll('.sym-row').forEach(function(row) {
@@ -372,10 +383,10 @@
         row.addEventListener('mouseleave', function() { this.style.background = 'transparent'; });
         row.addEventListener('click', function() {
             var sym = this.dataset.symbol;
-            if (sym === activeSymbol) { symMenu.style.display = 'none'; return; }
+            symMenu.style.display = 'none';
+            if (sym === activeSymbol) return;
             activeSymbol = sym;
             symLabel.textContent = sym;
-            symMenu.style.display = 'none';
             tickerPrice.textContent = '—';
             tickerChange.textContent = '—';
             tickerHigh.textContent = '—';
@@ -654,6 +665,9 @@
                 candleSeries.setData(allCandles);
                 volumeSeries.setData(allVols);
                 updateSMAs();
+                // Re-enable price-axis autoscale: a manual zoom disables it, so
+                // without this the new symbol keeps the previous symbol's price range.
+                chart.priceScale('right').applyOptions({ autoScale: true });
                 chart.timeScale().fitContent();
 
                 var last = allCandles[allCandles.length - 1];
@@ -739,6 +753,39 @@
     var posCards = document.getElementById('positions-cards');
     var leverage = {{ leverage }};
 
+    // --- Per-position close ---
+    function closeBtnHtml(symbol, full) {
+        return '<button class="close-pos-btn" data-close-symbol="' + symbol + '" style="'
+            + (full ? 'width:100%;padding:9px 0;margin-top:4px;' : 'padding:4px 12px;')
+            + 'border:1px solid var(--red);background:transparent;color:var(--red);border-radius:5px;font-size:11px;font-weight:600;cursor:pointer">Close</button>';
+    }
+
+    async function doClosePosition(symbol, btn) {
+        if (!window.confirm('Close your ' + symbol + ' position at market?')) return;
+        if (btn) { btn.disabled = true; btn.textContent = 'Closing…'; }
+        try {
+            var res = await fetch('/api/position/close', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+                body: JSON.stringify({ symbol: symbol })
+            });
+            var data = await res.json();
+            if (!res.ok || !data.ok) throw new Error(data.error || 'Close failed');
+            // Optimistically drop it; the next positions WS push reconciles.
+            positionsData = positionsData.filter(function(p) { return p.symbol !== symbol; });
+            renderPositions(positionsData);
+        } catch (e) {
+            window.alert('Could not close ' + symbol + ': ' + e.message);
+            if (btn) { btn.disabled = false; btn.textContent = 'Close'; }
+        }
+    }
+
+    // Delegated so it works for both server-rendered and JS-rendered rows/cards.
+    document.addEventListener('click', function(e) {
+        var btn = e.target.closest ? e.target.closest('.close-pos-btn') : null;
+        if (btn) { e.preventDefault(); doClosePosition(btn.dataset.closeSymbol, btn); }
+    });
+
     function fmtDur(secs) {
         if (!secs) return '—';
         var h = Math.floor(secs / 3600);
@@ -809,6 +856,7 @@
             html += '<div class="status-cell"><div class="k">Size</div><div class="v">' + p.quantity.toFixed(4) + ' ' + sym + '</div></div>';
             html += '<div class="status-cell"><div class="k">Leverage</div><div class="v">' + leverage + '×</div></div></div>';
 
+            html += closeBtnHtml(p.symbol, true);
             html += '</div>';
         });
         posCards.innerHTML = html;
@@ -833,6 +881,7 @@
             '<th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">ROI</th>' +
             '<th style="padding:8px 12px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">SL / TP</th>' +
             '<th style="padding:8px 12px;text-align:center;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">Source</th>' +
+            '<th style="padding:8px 16px;text-align:right;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px">Action</th>' +
             '</tr></thead><tbody>';
         positions.forEach(function(p) {
             var dirCls = p.direction === 'long' ? 'long' : 'short';
@@ -852,7 +901,8 @@
             var roiSign = roiVal >= 0 ? '+' : '';
             html += '<td class="mono pos-roi" style="padding:10px 12px;text-align:right"><span class="' + roiCls + '">' + roiSign + roiVal.toFixed(2) + '%</span></td>' +
                 '<td class="mono" style="padding:10px 12px;text-align:right">' + sltp + '</td>' +
-                '<td style="padding:10px 12px;text-align:center">' + srcPill + '</td></tr>';
+                '<td style="padding:10px 12px;text-align:center">' + srcPill + '</td>' +
+                '<td style="padding:10px 16px;text-align:right">' + closeBtnHtml(p.symbol) + '</td></tr>';
         });
         html += '</tbody></table></div>';
         posTable.innerHTML = html;

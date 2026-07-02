@@ -209,6 +209,12 @@ Shared Jinja filters registered onto a route's `Jinja2Templates` env.
 - `_num(value, decimals=2, sign=False)` — comma thousand separators + fixed decimals; `—` for `None`; optional leading `+`
 - `register_filters(templates)` — registers `num` on `templates.env.filters` (used by `trades.py`, `dashboard.py`, `analytics.py`)
 
+### `app/core/metrics.py`
+- `compute_drawdown(closed_trades, capital_events)` — real-balance high-water-mark drawdown. Replays real capital events (deposits/withdrawals, incl. initial funding) + closed-trade PnL in time order, tracks peak, returns `{max_pct, current_pct, series:[{time,-dd%}]}` or **None** when there's no real capital base (→ UI shows "—"; never a notional). Deposits raise the balance/peak → future drawdown measured against the larger account.
+- `load_capital_events(user_id, is_paper, closed_trades)` — capital events source: paper → its real $10k virtual start; live → `capital_transfers` state (synced from Binance by the balance poll).
+- `paper_capital_events(closed_trades)` — single $10k virtual-funding event before the first trade.
+- Used by `analytics.py`, `dashboard.py`, `track_record.py` (all sort closed trades by `exit_time`).
+
 ---
 
 ### `templates/_trade_table.html`
@@ -270,6 +276,7 @@ Key relationships:
 |----------|---------|-------|
 | `get_user(user_id)` | User | By ID |
 | `get_user_by_google_id(google_id)` | User | By Google OAuth ID |
+| `get_user_by_email(email)` | User \| None | Case-insensitive email lookup (used by the public track record via `config.TRACK_RECORD_EMAIL`) |
 | `upsert_user_from_google(google_id, email, name, avatar_url)` | User | Create or update on login |
 | `set_user_approved(user_id, approved=True)` | None | Set `is_approved` (used by admin approve + open-registration auto-approve) |
 | `get_user_config(user_id)` | UserConfig | Encrypted API keys |
@@ -418,6 +425,7 @@ Shared public Binance connection (no API key needed).
 WebSocket connection manager + 7 background push tasks.
 
 - `ConnectionManager` — Per-user WebSocket connections: `connect`, `disconnect`, `send_to_user`, `broadcast_all`
+- `reset_live_balance(user_id)` — Zero the live balance: clears `last_balance` state + pushes `balance`=0. Called from `bot_control` stop + `settings` API-key delete so a disconnected/keyless account doesn't show a stale figure
 - `websocket_endpoint(ws, user_id)` — `/ws/{user_id}` route, rejects if no session or user ID mismatch (code 4003)
 - `start_ws_tasks(bot_manager, shared_market)` → 7 asyncio tasks:
   1. `_price_stream` — Real-time ticker prices → all clients
@@ -454,6 +462,7 @@ WebSocket connection manager + 7 background push tasks.
 | Method | Path | Template | Purpose |
 |--------|------|----------|---------|
 | GET | `/position` | `position.html` | Live positions from exchange, SL/TP for bot trades |
+| POST | `/api/position/close` | — | Market-close ONE symbol + cancel its SL/TP. Resolves the bot trade at its actual realized R (pnl / risked). **Not** 2FA-gated (same as emergency-close) |
 
 ### `routes/trades.py`
 | Method | Path | Template | Purpose |
@@ -516,7 +525,7 @@ Sensitive POSTs (`/settings`, `/settings/reset`, `/settings/api-keys`, `/setting
 ### `routes/track_record.py`
 | Method | Path | Template | Purpose |
 |--------|------|----------|---------|
-| GET | `/track-record` | `track_record.html` | Public verified track record (no auth, standalone) |
+| GET | `/track-record` | `track_record.html` | Public verified track record (no auth, standalone). Account = `config.TRACK_RECORD_EMAIL` (`db.get_user_by_email`, falls back to `user_id=1`). Chart is cumulative PnL from $0 (not balance-anchored) |
 
 ### `routes/admin/__init__.py`
 - `require_admin(request)` — Auth + admin check

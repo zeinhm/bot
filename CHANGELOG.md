@@ -6,6 +6,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 
 ---
 
+## [2026-07-02]
+
+### Added
+- **Per-position close button.** The Live Position screen now has a "Close" action on every open position (desktop table, mobile card, and the live JS-rendered rows). New endpoint `POST /api/position/close` market-closes one symbol and cancels its resting SL/TP; unlike a TP/SL exit it books the trade at its ACTUAL realized R (pnl / risked). Not 2FA-gated (same rationale as emergency-close).
+- **Configurable track-record account.** New `TRACK_RECORD_EMAIL` env/config (default `atinaja15@gmail.com`) + `db.get_user_by_email()`. The public `/track-record` now shows that account's real live trades (a clean sample with no pre-bot history), falling back to `user_id=1` if not found.
+
+### Changed
+- **All real-account equity curves now show cumulative PnL (from $0), not account equity.** Track record + dashboard charts no longer anchor to balance (deposits/withdrawals distorted the curve). Admin charts were already PnL; the backtester/landing simulations stay as compounding equity (they're not real accounts).
+- **Max Drawdown = real-balance high-water-mark from real data.** `app/core/metrics.py::compute_drawdown()` reconstructs the account's actual balance curve by replaying, in time order, real capital events **+** closed-trade PnL, then measures the decline from the running peak. Capital events come from **real Binance transfer history** (`exchange.get_transfers()` → `futures_income_history(incomeType=TRANSFER/…)`, synced into `capital_transfers` state by the balance poll every 10 min); paper uses its real $10k virtual start. Deposits raise the balance/peak, so drawdown is measured against the larger account going forward. **No fabricated $10k notional** — when there's no real capital base (live account whose transfers haven't synced), the stat shows **"—"**. Applied to analytics, dashboard, and track record (all now sort closed trades by `exit_time`). New `exchange.get_transfers()`; removed the old notional-based `drawdown_base()`.
+- **Static R display (live).** A live win now shows its planned target RR (2 or 3), a loss −1R — no longer recomputed from tp/sl geometry, which drifted live because the SL is widened to the manipulation wick and SL/TP are tick-rounded (giving odd values like 1.7R/2.4R). Fixed in `exchange.py` `r_value_for_exit()` (now prefers the planned RR), plus the live fill / crash-recovery / self-heal / reconcile paths (`worker.py`, `websocket.py`, `admin/user_detail.py`). **The backtester was already correct** — it places TP at exactly `widened_SL_distance × RR`, so its geometry R equals the target R by construction; no engine or cache change was needed. Live now matches the backtester (clean 2/3R).
+- **Balance resets to 0 when disconnected.** Deleting the API key or stopping the live bot now zeroes the live balance everywhere (`reset_live_balance()`: clears `last_balance` state + pushes balance=0). Removed the client-side localStorage balance restore that resurrected a stale figure on reload.
+
+### Fixed
+- **Trade tables: open trades pinned to top, then closed by exit time.** `get_recent_trades` / `get_trades_filtered` ordered by `id` (creation), so an older still-open trade sank below newer closed ones. Now open trades sort first, then closed most-recent-first by `exit_time` (fallback `entry_time`).
+- **Position chart price axis stuck on the previous symbol.** After manually zooming a chart (which disables lightweight-charts' price autoscale), switching symbols left the price axis on the old symbol's range (e.g. SOL's ~47–92 on a BTC chart). `loadChart()` now re-applies `autoScale: true` to the right price scale on every symbol load.
+
+### Removed
+- **BTC ticker in the header/topbar** (price + 24h change) — deleted the element and its price-stream handlers.
+
 ## [2026-06-22]
 
 ### Added

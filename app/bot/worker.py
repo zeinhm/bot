@@ -712,9 +712,10 @@ class BaseWorker:
                 exit_comm = exit_price * trade.quantity * self.config.commission_pct
 
             result = "loss" if is_sl else "win"
+            # Static R: a win banks its planned target RR (2 or 3), not tp/sl geometry.
             rr = trade.target_rr or await db.get_state(
                 "rr_ratio", self.config.strategy_params["rrr"], user_id=self.user_id, is_paper=self.is_paper)
-            r_value = r_value_for_exit(is_sl, trade.entry_price, trade.sl_price, trade.tp_price, rr)
+            r_value = -1.0 if is_sl else rr
 
             total_comm = (trade.commission or 0) + exit_comm
 

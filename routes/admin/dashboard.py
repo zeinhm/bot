@@ -1,14 +1,51 @@
+import asyncio
 import logging
 
+from binance import AsyncClient
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
 
+from app.auth import decrypt
 import app.db as db
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 log = logging.getLogger(__name__)
+
+
+async def _real_live_balance(u, manager) -> float:
+    """The account's ACTUAL live USDT balance. A running bot → its worker; an off
+    account with keys → a short-lived client fetching the real balance (so a stale
+    stored value can't inflate platform equity). Unreachable → 0, not a ghost."""
+    worker = manager.get_worker(u.id, "live")
+    if worker and worker.exchange.client:
+        try:
+            return await asyncio.wait_for(worker.exchange.get_balance(), timeout=8)
+        except Exception:
+            pass
+    cfg = await db.get_user_config(u.id)
+    if not cfg or not cfg.binance_api_key_enc:
+        return 0.0
+    client = None
+    try:
+        client = await asyncio.wait_for(AsyncClient.create(
+            api_key=decrypt(cfg.binance_api_key_enc),
+            api_secret=decrypt(cfg.binance_api_secret_enc)), timeout=8)
+        bals = await asyncio.wait_for(client.futures_account_balance(), timeout=8)
+        for b in bals:
+            if b["asset"] == "USDT":
+                return float(b["balance"])
+        return 0.0
+    except Exception as e:
+        log.warning("Platform equity: couldn't fetch live balance for user %d: %s", u.id, e)
+        return 0.0
+    finally:
+        if client is not None:
+            try:
+                await client.close_connection()
+            except Exception:
+                pass
 
 
 @router.get("/admin")
@@ -27,19 +64,10 @@ async def admin_dashboard(request: Request):
 
     active_bots = sum(1 for running in all_statuses.values() if running)
 
-    # Platform equity: sum of live balances + paper balances
-    total_equity = 0.0
-    for u in approved_users:
-        live_worker = manager.get_worker(u.id, "live")
-        if live_worker and live_worker.exchange.client:
-            try:
-                total_equity += await live_worker.exchange.get_balance()
-            except Exception:
-                bal = await db.get_state("last_balance", 0, user_id=u.id, is_paper=False)
-                total_equity += bal or 0
-        else:
-            bal = await db.get_state("last_balance", 0, user_id=u.id, is_paper=False)
-            total_equity += bal or 0
+    # Platform equity: each account's REAL live balance (fetched, running or not) so
+    # a stale stored value can't inflate it. Parallel with per-account timeouts.
+    balances = await asyncio.gather(*[_real_live_balance(u, manager) for u in approved_users])
+    total_equity = sum(balances)
 
     user_rows = []
     for u in approved_users:

@@ -534,7 +534,7 @@ Sensitive POSTs (`/settings`, `/settings/reset`, `/settings/api-keys`, `/setting
 ### `routes/admin/dashboard.py`
 | Method | Path | Template | Purpose |
 |--------|------|----------|---------|
-| GET | `/admin` | `admin_dashboard.html` | Platform overview: users, bots, equity, PnL + Access control toggle |
+| GET | `/admin` | `admin_dashboard.html` | Platform overview: users, bots, equity, PnL + Access control toggle. Platform equity = each account's REAL balance via `_real_live_balance()` (running bot → worker; off-but-keyed → short-lived client; deleted-key/unreachable → 0), not stale `last_balance` |
 | POST | `/admin/settings/require-approval` | JSON | Set platform-wide `require_approval` state (`{enabled: bool}`); off = open registration |
 
 ### `routes/admin/users.py`

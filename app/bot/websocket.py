@@ -314,24 +314,24 @@ async def _balance_poll(bot_manager):
     while True:
         try:
             await asyncio.sleep(30)
-            if not ws_manager.has_connections():
-                continue
 
             for (uid, mode), worker in list(bot_manager.workers.items()):
                 if not worker.running:
                     continue
-                conns = ws_manager.connections.get(uid)
-                if not conns:
-                    continue
 
                 try:
                     balance = await worker.exchange.get_balance()
-                    await ws_manager.send_to_user(uid, {
-                        "type": "balance",
-                        "mode": mode,
-                        "usdt_balance": round(balance, 2),
-                    })
+                    # Always persist the fresh balance so platform equity / drawdown
+                    # read current data even when the user isn't watching (a withdrawal
+                    # made while their tab is closed still gets picked up). Only push
+                    # over WS to users who actually have an open connection.
                     await db.set_state("last_balance", round(balance, 2), user_id=uid, is_paper=(mode == "paper"))
+                    if ws_manager.connections.get(uid):
+                        await ws_manager.send_to_user(uid, {
+                            "type": "balance",
+                            "mode": mode,
+                            "usdt_balance": round(balance, 2),
+                        })
                 except Exception as e:
                     log.error("Balance poll error for user %d/%s: %s", uid, mode, e)
 

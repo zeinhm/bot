@@ -210,10 +210,20 @@ Shared Jinja filters registered onto a route's `Jinja2Templates` env.
 - `register_filters(templates)` — registers `num` on `templates.env.filters` (used by `trades.py`, `dashboard.py`, `analytics.py`)
 
 ### `app/core/metrics.py`
-- `compute_drawdown(closed_trades, capital_events)` — real-balance high-water-mark drawdown. Replays real capital events (deposits/withdrawals, incl. initial funding) + closed-trade PnL in time order, tracks peak, returns `{max_pct, current_pct, series:[{time,-dd%}]}` or **None** when there's no real capital base (→ UI shows "—"; never a notional). Deposits raise the balance/peak → future drawdown measured against the larger account.
-- `load_capital_events(user_id, is_paper, closed_trades)` — capital events source: paper → its real $10k virtual start; live → `capital_transfers` state (synced from Binance by the balance poll).
-- `paper_capital_events(closed_trades)` — single $10k virtual-funding event before the first trade.
+Drawdown = high-water-mark on `real_base + bot PnL + in-period deposits`. The base is the account's REAL balance when the bot started; **never reconstructed from income** (proven unreliable).
+- `compute_drawdown(closed_trades, events)` — replays `events` (base + deposits) and closed-trade net PnL (`pnl_usdt`) in time order; peak = running high; current DD = `(peak−balance)/peak`; **max DD = deepest current DD ever (monotonic)**. Returns `{max_pct, current_pct, series}` or **None** (→ "—"). Deposits raise the peak (current DD can reset; max preserved); withdrawals/manual never enter.
+- `load_drawdown_events(user_id, is_paper, closed_trades)` — builds the events: paper → $10k virtual start; live → stored `dd_base` @ `dd_base_time` + positive `TRANSFER` deposits AFTER `dd_base_time` (from `capital_transfers`). No base → [] → "—".
+- `capture_drawdown_base(user_id, api_key, api_secret)` — on first key-connect, store `dd_base` = real `get_balance()` + `dd_base_time` = now, ONLY for a genuinely new account (no `dd_base`, no prior bot trades). The permanent, reliable source. Called from `routes/settings.py` + `routes/auth.py` after saving keys.
+- The real base for **existing** accounts is seeded from Binance's FUTURES snapshot via `scripts/seed_drawdown_base.py` (uses `exchange.get_wallet_balance_on`).
 - Used by `analytics.py`, `dashboard.py`, `track_record.py` (all sort closed trades by `exit_time`).
+
+### `exchange.py` — drawdown-base helpers
+- `get_daily_wallet_balances(start_ms, end_ms)` — real daily FUTURES USDT `walletBalance` from the account snapshot (Binance's actual asset value; ~last 30 days; range < 30 days). `updateTime` is END-of-day.
+- `get_wallet_balance_on(target_ms)` — the snapshot balance for the day covering `target_ms` (balance BEFORE that day's intraday trades) — the drawdown base for existing accounts. None if outside the ~30-day window.
+- `get_transfers(start_time=None)` — capital in/out via income history; positive = deposit, negative = withdrawal. Full history from a far-back start (income history defaults to only the last 7 days without `startTime`).
+
+### `scripts/seed_drawdown_base.py`
+CLI: for existing live accounts, read the real balance at the day before the first bot trade (FUTURES snapshot) → store `dd_base` + `dd_base_time`. Dry-run by default; `--commit` writes. `--prod`, `--user N`. Runs where keys are whitelisted (the server).
 
 ---
 

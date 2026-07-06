@@ -2,6 +2,12 @@
 
 Python FastAPI trading bot for the AMD FVG strategy on Binance Futures, with a full web dashboard, multi-user Google SSO, paper trading, admin panel, and real-time WebSocket data streaming. Deployed on Railway at zenithbot.org.
 
+## ⚠️ Working rules (do NOT violate)
+
+1. **Verify, never guess.** Before stating how any code / field / data-flow behaves, or writing anything that depends on existing behavior, **read the exact code or run a read-only query FIRST**, then assert. Never present a guess as fact. If it genuinely can't be verified (IP-restricted prod, no access), say so and label it an assumption. High-risk spots: field semantics (net vs gross, what's already included — e.g. `pnl_usdt` already includes funding via `position_pnl_breakdown`), "is this already handled?", capital-flow/PnL logic, live prod values.
+2. **Never commit, push, deploy, or mutate prod data without explicit permission** for that specific action. One "go" does not authorize the next one.
+3. **Every change ships with its CHANGELOG entry + doc updates** (see SOP at the bottom) — not after being asked.
+
 ## Tech Stack
 
 - **Backend**: FastAPI + Uvicorn, Python 3.x

@@ -75,15 +75,21 @@ class BinanceExchange:
                 return float(b["balance"])
         return 0.0
 
+    # Binance Futures income history returns only the last 7 DAYS when no startTime
+    # is given, so we must pass an explicit far-back start and paginate forward to
+    # capture the ORIGINAL funding (missing it makes the drawdown curve start after
+    # the trades → garbage). Default ≈ Binance Futures launch.
+    _INCOME_HISTORY_START_MS = 1567296000000  # 2019-09-01
+
     async def get_transfers(self, start_time: int | None = None) -> list[dict]:
         """Capital in/out of the USDⓈ-M futures wallet, from income history.
         `income` > 0 = money moved IN (deposit/funding), < 0 = OUT (withdrawal).
-        Used to reconstruct the real balance curve for drawdown. Returns
-        [{"time": ms, "amount": float}] sorted ascending. Paginated (1000/page)."""
+        Returns [{"time": ms, "amount": float}] sorted ascending, over the account's
+        FULL history (paginated 1000/page from a far-back start)."""
         out: list[dict] = []
         # Capital-movement income types (spot↔futures, internal, bonuses).
         for itype in ("TRANSFER", "INTERNAL_TRANSFER", "WELCOME_BONUS"):
-            start = start_time
+            start = start_time if start_time is not None else self._INCOME_HISTORY_START_MS
             while True:
                 recs = await self.client.futures_income_history(
                     incomeType=itype, startTime=start, limit=1000)
@@ -98,6 +104,38 @@ class BinanceExchange:
                 start = int(recs[-1]["time"]) + 1
         out.sort(key=lambda x: x["time"])
         return out
+
+    async def get_daily_wallet_balances(self, start_ms: int, end_ms: int) -> list[tuple[int, float]]:
+        """Real daily FUTURES USDT wallet balance from Binance's account snapshot —
+        Binance's ACTUAL asset value (the data behind the wallet chart), not a
+        reconstruction. Only ~the last 30 days are available, and the range must span
+        < 30 days. Returns [(updateTime_ms, usdt_wallet_balance)] ascending."""
+        snap = await self.client.get_account_snapshot(
+            type="FUTURES", startTime=int(start_ms), endTime=int(end_ms), limit=30)
+        out: list[tuple[int, float]] = []
+        for v in snap.get("snapshotVos") or []:
+            usdt = next((a for a in v.get("data", {}).get("assets", []) if a.get("asset") == "USDT"), None)
+            if usdt is not None:
+                out.append((int(v["updateTime"]), float(usdt.get("walletBalance", 0) or 0)))
+        out.sort(key=lambda x: x[0])
+        return out
+
+    async def get_wallet_balance_on(self, target_ms: int) -> float | None:
+        """Real FUTURES USDT balance just BEFORE `target_ms` — the latest daily
+        snapshot (snapshot `updateTime` is END-of-day) that is strictly earlier than
+        the first bot trade, i.e. the account's balance before it started trading.
+        Used to seed the drawdown base for existing accounts.
+
+        Returns None when NO snapshot predates `target_ms` — the target is older than
+        the ~30-day snapshot window, or there's a gap with no earlier day. Never
+        returns a post-trade balance or an unrelated recent one (a wrong base would
+        ship a wrong drawdown, so we say 'unknown' instead)."""
+        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+        day = 86_400_000
+        start = max(int(target_ms) - 3 * day, now_ms - 29 * day)
+        rows = await self.get_daily_wallet_balances(start, now_ms)
+        before = [bal for ts, bal in rows if ts < int(target_ms)]
+        return before[-1] if before else None
 
     async def get_position(self, symbol: str) -> dict | None:
         positions = await self.client.futures_position_information(symbol=symbol)

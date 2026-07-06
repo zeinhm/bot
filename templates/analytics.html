@@ -47,7 +47,7 @@
     <div class="card hero">
         <div class="card-title row">
             <span>Drawdown</span>
-            {% if max_drawdown %}
+            {% if max_drawdown is not none %}
             <span class="meta neg">Max −{{ "%.1f"|format(max_drawdown) }}%</span>
             {% endif %}
         </div>

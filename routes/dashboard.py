@@ -9,7 +9,7 @@ from app.auth import require_auth, get_trading_mode
 from config import SYMBOLS, LEVERAGE
 import app.db as db
 from app.core.context import get_global_context
-from app.core.metrics import compute_drawdown, load_capital_events
+from app.core.metrics import compute_drawdown, load_drawdown_events
 from app.core.template_filters import register_filters
 
 router = APIRouter()
@@ -57,7 +57,7 @@ async def dashboard(request: Request):
     # Max drawdown = real-balance high-water-mark from real capital events (Binance
     # transfers / paper's $10k start) + closed-trade PnL. None → UI shows '—'.
     dd_closed = [t for t in by_exit if t.exit_time]
-    dd = compute_drawdown(dd_closed, await load_capital_events(user.id, is_paper, dd_closed))
+    dd = compute_drawdown(dd_closed, await load_drawdown_events(user.id, is_paper, dd_closed))
     max_dd = dd["max_pct"] if dd else None
     max_dd_date = None
     if dd and dd["series"]:

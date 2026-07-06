@@ -1,82 +1,110 @@
 from __future__ import annotations
 
+import asyncio
+import logging
+import time
+
 import app.db as db
 
+log = logging.getLogger(__name__)
 
-async def load_capital_events(user_id: int, is_paper: bool, closed_trades) -> list[tuple[int, float]]:
-    """Capital events for the drawdown curve.
+# Paper accounts start at a real $10,000 virtual balance (PaperAccount default).
+PAPER_START = 10000.0
 
-    Paper: its real $10k virtual start. Live, in priority order:
-      1. Real Binance transfer history (synced into `capital_transfers` state by the
-         balance poll) — the accurate source; handles deposits/withdrawals.
-      2. Fallback: a single funding event = `balance − realized PnL` (the account's
-         real starting capital, from the last-polled balance). Exact for accounts
-         with no mid-stream deposits; used until transfers sync so the chart is never
-         blank. NOT a $10k notional — it's derived from the real balance.
-      3. Nothing known → [] → compute_drawdown returns None → UI shows '—'.
+
+async def capture_drawdown_base(user_id: int, api_key: str, api_secret: str) -> None:
+    """Capture the real starting balance as the drawdown base for a GENUINELY NEW
+    live account, at first key-connect. This is the reliable, permanent source (the
+    historical balance can't be recovered later — Binance's snapshot only reaches
+    ~30 days). Skips if a base is already set, or if the account already has bot
+    trades — an existing account is seeded from the snapshot instead, so we never
+    overwrite its history with a 'now' balance."""
+    if await db.get_state("dd_base", None, user_id=user_id, is_paper=False) is not None:
+        return
+    trades = await db.get_all_trades(user_id, is_paper=False)
+    if any(t.result in ("win", "loss") for t in trades):
+        return
+    async def _fetch_balance() -> float:
+        from binance import AsyncClient
+        from exchange import BinanceExchange
+        ex = BinanceExchange(api_key, api_secret)
+        ex.client = await AsyncClient.create(api_key=api_key, api_secret=api_secret)
+        try:
+            return await ex.get_balance()
+        finally:
+            await ex.client.close_connection()
+
+    try:
+        # Bounded so a slow/hung Binance call can't stall the key-save request.
+        bal = await asyncio.wait_for(_fetch_balance(), timeout=12)
+        await db.set_state("dd_base", round(float(bal), 8), user_id=user_id, is_paper=False)
+        await db.set_state("dd_base_time", int(time.time()) - 1, user_id=user_id, is_paper=False)
+        log.info("Captured drawdown base $%.2f for new user %d", bal, user_id)
+    except Exception as e:
+        log.warning("capture_drawdown_base failed for user %d: %s", user_id, e)
+
+
+async def load_drawdown_events(user_id: int, is_paper: bool, closed_trades) -> list[tuple[int, float]]:
+    """Capital events that fund the drawdown curve: the account's REAL starting
+    balance (base) plus any deposits DURING the tracked period.
+
+    Only the base + in-period deposits + the bot's own trades move the curve.
+    WITHDRAWALS and MANUAL (non-bot) trades are excluded — a withdrawal isn't a
+    trading loss, and manual trades aren't in our `trades` table.
+
+    - Paper: $10k virtual start (its real starting balance).
+    - Live: the real base is captured at API-key connect, or seeded from the Binance
+      FUTURES account snapshot (stored as `dd_base` + `dd_base_time`, seconds). Then
+      positive `TRANSFER` deposits AFTER `dd_base_time` are added. If no base is set
+      → [] → `compute_drawdown` returns None → UI shows '—' (never a guessed base).
     """
     if is_paper:
-        return paper_capital_events(closed_trades)
+        first = min((int(t.exit_time.timestamp()) for t in closed_trades if t.exit_time is not None),
+                    default=0)
+        return [(first - 1, PAPER_START)]
 
+    base = await db.get_state("dd_base", None, user_id=user_id, is_paper=False)
+    base_time = await db.get_state("dd_base_time", None, user_id=user_id, is_paper=False)
+    if base is None or base_time is None or float(base) <= 0:
+        return []
+
+    base_time = int(base_time)
+    events: list[tuple[int, float]] = [(base_time, float(base))]
+    # Deposits STRICTLY AFTER the base — the base already reflects everything up to
+    # base_time (deposits, withdrawals, manual). Withdrawals (< 0) are excluded.
     transfers = await db.get_state("capital_transfers", None, user_id=user_id, is_paper=False) or []
-    if transfers:
-        return [(int(x["time"]) // 1000, float(x["amount"])) for x in transfers]
-
-    bal = await db.get_state("last_balance", None, user_id=user_id, is_paper=False)
-    if bal and bal > 0:
-        total_pnl = sum(float(t.pnl_usdt or 0) for t in closed_trades)
-        start_equity = bal - total_pnl
-        if start_equity > 0:
-            first = min((int(t.exit_time.timestamp()) for t in closed_trades if t.exit_time is not None),
-                        default=0)
-            return [(first - 1, start_equity)]
-    return []
+    events += [(int(x["time"]) // 1000, float(x["amount"]))
+               for x in transfers
+               if float(x.get("amount", 0)) > 0 and int(x["time"]) // 1000 > base_time]
+    return events
 
 
-def compute_drawdown(closed_trades, capital_events) -> dict | None:
-    """Real-balance high-water-mark drawdown, from real data only.
+def compute_drawdown(closed_trades, deposits) -> dict | None:
+    """High-water-mark drawdown on the real balance curve = deposits + net PnL.
 
-    Reconstructs the account's actual balance curve by replaying, in time order,
-    every capital event (deposits/withdrawals) and every closed trade's realized
-    PnL — then measures the decline from the running peak. A deposit raises the
-    balance (and the peak), so future drawdown is measured against the larger
-    account; that's the "deposits affect upcoming data" behaviour.
+    Replays, in time order, each deposit (raises the base) and each closed trade's
+    net PnL (`pnl_usdt`, already net of commission + funding via the anomaly
+    reconciler). Peak = running high; current DD = (peak − balance)/peak; max DD =
+    the deepest current DD ever (monotonic — nothing lowers it). Deposits raise the
+    peak (current DD can reset to 0; max is preserved). Withdrawals never appear.
 
-    Args:
-        closed_trades: Trade rows (win/loss) with `.exit_time` and `.pnl_usdt`.
-        capital_events: list of (unix_seconds, amount) — money in(+)/out(-) of the
-            wallet, INCLUDING the initial funding. Live: Binance TRANSFER income.
-            Paper: a single (start, 10000) virtual-funding event.
-
-    Returns {max_pct, current_pct, series:[{time, value:-dd%}]} or None when there
-    is no capital base to measure against (never a fabricated notional).
+    Returns {max_pct, current_pct, series:[{time, value:-dd%}]} or None when there's
+    no funding to measure against.
     """
-    # No real capital base (e.g. a live account whose transfers haven't synced) →
-    # we can't measure a % drawdown, so return None (UI shows '—'). Trades alone
-    # must NOT be used as the base — that reconstructs a curve from $0 and produces
-    # nonsense percentages.
-    if not capital_events:
+    if not deposits:
         return None
 
-    events: list[tuple[int, float]] = [(int(ts), float(amt)) for ts, amt in capital_events]
+    # (time, kind, delta) — kind 0 = deposit, 1 = trade, so a deposit applies before
+    # a same-second trade (base is funded before that second's PnL is measured).
+    events: list[tuple[int, int, float]] = [(int(ts), 0, float(amt)) for ts, amt in deposits]
     for t in closed_trades:
         if t.exit_time is not None:
-            events.append((int(t.exit_time.timestamp()), float(t.pnl_usdt or 0.0)))
+            events.append((int(t.exit_time.timestamp()), 1, float(t.pnl_usdt or 0.0)))
+    events.sort(key=lambda e: (e[0], e[1]))
 
-    if not events:
-        return None
-
-    # Capital events and a same-second trade: apply capital first so the deposit is
-    # in the base before that second's PnL is measured.
-    events.sort(key=lambda e: (e[0], 0 if e[1] is None else 0))
-    events.sort(key=lambda e: e[0])
-
-    balance = 0.0
-    peak = 0.0
-    max_dd = 0.0
-    current_dd = 0.0
+    balance = peak = max_dd = current_dd = 0.0
     series: list[dict] = []
-    for ts, delta in events:
+    for ts, _kind, delta in events:
         balance += delta
         if balance > peak:
             peak = balance
@@ -86,20 +114,9 @@ def compute_drawdown(closed_trades, capital_events) -> dict | None:
         series.append({"time": ts, "value": round(-current_dd, 2)})
 
     if peak <= 0:
-        # No positive capital ever seen (e.g. only trades, no funding synced yet).
         return None
-
     return {
         "max_pct": round(max_dd, 2),
         "current_pct": round(current_dd, 2),
         "series": series,
     }
-
-
-def paper_capital_events(closed_trades) -> list[tuple[int, float]]:
-    """Virtual-funding event for a paper account: its real $10,000 starting balance
-    placed just before the first trade. (Paper has no Binance transfers; $10k is the
-    account's genuine start, not a fallback notional.)"""
-    first = min((int(t.exit_time.timestamp()) for t in closed_trades if t.exit_time is not None),
-                default=0)
-    return [(first - 1, 10000.0)]

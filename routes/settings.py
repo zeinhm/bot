@@ -205,6 +205,9 @@ async def save_api_keys(
         api_secret_enc=api_secret_enc,
     )
     await db.set_state("api_permissions", result["permissions"], user_id=user.id, is_paper=False)
+    # Capture the real starting balance as the drawdown base (new accounts only).
+    from app.core.metrics import capture_drawdown_base
+    await capture_drawdown_base(user.id, api_key.strip(), api_secret.strip())
 
     manager = request.app.state.bot_manager
     worker = manager.get_worker(user.id, "live")

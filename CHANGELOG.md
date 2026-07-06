@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 
 ---
 
+## [2026-07-04]
+
+### Changed
+- **Drawdown reworked: measured from the account's REAL starting balance, bot trades only.** Drawdown is now a high-water-mark on `real_base + cumulative bot PnL + in-period deposits`. The **base is the real account balance when the bot started** — captured at first API-key connect (`app/core/metrics.py::capture_drawdown_base`, the permanent source) or, for accounts that predate that, seeded from Binance's **FUTURES account snapshot** (its actual daily asset value; `exchange.get_wallet_balance_on` / `get_daily_wallet_balances`) — **never reconstructed** from income (which was proven wrong: $521 vs a real $105). Peak = running high; current DD = `(peak − balance)/peak`; **max DD = deepest current DD ever (monotonic — nothing lowers it)**, and it's what "Max Drawdown" displays. Deposits during the period raise the base; **withdrawals and manual (non-bot) trades are excluded** (withdrawals aren't losses; manual trades aren't in our `trades` table). No base → "—", never a guess. `app/core/metrics.py` (`compute_drawdown`, `load_drawdown_events`, `capture_drawdown_base`), `scripts/seed_drawdown_base.py`.
+
+### Fixed
+- **Drawdown was wrong/blank after deposits, withdrawals, or disconnects.** The old code derived the base from `last_balance` / TRANSFER deposits, so a withdrawal read as a loss (−3872% for zeinmrhb), a deposit shrank the historical max to ~0 (atinaja15), and a disconnect (`last_balance`=0) blanked the chart. Now the base is a real, point-in-time balance (snapshot/capture), independent of current balance, and only the bot's own trades move the curve. Verified on real Binance data (zeinmrhb: base $100.14 → **13.98%**).
+
 ## [2026-07-02]
 
 ### Added

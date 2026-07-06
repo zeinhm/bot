@@ -44,6 +44,39 @@ async def capture_drawdown_base(user_id: int, api_key: str, api_secret: str) -> 
         log.warning("capture_drawdown_base failed for user %d: %s", user_id, e)
 
 
+async def ensure_drawdown_base(user_id: int, exchange, all_live_trades) -> None:
+    """Seed `dd_base` for a LIVE account that lacks one — called from the balance
+    poll, which runs SERVER-SIDE where each account's key is whitelisted (so the
+    Binance snapshot call works). Set once, then immutable.
+
+    - Existing account (has bot trades) → real balance the day BEFORE the first bot
+      trade, from the FUTURES account snapshot (`get_wallet_balance_on`).
+    - Fresh account (no bot trades yet, e.g. connected before capture-at-connect
+      existed) → current balance.
+    If the base can't be determined (first trade older than the ~30-day snapshot
+    window), it's left unset → the chart shows '—' rather than a guessed number."""
+    if await db.get_state("dd_base", None, user_id=user_id, is_paper=False) is not None:
+        return
+    closed = sorted([t for t in all_live_trades if t.result in ("win", "loss") and t.exit_time],
+                    key=lambda t: t.exit_time)
+    try:
+        if closed:
+            base = await exchange.get_wallet_balance_on(int(closed[0].exit_time.timestamp() * 1000))
+            if base is None or base <= 0:
+                return
+            base_time = int(closed[0].exit_time.timestamp()) - 1
+        else:
+            base = await exchange.get_balance()
+            if base <= 0:
+                return
+            base_time = int(time.time()) - 1
+        await db.set_state("dd_base", round(float(base), 8), user_id=user_id, is_paper=False)
+        await db.set_state("dd_base_time", base_time, user_id=user_id, is_paper=False)
+        log.info("Seeded drawdown base $%.2f for user %d (%d bot trades)", base, user_id, len(closed))
+    except Exception as e:
+        log.warning("ensure_drawdown_base failed for user %d: %s", user_id, e)
+
+
 async def load_drawdown_events(user_id: int, is_paper: bool, closed_trades) -> list[tuple[int, float]]:
     """Capital events that fund the drawdown curve: the account's REAL starting
     balance (base) plus any deposits DURING the tracked period.

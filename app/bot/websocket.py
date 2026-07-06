@@ -335,19 +335,31 @@ async def _balance_poll(bot_manager):
                 except Exception as e:
                     log.error("Balance poll error for user %d/%s: %s", uid, mode, e)
 
-                # Live only: refresh the real capital-transfer history (deposits/
-                # withdrawals) that anchors the drawdown balance curve. Throttled —
-                # transfers are rare and the call is comparatively expensive.
                 if mode == "live":
+                    now_ms = int(time.time() * 1000)
+                    # Refresh capital-transfer history (deposits, for in-period base
+                    # raises). Throttled — transfers are rare and the call is costly.
                     try:
                         last_sync = await db.get_state("transfers_synced_ms", 0, user_id=uid, is_paper=False) or 0
-                        now_ms = int(time.time() * 1000)
                         if now_ms - last_sync > 600_000:  # 10 min
                             transfers = await worker.exchange.get_transfers()
                             await db.set_state("capital_transfers", transfers, user_id=uid, is_paper=False)
                             await db.set_state("transfers_synced_ms", now_ms, user_id=uid, is_paper=False)
                     except Exception as e:
                         log.error("Transfer sync error for user %d: %s", uid, e)
+                    # Seed the drawdown base once — INDEPENDENT of the transfer sync
+                    # (a transfers failure must not block it), throttled on its own so
+                    # an un-seedable account doesn't hit the snapshot API every cycle.
+                    try:
+                        if await db.get_state("dd_base", None, user_id=uid, is_paper=False) is None:
+                            last_try = await db.get_state("dd_seed_attempt_ms", 0, user_id=uid, is_paper=False) or 0
+                            if now_ms - last_try > 600_000:  # 10 min
+                                await db.set_state("dd_seed_attempt_ms", now_ms, user_id=uid, is_paper=False)
+                                from app.core.metrics import ensure_drawdown_base
+                                trades = await db.get_all_trades(uid, is_paper=False)
+                                await ensure_drawdown_base(uid, worker.exchange, trades)
+                    except Exception as e:
+                        log.error("Drawdown base seed error for user %d: %s", uid, e)
 
         except asyncio.CancelledError:
             break

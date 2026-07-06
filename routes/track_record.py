@@ -5,7 +5,7 @@ from fastapi.templating import Jinja2Templates
 
 import app.db as db
 from app.core.context import get_global_context
-from app.core.metrics import compute_drawdown, load_capital_events
+from app.core.metrics import compute_drawdown, load_drawdown_events
 from app.core.template_filters import register_filters
 from config import TRACK_RECORD_EMAIL
 
@@ -38,7 +38,7 @@ async def track_record_page(request: Request):
         cumulative += t.pnl_usdt or 0
         equity_data.append({"time": int(t.exit_time.timestamp()), "value": round(cumulative, 2)})
 
-    dd = compute_drawdown(closed_sorted, await load_capital_events(tr_user_id, False, closed_sorted))
+    dd = compute_drawdown(closed_sorted, await load_drawdown_events(tr_user_id, False, closed_sorted))
     max_dd = dd["max_pct"] if dd else None
 
     recent = list(reversed(closed[-12:])) if closed else []

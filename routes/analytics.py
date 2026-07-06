@@ -8,7 +8,7 @@ from fastapi.templating import Jinja2Templates
 from app.auth import require_auth, get_trading_mode
 import app.db as db
 from app.core.context import get_global_context
-from app.core.metrics import compute_drawdown, load_capital_events
+from app.core.metrics import compute_drawdown, load_drawdown_events
 from app.core.template_filters import register_filters
 
 router = APIRouter()
@@ -94,7 +94,7 @@ async def analytics_page(request: Request):
     # transfers; paper's $10k start) + closed-trade PnL in time order. No notional.
     # None when there's no real capital base yet → UI shows '—'.
     dd_closed = sorted([t for t in closed if t.exit_time], key=lambda t: t.exit_time)
-    capital_events = await load_capital_events(user.id, is_paper, dd_closed)
+    capital_events = await load_drawdown_events(user.id, is_paper, dd_closed)
     dd = compute_drawdown(dd_closed, capital_events)
     max_drawdown = dd["max_pct"] if dd else None
     drawdown_data = dd["series"] if dd else []

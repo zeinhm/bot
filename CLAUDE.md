@@ -45,6 +45,7 @@ bot/
 ├── exchange.py                # Binance Futures API wrapper (live trading)
 ├── paper_exchange.py          # Paper trading exchange (in-memory + DB, polls prices)
 ├── telegram_alert.py          # Telegram trade entry/exit alerts
+├── setup_geometry.py          # Recompute AMD acc/manip box geometry for a live signal (frozen check_signal drops it) → live Position chart setup
 ├── import_candles.py          # CLI: import 1m CSVs → DB, resample to higher TFs
 ├── seed_trades.py             # CLI: run strategy on historical data → backtest_results
 ├── warm_backtest_cache.py     # CLI: pre-compute every Backtester Playground combo → backtest_runs (signature cache)
@@ -146,7 +147,7 @@ bot/
 │
 ├── alembic/
 │   ├── env.py                 # Migration environment config
-│   └── versions/              # 9 migrations (schema → paper trading → rejection → funding fee → backtest cache → 2FA → adaptive RR target_rr)
+│   └── versions/              # 11 migrations (schema → paper trading → rejection → funding fee → backtest cache → 2FA → adaptive RR target_rr → strategy → setup_json)
 │
 ├── docs/
 │   ├── architecture.md        # System design overview
@@ -204,6 +205,7 @@ bot/
 | **Require-approval toggle (open registration)** | `routes/admin/dashboard.py` (`POST /admin/settings/require-approval` + `require_approval` state), `templates/admin_dashboard.html` (Access control card), `routes/auth.py` (auto-approve in Google callback when off) |
 | **Bot start/stop lifecycle**        | `app/bot/manager.py`, `routes/bot_control.py`                |
 | **Close a single position**         | `routes/position.py` → `POST /api/position/close`; buttons + `doClosePosition()` in `templates/position.html` |
+| **AMD setup boxes on live Position chart** | `setup_geometry.py` (recompute geometry) → `app/bot/worker.py` (`_detect_for_strategy` attaches, `_execute_trade` persists `setup_json` + broadcasts) → `routes/position.py` (surface `setup`) → `templates/position.html` (`drawSetup`/`updateBoxes` div overlays). Backtester equivalent: `templates/backtester.html` + `amd_engine._make_setup` |
 | **Balance reset on disconnect**     | `app/bot/websocket.py` → `reset_live_balance()` (called from `routes/bot_control.py` stop + `routes/settings.py` key delete); no client-side balance cache |
 | **Reward:risk shown per trade (static R)** | win = planned `target_rr`, loss = −1R: `exchange.py` `r_value_for_exit()`, `app/bot/worker.py`, `amd_engine.py` + `backtest_combine.py` (display R; PnL stays actual) |
 | **Public track-record account**     | `config.TRACK_RECORD_EMAIL` + `db.get_user_by_email()` in `routes/track_record.py` |
@@ -244,7 +246,7 @@ bot/
 |-------|-------|------------|
 | `User` | `users` | google_id, email, name, is_approved, is_rejected, is_admin, paper_bot_started, totp_secret_enc, totp_enabled, totp_backup_codes |
 | `UserConfig` | `user_configs` | user_id (FK), binance_api_key_enc, binance_api_secret_enc |
-| `Trade` | `trades` | user_id (FK), is_paper, symbol, direction, entry/exit price/time, result, r_value, pnl_usdt (net), commission (USDT fee), funding_fee, target_rr (2:1/3:1 regime), strategy (amd_15m/trend_5m) |
+| `Trade` | `trades` | user_id (FK), is_paper, symbol, direction, entry/exit price/time, result, r_value, pnl_usdt (net), commission (USDT fee), funding_fee, target_rr (2:1/3:1 regime), strategy (amd_15m/trend_5m), setup_json (AMD acc/manip box geometry for the live Position chart) |
 | `BotState` | `bot_state` | key, value, user_id, is_paper — unique on (key, user_id, is_paper) |
 | `BotEvent` | `bot_events` | user_id, is_paper, level, category, message, details |
 | `HistoricalCandle` | `historical_candles` | symbol, interval, timestamp, OHLCV |

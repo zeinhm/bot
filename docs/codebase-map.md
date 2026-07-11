@@ -71,6 +71,16 @@ Key details:
 - Accumulation supports "atr" mode (range ≤ ATR * mult) and "fixed %" mode
 - `acc_range_mode` controls body-based vs wick-based range calculation
 - ADX filter skips counter-trend entries when ADX > threshold
+- **Frozen file** (repo guard hook blocks edits; changes need head-to-head backtest validation + a manual human edit). Additive needs like setup geometry live in `setup_geometry.py` instead.
+
+---
+
+### `setup_geometry.py`
+Recovers the AMD setup **box geometry** for a live signal, WITHOUT touching the frozen `strategy.check_signal` (which returns only entry/sl/tp and discards the acc/manip zones the backtest keeps via `amd_engine._make_setup`).
+
+- `build_setup_geometry(candles, params, signal)` → `{direction, accStartTime, accEndTime, accHigh, accLow, manipTime, manipExtremum, entryTime, entryPrice, sl, tp}` (times in **unix seconds** to match `/api/live-candles`), or `None`.
+
+Re-walks the identical accumulation + manipulation state machine as `check_signal` (reusing its `_rolling_max/_rolling_min/_atr/_in_session/_in_skip_period` primitives) but only tracks the zone state — no FVG/entry checks — then reads the state at the final bar, which is exactly the geometry behind the fired signal. Called from `worker._detect_for_strategy` right after `check_signal`; the result is stored on `Trade.setup_json` and drawn by the live Position chart. Verified to reproduce `amd_engine._make_setup`'s geometry exactly (synthetic long/short parity test).
 
 ---
 
@@ -605,7 +615,7 @@ Functions: `toggleAdminMode()`, `switchMode()`, `closePaperModal()`, `toggleProf
 HTMX hooks: `beforeRequest` (progress bar), `afterSettle` (time format), `afterSwap` (title update), `pushedIntoHistory` (nav active state), `confirm` (prevent re-navigation)
 
 ### Template-specific heavy JS
-- **position.html** (~800 lines): Chart with timeframe management, order book, market trades, position price lines, infinite scroll history
+- **position.html** (~800 lines): Chart with timeframe management, order book, market trades, infinite scroll history, and the **AMD setup overlay** for open bot positions (acc/manip/TP/SL div boxes + Long/Short entry arrow via `drawSetup`/`updateBoxes`, same technique as `backtester.html`; fed by `pos.setup` and the `trade_opened`/`trade_closed` WS events). Replaced the old flat Entry/SL/TP price lines.
 - **backtester.html** (~500 lines): Combined equity, per-asset chart with setup box visualization, trade log pagination
 - **analytics.html**: Drawdown chart, monthly bars, session/day progress bars, hold time bars
 
@@ -641,7 +651,8 @@ Responsive breakpoints: `768px` (hide sidebar, show bottom nav), `767px` (full m
 | `e5a1c2d3f4b7` | Add totp_secret_enc / totp_enabled / totp_backup_codes to users (2FA) |
 | `f6b2d4e8a1c9` | Add target_rr to trades + backtest_results (adaptive 2:1/3:1) |
 | `a7c9e1b3d5f2` | Add strategy (amd_15m/trend_5m) to trades + backtest_results (multi-strategy) |
+| `b8d3f6a2c4e1` | Add setup_json to trades (AMD acc/manip box geometry for the live Position chart) |
 
-Chain: `None → 18cd → 8ade → b126 → 673d → a2f1 → c3e8 → d4f9 → e5a1 → f6b2 → a7c9`
+Chain: `None → 18cd → 8ade → b126 → 673d → a2f1 → c3e8 → d4f9 → e5a1 → f6b2 → a7c9 → b8d3`
 
 Note: `_ensure_schema()` in `engine.py` also runs idempotent ALTER TABLE statements on startup, so schema changes are applied even without running Alembic.

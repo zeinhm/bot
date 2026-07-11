@@ -9,6 +9,12 @@
 .tf-btn{padding:4px 10px;border-radius:4px;border:none;background:transparent;color:var(--muted);font-size:11px;font-weight:600;font-family:var(--mono);cursor:pointer;white-space:nowrap}
 .tf-btn:hover{background:rgba(255,255,255,.06);color:var(--fg)}
 .tf-btn.active{background:var(--accent);color:#fff}
+/* AMD setup overlay boxes on the price chart — same look as the Backtester */
+.setup-box{position:absolute;pointer-events:none;z-index:1}
+.setup-box.acc{background:rgba(139,148,158,.10);border:1px solid rgba(139,148,158,.18)}
+.setup-box.tp{background:rgba(0,200,150,.13)}
+.setup-box.sl{background:rgba(255,77,77,.13)}
+.setup-box.manip{background:rgba(18,59,65,.45)}
 </style>
 <!-- Ticker Bar -->
 <div class="ticker-bar" style="padding:8px 16px;margin-bottom:6px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);display:flex;align-items:center;gap:20px;position:relative;z-index:50">
@@ -669,6 +675,7 @@
                 // without this the new symbol keeps the previous symbol's price range.
                 chart.priceScale('right').applyOptions({ autoScale: true });
                 chart.timeScale().fitContent();
+                if (typeof refreshEntryMarkers === 'function') { refreshEntryMarkers(); requestAnimationFrame(updateBoxes); }
 
                 var last = allCandles[allCandles.length - 1];
                 currentBar = { time: last.time, open: last.open, high: last.high, low: last.low, close: last.close };
@@ -713,17 +720,107 @@
 
     loadChart(activeSymbol);
 
+    // ── AMD setup boxes (accumulation / manipulation / TP / SL) ──
+    // Same overlay technique as the Backtester: absolutely-positioned divs behind
+    // the candles, re-projected onto the chart's coordinate system every frame.
+    // Times from the server are unix seconds; the chart shifts candle times by
+    // tzOffsetSec, so setup times get the same offset. TP/SL zones have no exit
+    // yet, so they stretch from entry to the latest bar (dynEnd).
+    var boxEls = [];
+    var setupMarkers = {};   // symbol -> entry arrow marker
+
+    // Raise the chart's own canvas above the setup-box overlays.
+    Array.from(el.children).forEach(function(child) {
+        if (!child.classList.contains('setup-box')) {
+            child.style.position = 'relative';
+            child.style.zIndex = '3';
+        }
+    });
+
+    function rightEdgeTime() {
+        if (currentBar) return currentBar.time;
+        if (allCandles.length) return allCandles[allCandles.length - 1].time;
+        return null;
+    }
+
+    function refreshEntryMarkers() {
+        var m = setupMarkers[activeSymbol];
+        candleSeries.setMarkers(m ? [m] : []);
+    }
+
+    function addBox(sym, cls, t1, t2, priceTop, priceBot, dynEnd) {
+        var div = document.createElement('div');
+        div.className = 'setup-box ' + cls;
+        el.appendChild(div);
+        boxEls.push({ el: div, sym: sym, t1: t1, t2: t2, pTop: priceTop, pBot: priceBot, dynEnd: !!dynEnd });
+    }
+
+    function updateBoxes() {
+        boxEls.forEach(function(b) {
+            if (b.sym !== activeSymbol) { b.el.style.display = 'none'; return; }
+            var t2 = b.dynEnd ? rightEdgeTime() : b.t2;
+            var x1 = chart.timeScale().timeToCoordinate(b.t1);
+            var x2 = (t2 != null) ? chart.timeScale().timeToCoordinate(t2) : null;
+            var y1 = candleSeries.priceToCoordinate(b.pTop);
+            var y2 = candleSeries.priceToCoordinate(b.pBot);
+            if (x1 === null || x2 === null || y1 === null || y2 === null) { b.el.style.display = 'none'; return; }
+            b.el.style.display = 'block';
+            b.el.style.left = Math.min(x1, x2) + 'px';
+            b.el.style.top = Math.min(y1, y2) + 'px';
+            b.el.style.width = Math.max(Math.abs(x2 - x1), 4) + 'px';
+            b.el.style.height = Math.max(Math.abs(y2 - y1), 2) + 'px';
+        });
+    }
+
+    function drawSetup(sym, s) {
+        if (!s) return;
+        clearSetup(sym);   // avoid duplicate boxes if redrawn
+        var accStart = s.accStartTime + tzOffsetSec;
+        var accEnd   = s.accEndTime + tzOffsetSec;
+        var entryT   = s.entryTime + tzOffsetSec;
+
+        addBox(sym, 'acc', accStart, accEnd, s.accHigh, s.accLow);
+        if (s.direction === 'long') {
+            addBox(sym, 'manip', accEnd, entryT, s.accLow, s.manipExtremum);
+            addBox(sym, 'tp', entryT, null, s.tp, s.entryPrice, true);
+            addBox(sym, 'sl', entryT, null, s.entryPrice, s.sl, true);
+        } else {
+            addBox(sym, 'manip', accEnd, entryT, s.manipExtremum, s.accHigh);
+            addBox(sym, 'tp', entryT, null, s.entryPrice, s.tp, true);
+            addBox(sym, 'sl', entryT, null, s.sl, s.entryPrice, true);
+        }
+        setupMarkers[sym] = {
+            time: entryT,
+            position: s.direction === 'long' ? 'belowBar' : 'aboveBar',
+            color: '#2962FF',
+            shape: s.direction === 'long' ? 'arrowUp' : 'arrowDown',
+            text: s.direction === 'long' ? 'Long' : 'Short',
+        };
+        refreshEntryMarkers();
+        updateBoxes();
+    }
+
+    function clearSetup(sym) {
+        boxEls = boxEls.filter(function(b) {
+            if (b.sym === sym) { b.el.remove(); return false; }
+            return true;
+        });
+        delete setupMarkers[sym];
+        refreshEntryMarkers();
+    }
+
+    chart.subscribeCrosshairMove(function() { requestAnimationFrame(updateBoxes); });
+    chart.timeScale().subscribeVisibleTimeRangeChange(function() { requestAnimationFrame(updateBoxes); });
+    el.addEventListener('mousemove', function() { requestAnimationFrame(updateBoxes); });
+    el.addEventListener('wheel', function() { requestAnimationFrame(updateBoxes); });
+
     {% for pos in positions %}
-    {% if pos.sl_price is defined and pos.sl_price %}
-    setTimeout(function() {
-        candleSeries.createPriceLine({ price: {{ "%.2f"|format(pos.entry_price) }}, color: '#5C636E', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'Entry' });
-        candleSeries.createPriceLine({ price: {{ "%.2f"|format(pos.sl_price) }}, color: '#FF4D4D', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'SL' });
-        candleSeries.createPriceLine({ price: {{ "%.2f"|format(pos.tp_price) }}, color: '#00C896', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'TP' });
-    }, 500);
+    {% if pos.setup %}
+    setTimeout(function() { drawSetup('{{ pos.symbol }}', {{ pos.setup | tojson }}); }, 520);
     {% endif %}
     {% endfor %}
 
-    new ResizeObserver(function() { chart.applyOptions({ width: el.clientWidth }); }).observe(el);
+    new ResizeObserver(function() { chart.applyOptions({ width: el.clientWidth }); requestAnimationFrame(updateBoxes); }).observe(el);
 
     botWS.on('price', function(msg) {
         if (msg.symbol !== activeSymbol || !currentBar) return;
@@ -745,6 +842,17 @@
             var volColor = currentBar.close >= currentBar.open ? 'rgba(0,200,150,.3)' : 'rgba(255,77,77,.3)';
             volumeSeries.update({ time: currentVol.time, value: currentVol.value, color: volColor });
         }
+        requestAnimationFrame(updateBoxes);   // grow the TP/SL zones with the live bar
+    });
+
+    // Draw / clear setup boxes as trades open and close without a page reload.
+    botWS.on('trade_opened', function(msg) {
+        var t = (msg && msg.trade) || {};
+        if (t.setup && t.symbol) drawSetup(t.symbol, t.setup);
+    });
+    botWS.on('trade_closed', function(msg) {
+        var sym = (msg && msg.trade && msg.trade.symbol) || (msg && msg.symbol);
+        if (sym) { clearSetup(sym); requestAnimationFrame(updateBoxes); }
     });
 
     // --- Position table + mobile card live update ---

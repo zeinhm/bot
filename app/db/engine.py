@@ -59,6 +59,10 @@ async def _ensure_schema(eng):
         await conn.execute(text(
             "ALTER TABLE backtest_results ADD COLUMN IF NOT EXISTS strategy VARCHAR(20)"
         ))
+        # AMD setup geometry (acc/manip box coords) as JSON, for the live Position chart
+        await conn.execute(text(
+            "ALTER TABLE trades ADD COLUMN IF NOT EXISTS setup_json TEXT"
+        ))
 
         # bot_events columns
         await conn.execute(text(

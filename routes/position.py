@@ -1,3 +1,4 @@
+import json
 import logging
 import time
 from datetime import datetime, timezone
@@ -44,10 +45,15 @@ async def position_page(request: Request):
                 if is_bot:
                     p["sl_price"] = bt.sl_price
                     p["tp_price"] = bt.tp_price
+                    if bt.setup_json:
+                        try:
+                            p["setup"] = json.loads(bt.setup_json)
+                        except (ValueError, TypeError):
+                            pass
                 positions.append(p)
         except Exception:
             for bt in bot_trades.values():
-                positions.append({
+                fp = {
                     "symbol": bt.symbol,
                     "direction": bt.direction,
                     "entry_price": bt.entry_price,
@@ -56,7 +62,13 @@ async def position_page(request: Request):
                     "source": "bot",
                     "sl_price": bt.sl_price,
                     "tp_price": bt.tp_price,
-                })
+                }
+                if bt.setup_json:
+                    try:
+                        fp["setup"] = json.loads(bt.setup_json)
+                    except (ValueError, TypeError):
+                        pass
+                positions.append(fp)
 
     risk_mode = await db.get_state("risk_mode", "static", user_id=user.id, is_paper=is_paper)
     risk_value = await db.get_state("risk_value", 10.0, user_id=user.id, is_paper=is_paper)

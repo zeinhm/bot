@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 
 ---
 
+## [2026-07-09]
+
+### Added
+- **Live Position chart now draws the full AMD setup — the same visual as the Backtester.** When a bot position is open, the price chart renders the grey **accumulation box**, the teal **manipulation box**, the green **TP** and red **SL** zone boxes (entry → latest bar), plus a Long/Short entry arrow — identical to the Backtester Playground. The old flat Entry/SL/TP price lines were removed in favor of this. Boxes are absolutely-positioned div overlays re-projected onto the chart each frame (same technique as `backtester.html`), tagged per symbol and updated live as bars form. Only bot-sourced positions with stored geometry show a setup; manual/legacy trades show nothing. `templates/position.html`.
+- **Setup geometry is now captured at live signal time and persisted.** The frozen `strategy.check_signal` returns only entry/sl/tp and discards the acc/manip box geometry (which the backtest keeps via `amd_engine._make_setup`). New non-frozen module `setup_geometry.py` re-walks the SAME accumulation + manipulation state machine over the candle buffer — reusing `strategy.py`'s own primitives — to recover the box corners; verified to reproduce the backtest engine's geometry exactly (parity test on synthetic long/short setups). `app/bot/worker.py` attaches it to the signal (`_detect_for_strategy`), stores it as JSON on the trade, and includes it in the `trade_opened` broadcast; `routes/position.py` surfaces it to the page. New `Trade.setup_json` column (migration `b8d3f6a2c4e1`, `_ensure_schema` auto-add).
+
 ## [2026-07-04]
 
 ### Changed

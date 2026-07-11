@@ -35,6 +35,7 @@ class Trade(Base):
     pnl_usdt = Column(Float)         # net realized PnL (matches Binance Position History)
     commission = Column(Float)       # trading fee, positive USDT cost
     funding_fee = Column(Float)      # funding over the position's life, signed USDT
+    setup_json = Column(Text)        # AMD setup geometry (acc/manip boxes) as JSON — for the live Position chart
     sl_order_id = Column(String(50))
     tp_order_id = Column(String(50))
     entry_order_id = Column(String(50))

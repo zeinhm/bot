@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from dataclasses import dataclass, field
@@ -9,6 +10,7 @@ from typing import Callable, Awaitable, TYPE_CHECKING
 
 from config import ACC_RANGE_MODE
 from strategy import check_signal
+from setup_geometry import build_setup_geometry
 from exchange import r_value_for_exit
 import app.db as db
 
@@ -442,6 +444,14 @@ class BaseWorker:
         if signal is None:
             return None
         signal["target_rr"] = rr
+        # Recover the acc/manip box geometry the frozen check_signal discards, so
+        # the live Position chart can draw the same setup the Backtester shows.
+        # Display-only: a failure here must NEVER block the trade (runs before execute).
+        try:
+            signal["setup"] = build_setup_geometry(candles, params, signal)
+        except Exception as e:
+            log.warning("setup geometry recompute failed (non-fatal): %s", e)
+            signal["setup"] = None
 
         log.info("[%s] SIGNAL %s: %s %s entry=%.2f sl=%.2f tp=%.2f rr=%.0f",
                  self._mode_label(), name, signal["direction"], symbol,
@@ -506,6 +516,7 @@ class BaseWorker:
                 "commission": entry_comm,
                 "target_rr": signal.get("target_rr"),
                 "strategy": strategy,
+                "setup_json": json.dumps(signal["setup"]) if signal.get("setup") else None,
                 "entry_order_id": str(order.get("orderId", "")),
             })
 
@@ -524,6 +535,7 @@ class BaseWorker:
                     "sl": signal["sl"],
                     "tp": signal["tp"],
                     "quantity": fill_qty,
+                    "setup": signal.get("setup"),
                 },
             })
 

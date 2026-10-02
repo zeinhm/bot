@@ -56,6 +56,16 @@ class BinanceExchange:
             except Exception as e:
                 log.warning("Failed to set leverage for %s: %s", symbol, e)
 
+    async def connect_minimal(self):
+        """Connect for a one-off action (e.g. an admin force-close) without
+        starting a socket manager or touching leverage — a stopped user's bot
+        must not have its exchange-side settings changed as a side effect."""
+        self.client = await AsyncClient.create(
+            api_key=self.api_key,
+            api_secret=self.api_secret,
+        )
+        await self._detect_position_mode()
+
     async def set_leverage(self, leverage: int):
         """Update leverage and re-apply on the exchange (used when settings change)."""
         self.leverage = int(leverage) if leverage else LEVERAGE
@@ -188,7 +198,14 @@ class BinanceExchange:
             log.warning("Failed to get conditional orders on %s: %s", symbol, e)
             return []
 
-    async def place_market_order(self, symbol: str, side: str, quantity: float, position_side: str | None = None) -> dict:
+    async def place_market_order(self, symbol: str, side: str, quantity: float,
+                                 position_side: str | None = None,
+                                 reduce_only: bool = False) -> dict:
+        """`reduce_only=True` for a CLOSING order: if the position is already
+        flat (an SL/TP filled in the gap since we read it), Binance rejects the
+        order instead of opening a fresh position in the opposite direction.
+        Only meaningful in one-way mode — hedge mode forbids reduceOnly, but
+        there a side+positionSide order can only ever reduce that leg anyway."""
         params = dict(
             symbol=symbol,
             side=side.upper(),
@@ -199,6 +216,8 @@ class BinanceExchange:
         if self.hedge_mode:
             ps = position_side.upper() if position_side else ("LONG" if side.upper() == "BUY" else "SHORT")
             params["positionSide"] = ps
+        elif reduce_only:
+            params["reduceOnly"] = "true"
         order = await self.client.futures_create_order(**params)
         log.info("Market %s %s %.4f — order %s (avg %.2f)", side, symbol, quantity, order["orderId"], float(order.get("avgPrice", 0)))
         return order

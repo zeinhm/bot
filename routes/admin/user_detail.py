@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import decrypt
+from app.core.close_position import close_position, PositionNotFound, AmbiguousPosition
 from exchange import resolve_trade_exit, r_value_for_exit, position_pnl_breakdown, fills_time
 import app.db as db
 
@@ -105,6 +106,76 @@ async def admin_user_detail(request: Request, user_id: int):
     if live_balance is None and has_api_keys:
         live_balance = await db.get_state("last_balance", None, user_id=user_id, is_paper=False)
 
+    # Open live positions, so an admin can force-close one when the user's own
+    # SL/TP went missing. Three distinct row states, never conflated:
+    #   exchange — a real position on Binance (live uPnL; `sl_resting` says
+    #              whether a STOP_MARKET is actually on the book)
+    #   stale    — the exchange WAS read and has no such position, but a trade
+    #              row is still open: a divergence to resolve, not something to close
+    #   db       — the exchange could not be read (bot stopped / unreachable), so
+    #              the tracked rows stand in and nothing about them is confirmed
+    open_trades = {t.symbol: t for t in await db.get_open_trades(user_id, is_paper=False)}
+    open_positions = []
+    exchange_read = False
+    if live_worker and live_worker.exchange.client:
+        try:
+            exchange_positions = await live_worker.exchange.get_all_positions()
+            exchange_read = True
+        except Exception:
+            exchange_positions = []
+            log.warning("Could not read live positions for user %d", user_id, exc_info=True)
+        for pos in exchange_positions:
+            bt = open_trades.get(pos["symbol"])
+            if bt is not None and bt.direction != pos["side"]:
+                bt = None  # same symbol, other side — not this bot trade
+            # Only the bot's own trades have an SL to be missing, and each probe
+            # is a signed call — don't spend one per unrelated manual position.
+            sl_resting = None
+            if bt is not None:
+                try:
+                    cond = await live_worker.exchange.get_conditional_orders(pos["symbol"], strict=True)
+                    # Hedge mode: a stop on the OTHER leg must not count as this
+                    # leg's protection (same filter as worker_live._count_sltp_orders).
+                    expected_ps = (
+                        ("LONG" if pos["side"] == "long" else "SHORT")
+                        if live_worker.exchange.hedge_mode else None
+                    )
+                    sl_resting = any(
+                        (o.get("orderType") or o.get("type")) == "STOP_MARKET"
+                        and (expected_ps is None or o.get("positionSide") == expected_ps)
+                        for o in cond)
+                except Exception:
+                    pass  # unreadable -> unknown, shown as such
+            open_positions.append({
+                "symbol": pos["symbol"],
+                "direction": pos["side"],
+                "quantity": pos["quantity"],
+                "entry_price": pos["entry_price"],
+                "unrealized_pnl": pos["unrealized_pnl"],
+                "sl_price": bt.sl_price if bt else None,
+                "tp_price": bt.tp_price if bt else None,
+                "trade_id": bt.id if bt else None,
+                "sl_resting": sl_resting,
+                "source": "exchange",
+            })
+
+    on_exchange = {(p["symbol"], p["direction"]) for p in open_positions}
+    for t in open_trades.values():
+        if (t.symbol, t.direction) in on_exchange:
+            continue
+        open_positions.append({
+            "symbol": t.symbol,
+            "direction": t.direction,
+            "quantity": t.quantity,
+            "entry_price": t.entry_price,
+            "unrealized_pnl": None,
+            "sl_price": t.sl_price,
+            "tp_price": t.tp_price,
+            "trade_id": t.id,
+            "sl_resting": None,
+            "source": "stale" if exchange_read else "db",
+        })
+
     recent_trades = await db.get_recent_trades(20, user_id=user_id, is_paper=False)
     events = await db.get_recent_events(20, user_id=user_id)
 
@@ -120,6 +191,7 @@ async def admin_user_detail(request: Request, user_id: int):
         "live_stats": live_stats,
         "paper_stats": paper_stats,
         "has_api_keys": has_api_keys,
+        "open_positions": open_positions,
         "live_balance": live_balance,
         "paper_balance": paper_balance,
         "recent_trades": recent_trades,
@@ -127,6 +199,79 @@ async def admin_user_detail(request: Request, user_id: int):
         "avg_hold_mins": avg_hold_mins,
         "equity_json": json.dumps(live_stats["equity_data"]),
     })
+
+
+@router.post("/admin/user/{user_id}/position/close")
+async def admin_close_position(request: Request, user_id: int):
+    """Admin force-close of ONE of a user's live positions.
+
+    The owner's own close button (`POST /api/position/close`) needs their
+    session, so when their SL/TP goes missing an admin previously had no way to
+    get them out — the only lever was the user's own Binance app. This closes
+    from the server (whose IP is whitelisted on the user's key) and books the
+    trade the same way the owner's close does.
+
+    Prefers the running live worker's exchange so position mode and in-memory
+    SL/TP alert timers stay consistent; falls back to a one-off connection from
+    the stored keys when that user's bot is stopped.
+    """
+    from routes.admin import require_admin
+    admin = await require_admin(request)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    symbol = (body.get("symbol") or "").upper()
+    if not symbol:
+        return JSONResponse({"ok": False, "error": "Missing symbol"}, status_code=400)
+    direction = (body.get("direction") or "").lower() or None
+    if direction not in (None, "long", "short"):
+        return JSONResponse({"ok": False, "error": "Invalid direction"}, status_code=400)
+
+    manager = request.app.state.bot_manager
+    worker = manager.get_worker(user_id, "live")
+    # Decided ONCE: re-reading worker.exchange.client could flip (the bot may be
+    # stopped mid-request), which would reach the keys branch with no cfg loaded.
+    use_worker_exchange = bool(worker and worker.exchange.client)
+
+    cfg = None
+    if not use_worker_exchange:
+        cfg = await db.get_user_config(user_id)
+        if not cfg or not cfg.binance_api_key_enc:
+            return JSONResponse(
+                {"ok": False, "error": "User has no API keys and no running bot"}, status_code=400)
+
+    temp_exchange = None
+    try:
+        if use_worker_exchange:
+            exchange = worker.exchange
+        else:
+            from exchange import BinanceExchange
+            # Built and connected inside the try so a bad/revoked key (-2015)
+            # still unwinds through finally instead of leaking its HTTP session.
+            temp_exchange = BinanceExchange(
+                decrypt(cfg.binance_api_key_enc), decrypt(cfg.binance_api_secret_enc))
+            await temp_exchange.connect_minimal()
+            exchange = temp_exchange
+
+        closed = await close_position(
+            user_id, symbol, exchange=exchange, is_paper=False,
+            direction=direction, worker=worker,
+            reason=f"Admin force-close (by #{admin.id})",
+        )
+        log.warning("Admin %d force-closed %s for user %d: %s", admin.id, symbol, user_id, closed)
+        return JSONResponse({"ok": True, **closed})
+    except PositionNotFound as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=404)
+    except AmbiguousPosition as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=409)
+    except Exception as e:
+        log.exception("Admin force-close failed for user %d %s", user_id, symbol)
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+    finally:
+        if temp_exchange is not None:
+            await temp_exchange.close()
 
 
 @router.post("/admin/user/{user_id}/reset-2fa")

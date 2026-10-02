@@ -59,6 +59,7 @@ bot/
 │   ├── auth/twofa.py          # TOTP 2FA: enroll/verify, require_2fa step-up gate, backup codes, rate limit
 │   ├── core/context.py        # get_global_context() for template rendering
 │   ├── core/template_filters.py # Shared Jinja filters (num: comma+decimals); register_filters()
+│   ├── core/close_position.py # close_position(): shared discretionary market-close + trade resolution at real fill (owner close button AND admin force-close)
 │   ├── core/metrics.py        # drawdown_base(): real-equity base (balance − PnL) for DD% (analytics/dashboard/track-record)
 │   ├── email.py               # send_approval_email(), send_rejection_email() via Resend
 │   ├── db/
@@ -100,7 +101,7 @@ bot/
 │       ├── __init__.py        # Admin router, require_admin middleware
 │       ├── dashboard.py       # GET /admin (platform overview)
 │       ├── users.py           # User approve/reject/disable/toggle-admin
-│       ├── user_detail.py     # GET /admin/user/{id}, POST reconcile
+│       ├── user_detail.py     # GET /admin/user/{id}, POST reconcile, POST position/close (admin force-close)
 │       ├── bots.py            # GET /admin/bots (all bot instances)
 │       ├── analytics.py       # GET /admin/analytics (platform-wide)
 │       └── logs.py            # GET /admin/logs (filterable event log)
@@ -204,7 +205,7 @@ bot/
 | **User approval flow**              | `routes/admin/users.py`, `templates/admin_users.html`        |
 | **Require-approval toggle (open registration)** | `routes/admin/dashboard.py` (`POST /admin/settings/require-approval` + `require_approval` state), `templates/admin_dashboard.html` (Access control card), `routes/auth.py` (auto-approve in Google callback when off) |
 | **Bot start/stop lifecycle**        | `app/bot/manager.py`, `routes/bot_control.py`                |
-| **Close a single position**         | `routes/position.py` → `POST /api/position/close`; buttons + `doClosePosition()` in `templates/position.html` |
+| **Close a single position**         | `app/core/close_position.py` (shared close + trade resolution); `routes/position.py` → `POST /api/position/close` + buttons/`doClosePosition()` in `templates/position.html` (owner); `routes/admin/user_detail.py` → `POST /admin/user/{id}/position/close` + "Open Live Positions" card in `templates/admin_user_detail.html` (admin force-close) |
 | **AMD setup boxes on live Position chart** | `setup_geometry.py` (recompute geometry) → `app/bot/worker.py` (`_detect_for_strategy` attaches, `_execute_trade` persists `setup_json` + broadcasts) → `routes/position.py` (surface `setup`) → `templates/position.html` (`drawSetup`/`updateBoxes` div overlays). Backtester equivalent: `templates/backtester.html` + `amd_engine._make_setup` |
 | **Balance reset on disconnect**     | `app/bot/websocket.py` → `reset_live_balance()` (called from `routes/bot_control.py` stop + `routes/settings.py` key delete); no client-side balance cache |
 | **Reward:risk shown per trade (static R)** | win = planned `target_rr`, loss = −1R: `exchange.py` `r_value_for_exit()`, `app/bot/worker.py`, `amd_engine.py` + `backtest_combine.py` (display R; PnL stays actual) |

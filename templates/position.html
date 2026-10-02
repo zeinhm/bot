@@ -180,7 +180,7 @@
                                 {% endif %}
                             </td>
                             <td style="padding:10px 16px;text-align:right">
-                                <button class="close-pos-btn" data-close-symbol="{{ pos.symbol }}" style="padding:4px 12px;border:1px solid var(--red);background:transparent;color:var(--red);border-radius:5px;font-size:11px;font-weight:600;cursor:pointer">Close</button>
+                                <button class="close-pos-btn" data-close-symbol="{{ pos.symbol }}" data-close-direction="{{ pos.direction }}" style="padding:4px 12px;border:1px solid var(--red);background:transparent;color:var(--red);border-radius:5px;font-size:11px;font-weight:600;cursor:pointer">Close</button>
                             </td>
                         </tr>
                         {% endfor %}
@@ -249,7 +249,7 @@
                         <div class="status-cell"><div class="k">Size</div><div class="v">{{ "%.4f"|format(pos.quantity) }} {{ pos.symbol.replace('USDT','') }}</div></div>
                         <div class="status-cell"><div class="k">Leverage</div><div class="v">{{ leverage }}×</div></div>
                     </div>
-                    <button class="close-pos-btn" data-close-symbol="{{ pos.symbol }}" style="width:100%;padding:9px 0;margin-top:4px;border:1px solid var(--red);background:transparent;color:var(--red);border-radius:5px;font-size:11px;font-weight:600;cursor:pointer">Close</button>
+                    <button class="close-pos-btn" data-close-symbol="{{ pos.symbol }}" data-close-direction="{{ pos.direction }}" style="width:100%;padding:9px 0;margin-top:4px;border:1px solid var(--red);background:transparent;color:var(--red);border-radius:5px;font-size:11px;font-weight:600;cursor:pointer">Close</button>
                 </div>
                 {% endfor %}
             {% else %}
@@ -862,23 +862,29 @@
     var leverage = {{ leverage }};
 
     // --- Per-position close ---
-    function closeBtnHtml(symbol, full) {
-        return '<button class="close-pos-btn" data-close-symbol="' + symbol + '" style="'
+    function closeBtnHtml(symbol, full, direction) {
+        return '<button class="close-pos-btn" data-close-symbol="' + symbol + '"'
+            + ' data-close-direction="' + (direction || '') + '" style="'
             + (full ? 'width:100%;padding:9px 0;margin-top:4px;' : 'padding:4px 12px;')
             + 'border:1px solid var(--red);background:transparent;color:var(--red);border-radius:5px;font-size:11px;font-weight:600;cursor:pointer">Close</button>';
     }
 
-    async function doClosePosition(symbol, btn) {
+    async function doClosePosition(symbol, btn, direction) {
         if (!window.confirm('Close your ' + symbol + ' position at market?')) return;
         if (btn) { btn.disabled = true; btn.textContent = 'Closing…'; }
         try {
             var res = await fetch('/api/position/close', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
-                body: JSON.stringify({ symbol: symbol })
+                body: JSON.stringify({ symbol: symbol, direction: direction || null })
             });
             var data = await res.json();
             if (!res.ok || !data.ok) throw new Error(data.error || 'Close failed');
+            if (data.trade_resolved === false && data.trade_id) {
+                window.alert('Closed ' + symbol + ', but no fill price came back, so trade #'
+                    + data.trade_id + ' is still marked open. Your stats will correct themselves'
+                    + ' once the fill settles.');
+            }
             // Optimistically drop it; the next positions WS push reconciles.
             positionsData = positionsData.filter(function(p) { return p.symbol !== symbol; });
             renderPositions(positionsData);
@@ -891,7 +897,7 @@
     // Delegated so it works for both server-rendered and JS-rendered rows/cards.
     document.addEventListener('click', function(e) {
         var btn = e.target.closest ? e.target.closest('.close-pos-btn') : null;
-        if (btn) { e.preventDefault(); doClosePosition(btn.dataset.closeSymbol, btn); }
+        if (btn) { e.preventDefault(); doClosePosition(btn.dataset.closeSymbol, btn, btn.dataset.closeDirection); }
     });
 
     function fmtDur(secs) {
@@ -964,7 +970,7 @@
             html += '<div class="status-cell"><div class="k">Size</div><div class="v">' + p.quantity.toFixed(4) + ' ' + sym + '</div></div>';
             html += '<div class="status-cell"><div class="k">Leverage</div><div class="v">' + leverage + '×</div></div></div>';
 
-            html += closeBtnHtml(p.symbol, true);
+            html += closeBtnHtml(p.symbol, true, p.direction);
             html += '</div>';
         });
         posCards.innerHTML = html;
@@ -1010,7 +1016,7 @@
             html += '<td class="mono pos-roi" style="padding:10px 12px;text-align:right"><span class="' + roiCls + '">' + roiSign + roiVal.toFixed(2) + '%</span></td>' +
                 '<td class="mono" style="padding:10px 12px;text-align:right">' + sltp + '</td>' +
                 '<td style="padding:10px 12px;text-align:center">' + srcPill + '</td>' +
-                '<td style="padding:10px 16px;text-align:right">' + closeBtnHtml(p.symbol) + '</td></tr>';
+                '<td style="padding:10px 16px;text-align:right">' + closeBtnHtml(p.symbol, false, p.direction) + '</td></tr>';
         });
         html += '</tbody></table></div>';
         posTable.innerHTML = html;

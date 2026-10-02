@@ -115,6 +115,28 @@ Position exists AND trade is open:
 
 **Handler:** `_run_position_poll()` (position exists branch)
 
+### B2. Admin Force-Close (manual escape hatch)
+
+The last resort when B's alert fires and the automatic force-close can't act (e.g. price retraced back inside the stop, so the breach gate correctly refuses). The user's own Close button needs *their* session, and their Binance key is typically IP-whitelisted to the server — so without this an admin had no lever at all.
+
+```
+Admin → /admin/user/{id} → "Open Live Positions" → Force close
+  → Prefers the user's running live worker's exchange
+    (position mode + SL/TP alert timers stay consistent)
+  → Else connect_minimal() from their stored keys
+    (no socket manager, and leverage is NOT touched)
+  → close_position(): market close → cancel both buckets
+    → resolve the trade row at the real fill, actual realized R
+```
+
+The table also shows, per position, whether a STOP_MARKET is **actually resting** on Binance — so "the stop is gone" is visible rather than inferred.
+
+**Handler:** `POST /admin/user/{id}/position/close` → `app/core/close_position.py`
+
+Both close paths take `{symbol, direction}` and match the position on **both**, because in hedge mode `get_all_positions()` returns one row per leg — a symbol alone is ambiguous and the code refuses to guess (409) rather than market-close the wrong side. The closing order is `reduceOnly` in one-way mode, so if an SL/TP fills in the gap between reading the position and sending the close, Binance rejects it instead of opening a fresh reverse position.
+
+**Known hedge-mode limitation:** `cancel_all_orders(symbol)` clears both order buckets for the whole symbol, so closing one leg also removes the OTHER leg's SL/TP. This is pre-existing and shared with `_prepare_entry` / `_before_place_sl_tp`; closing it needs per-`positionSide` cancellation by order id.
+
 ### C. Pre-Entry Cleanup
 
 Before every new entry, cancel all existing orders on the symbol. Catches stale orders from previous trades that weren't properly cleaned up.

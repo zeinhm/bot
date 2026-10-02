@@ -219,6 +219,12 @@ Shared Jinja filters registered onto a route's `Jinja2Templates` env.
 - `_num(value, decimals=2, sign=False)` — comma thousand separators + fixed decimals; `—` for `None`; optional leading `+`
 - `register_filters(templates)` — registers `num` on `templates.env.filters` (used by `trades.py`, `dashboard.py`, `analytics.py`)
 
+### `app/core/close_position.py`
+Discretionary market-close of ONE position, shared by the owner's close button and the admin force-close so both book the trade identically.
+- `close_position(user_id, symbol, *, exchange, is_paper, direction=None, worker=None, reason="Manual close")` → `{symbol, direction, quantity, exit_price, trade_id, pnl, r_value, trade_resolved}`. Matches the position by symbol **and** `direction` when given, market-closes it (correct side + `positionSide`, `reduce_only=True` so an already-flat position rejects instead of opening a reverse one), cancels BOTH order buckets, then resolves the tracked trade row at the **real fill**: net PnL after entry+exit commission, and **actual realized R** (`pnl / risked`) — not ±target RR, since a discretionary close hit neither level. `trade_resolved=False` means the position closed but no fill price came back, so the row is still `open` (logged at ERROR; callers surface it). Clears the worker's per-symbol SL/TP alert timers when a `worker` is passed, so a "failed to place SL/TP" alert loop stops immediately. `_active_trades` is deliberately left alone — the position poll re-syncs it from the DB each cycle. Logs a `trade`-category event with `reason`.
+- `PositionNotFound` — no position for that symbol/direction (callers map it to 404).
+- `AmbiguousPosition` — hedge mode, symbol has both legs open and no `direction` was given; **never guessed** (409). Known limitation: `cancel_all_orders` is symbol-wide, so closing one hedge leg also clears the other leg's SL/TP — pre-existing behavior shared with the worker's entry / SL-TP paths.
+
 ### `app/core/metrics.py`
 Drawdown = high-water-mark on `real_base + bot PnL + in-period deposits`. The base is the account's REAL balance when the bot started; **never reconstructed from income** (proven unreliable).
 - `compute_drawdown(closed_trades, events)` — replays `events` (base + deposits) and closed-trade net PnL (`pnl_usdt`) in time order; peak = running high; current DD = `(peak−balance)/peak`; **max DD = deepest current DD ever (monotonic)**. Returns `{max_pct, current_pct, series}` or **None** (→ "—"). Deposits raise the peak (current DD can reset; max preserved); withdrawals/manual never enter.
@@ -482,7 +488,7 @@ WebSocket connection manager + 7 background push tasks.
 | Method | Path | Template | Purpose |
 |--------|------|----------|---------|
 | GET | `/position` | `position.html` | Live positions from exchange, SL/TP for bot trades |
-| POST | `/api/position/close` | — | Market-close ONE symbol + cancel its SL/TP. Resolves the bot trade at its actual realized R (pnl / risked). **Not** 2FA-gated (same as emergency-close) |
+| POST | `/api/position/close` | — | Market-close ONE symbol (+ optional `direction`) + cancel its SL/TP, via `app.core.close_position`. Resolves the bot trade at its actual realized R (pnl / risked). **Not** 2FA-gated (same as emergency-close) |
 
 ### `routes/trades.py`
 | Method | Path | Template | Purpose |
@@ -572,7 +578,10 @@ Sensitive POSTs (`/settings`, `/settings/reset`, `/settings/api-keys`, `/setting
 |--------|------|----------|---------|
 | GET | `/admin/user/{id}` | `admin_user_detail.html` | Detailed user view with stats, equity, trades, events |
 | POST | `/admin/user/{id}/reconcile` | — | Reconcile trades against Binance fill data |
+| POST | `/admin/user/{id}/position/close` | — | Admin force-close ONE of that user's live positions by `{symbol, direction}` (`app.core.close_position`). Uses the running live worker's exchange, else a one-off `connect_minimal()` from the stored keys. For when a user's SL/TP goes missing and only the server IP is whitelisted on their key |
 | POST | `/admin/user/{id}/reset-2fa` | — | Clear a user's 2FA + backup codes (lost-device recovery) |
+
+The GET also builds `open_positions` — real exchange state when the user's live bot is up (with `sl_resting`: is a STOP_MARKET actually on the book), falling back to the open trade rows when it's stopped.
 
 Helper functions: `compute_stats(trades)`, `_get_order()`, `_get_fills()`, `_get_all_fills()`
 

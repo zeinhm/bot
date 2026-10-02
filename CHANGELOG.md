@@ -6,6 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Grouped by date and fea
 
 ---
 
+## [2026-10-02]
+
+### Added
+- **Admin force-close: an admin can now market-close any user's live position.** When a user's SL/TP goes missing and re-placement keeps failing, the bot alerts on Telegram ("check position manually") — but nobody could act on it: the owner's Close button needs *their* session, and their Binance key is IP-whitelisted to the server, so the position could only be closed from the user's own Binance app. The admin user page now has an **Open Live Positions** card with a Force close button per position, showing live qty / entry / SL / uPnL and **whether a STOP_MARKET is actually resting on Binance** (`resting` / `MISSING` / `unknown`) — so a vanished stop is visible, not inferred. New `POST /admin/user/{id}/position/close`: prefers the user's running live worker's exchange (keeps position mode and the in-memory SL/TP alert timers consistent), falling back to a one-off `BinanceExchange.connect_minimal()` from their stored keys when that bot is stopped — no socket manager, and leverage is deliberately NOT touched. `routes/admin/user_detail.py`, `templates/admin_user_detail.html`, `exchange.py`, `docs/order-safety.md` (§B2).
+
+### Fixed
+- **Both close paths could market-close the WRONG side in hedge mode.** `get_all_positions()` returns one row per `(symbol, positionSide)`, but the close matched on symbol alone and took the first hit — so with a BTCUSDT LONG *and* SHORT open, closing the SHORT could instead close the LONG, at the wrong size, then book the wrong trade row. Both endpoints now take `{symbol, direction}` and match on both; a two-legged symbol with no direction raises `AmbiguousPosition` → **409, never a guess**. Pre-existing bug, reachable from the owner's Close button before this change and newly reachable per-row from the admin card. Still open as a documented hedge-mode limitation: `cancel_all_orders(symbol)` is symbol-wide, so closing one leg clears the other leg's SL/TP (shared with `_prepare_entry` / `_before_place_sl_tp`; needs per-`positionSide` cancellation by order id).
+- **A close could FLIP the position instead of closing it.** The closing market order carried no `reduceOnly` in one-way mode, and the resting stops were cancelled only *after* it was sent. If an SL/TP filled in that gap the position was already flat, so the market order opened a brand-new position of the same size in the opposite direction, with no stop — then got booked as closed. `place_market_order()` now takes `reduce_only` (set on both close paths), so Binance rejects the order instead. Hedge mode is unaffected: a side+`positionSide` order can only ever reduce that leg.
+- **The admin card's Stop column could show green "resting" for an unprotected hedge leg.** The probe accepted a `STOP_MARKET` on either side; it now filters by `positionSide`, mirroring `worker_live._count_sltp_orders`.
+- **`NameError` on a 500 path in the admin force-close.** `worker.exchange.client` was read twice, so a bot stopped mid-request skipped the config load and then dereferenced it. The decision is now made once.
+
+### Changed
+- **Close-a-position logic extracted to `app/core/close_position.py`.** `POST /api/position/close` and the new admin force-close now share one `close_position()`, so both book a discretionary exit identically: market close with the right side/`positionSide`, cancel BOTH order buckets, then resolve the trade row at the **real fill** — net PnL after entry+exit commission and **actual realized R** (`pnl / risked`), since the trade hit neither level. It also clears the worker's per-symbol SL/TP alert timers when a worker is passed, so the repeating "failed to place SL/TP" alert stops the moment the position is gone, and reports `trade_resolved: false` (logged at ERROR, surfaced in both UIs) when the position closed but no fill price came back to book the row with. Verified against the local DB with a stubbed exchange: resolve math, PnL/R, order sequencing, hedge-leg matching, ambiguity refusal, the no-fill branch, and `PositionNotFound`.
+
 ## [2026-07-09]
 
 ### Added

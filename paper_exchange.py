@@ -94,7 +94,12 @@ class PaperExchange:
             for o in orders
         ]
 
-    async def place_market_order(self, symbol: str, side: str, quantity: float, position_side: str | None = None) -> dict:
+    async def place_market_order(self, symbol: str, side: str, quantity: float,
+                                 position_side: str | None = None,
+                                 reduce_only: bool = False) -> dict:
+        """`reduce_only` is accepted for interface parity with BinanceExchange and
+        ignored: a simulated fill has no race against a resting SL/TP to protect
+        against, since paper exits are resolved from PaperOrder rows."""
         price = self._shared.get_latest_price(symbol)
         if price <= 0:
             try:

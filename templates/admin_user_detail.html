@@ -123,6 +123,58 @@
         </div>
     </div>
 
+    <!-- Open Live Positions -->
+    {% if open_positions %}
+    <div class="card" style="margin-bottom:16px">
+        <div class="card-title" style="margin-bottom:10px">
+            Open Live Positions
+            {% if open_positions | selectattr('source', 'equalto', 'db') | list %}
+            <span class="muted" style="font-size:11px;font-weight:400">— exchange unreachable; showing open trade rows, unconfirmed</span>
+            {% endif %}
+        </div>
+        <div class="tbl-wrap">
+        <table class="tbl">
+            <thead><tr>
+                <th>Pair</th>
+                <th>Dir</th>
+                <th class="num">Qty</th>
+                <th class="num adm-hide-sm">Entry</th>
+                <th class="num adm-hide-sm">SL</th>
+                <th class="num">uP&L</th>
+                <th>Stop</th>
+                <th class="num">Action</th>
+            </tr></thead>
+            <tbody>
+                {% for p in open_positions %}
+                <tr>
+                    <td class="mono" style="font-size:12px">{{ p.symbol }}</td>
+                    <td><span class="dir-badge {{ p.direction }}">{{ p.direction|upper }}</span></td>
+                    <td class="num mono">{{ p.quantity }}</td>
+                    <td class="num mono adm-hide-sm">{{ '%.2f'|format(p.entry_price) if p.entry_price else '—' }}</td>
+                    <td class="num mono adm-hide-sm">{{ '%.2f'|format(p.sl_price) if p.sl_price else '—' }}</td>
+                    <td class="num mono {% if (p.unrealized_pnl or 0) > 0 %}pos{% elif (p.unrealized_pnl or 0) < 0 %}neg{% endif %}">{% if p.unrealized_pnl is not none %}{{ '%+.2f'|format(p.unrealized_pnl) }}{% else %}—{% endif %}</td>
+                    <td>
+                        {% if p.source == 'stale' %}<span class="pill amber">no position</span>
+                        {% elif p.sl_resting is none %}<span class="pill gray">unknown</span>
+                        {% elif p.sl_resting %}<span class="pill green">resting</span>
+                        {% else %}<span class="pill red">MISSING</span>{% endif %}
+                    </td>
+                    <td class="num">
+                        {% if p.source == 'stale' %}
+                        <span class="muted" style="font-size:10.5px">trade row open on Binance&#8209;closed position — reconcile</span>
+                        {% else %}
+                        <button type="button" class="btn btn-ghost btn-sm" style="font-size:10.5px;padding:3px 9px"
+                                onclick="adminClosePosition({{ target.id }}, '{{ p.symbol }}', '{{ p.direction }}', this)">Force close</button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Equity Curve -->
     {% if live_stats.total > 0 %}
     <div class="card" style="margin-bottom:16px">
@@ -212,6 +264,39 @@
     </div>
 </div>
 <script>
+function adminClosePosition(id, symbol, direction, btn) {
+    if (!confirm('Market-close ' + symbol + ' ' + (direction || '').toUpperCase()
+                 + ' on this user\'s LIVE account now?\n\nThis places a real order on their Binance account.')) return;
+    btn.disabled = true;
+    btn.textContent = 'Closing…';
+    fetch('/admin/user/' + id + '/position/close', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken()},
+        body: JSON.stringify({ symbol: symbol, direction: direction || null }),
+    })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.ok) {
+                alert('Closed ' + symbol + ' @ ' + (d.exit_price || 'market')
+                      + (d.pnl != null ? '\nPnL: ' + d.pnl.toFixed(2) + ' USDT (' + d.r_value + 'R)' : '')
+                      + (d.trade_resolved === false && d.trade_id
+                         ? '\n\nWARNING: no fill price returned — trade #' + d.trade_id
+                           + ' is still marked open. Run Reconcile once the fill settles.'
+                         : ''));
+                location.reload();
+            } else {
+                alert('Close failed: ' + (d.error || 'unknown error'));
+                btn.disabled = false;
+                btn.textContent = 'Force close';
+            }
+        })
+        .catch(function(e) {
+            alert('Close failed: ' + e);
+            btn.disabled = false;
+            btn.textContent = 'Force close';
+        });
+}
+
 function resetUser2FA(id) {
     if (!confirm('Reset this user\'s 2FA? They will need to set it up again on next sign-in.')) return;
     fetch('/admin/user/' + id + '/reset-2fa', { method: 'POST', headers: {'X-CSRF-Token': csrfToken()} })
